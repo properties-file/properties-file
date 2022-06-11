@@ -1,0 +1,70 @@
+{
+  "name": "properties-file",
+  "version": "2.0.0",
+  "description": ".properties file parser, JSON converter and Webpack loader.",
+  "author": "Avansai (https://avansai.com)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Avansai/properties-file.git"
+  },
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": "./lib/index.js",
+    "./content": "./lib/content/index.js",
+    "./webpack-loader": "./lib/loader/webpack.js"
+  },
+  "typesVersions": {
+    "*": {
+      "content": [
+        "lib/content/index.d.ts"
+      ],
+      "webpack-loader": [
+        "lib/loader/webpack.d.ts"
+      ]
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "lib"
+  ],
+  "keywords": [
+    ".properties",
+    "properties",
+    ".properties file",
+    "properties file",
+    "parser",
+    "Java",
+    "intl",
+    "i18n",
+    "properties Webpack loader",
+    "Webpack loader",
+    "internationalization"
+  ],
+  "scripts": {
+    "build": "rm -Rf ./lib && tsc && npm run add-import-type && npm run lint && npm test",
+    "add-import-type": "node ./src/add-import-type",
+    "test": "jest --coverage",
+    "tmp-test": "tsc && node ./lib/tmp.js",
+    "lint": "eslint . --fix",
+    "prettier-check": "prettier --check .",
+    "prettier-fix": "prettier --write .",
+    "release": "dotenv -- release-it --only-version"
+  },
+  "devDependencies": {
+    "@release-it/conventional-changelog": "^5.0.0",
+    "@types/jest": "^28.1.0",
+    "@typescript-eslint/eslint-plugin": "^5.27.0",
+    "@typescript-eslint/parser": "^5.27.0",
+    "dotenv-cli": "^5.1.0",
+    "eslint": "^8.17.0",
+    "eslint-config-prettier": "^8.5.0",
+    "eslint-plugin-jest": "^26.4.6",
+    "jest": "^28.1.0",
+    "prettier": "2.6.2",
+    "release-it": "^15.0.0",
+    "ts-jest": "^28.0.4",
+    "ts-node": "^10.8.1",
+    "typescript": "^4.7.3"
+  }
+}

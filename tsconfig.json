@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "es5",
+    "module": "CommonJS",
+    "declaration": true,
+    "outDir": "lib/"
+  },
+  "include": ["src/**/*.ts"]
+}
