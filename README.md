@@ -212,4 +212,4 @@ Just like Java, if a Unicode escaped characters (`\u`) is malformed, it will thr
 
 ### Special mention
 
-Thanks to [@calibr](https://github.com/calibr) for giving the [https://www.npmjs.com/package/properties-file](https://www.npmjs.com/package/properties-file) package name. We hope that it will make it easier to find our package.
+Thanks to [@calibr](https://github.com/calibr), the creator of [properties-file version 1.0](https://github.com/calibr/properties-file), for letting us use the [https://www.npmjs.com/package/properties-file](https://www.npmjs.com/package/properties-file) package name. We hope that it will make it easier to find our package.
