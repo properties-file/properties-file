@@ -1,5 +1,7 @@
 
 
+## [2.0.5](https://github.com/Avansai/properties-file/compare/2.0.4...2.0.5) (2022-07-10)
+
 ## [2.0.4](https://github.com/Avansai/properties-file/compare/2.0.3...2.0.4) (2022-07-03)
 
 ## [2.0.3](https://github.com/Avansai/properties-file/compare/2.0.2...2.0.3) (2022-06-30)
