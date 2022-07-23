@@ -1,6 +1,6 @@
 {
   "name": "properties-file",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "description": ".properties file parser, JSON converter and Webpack loader.",
   "author": "Avansai (https://avansai.com)",
   "repository": {
