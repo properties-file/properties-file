@@ -1,9 +1,9 @@
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs'
 
-import { KeyValueObject, Properties } from '../';
-import { getProperties as getPropertiesFromContent } from '../content/';
+import { KeyValueObject, Properties } from '../'
+import { getProperties as getPropertiesFromContent } from '../content/'
 
-export { KeyValueObject } from '../';
+export { KeyValueObject } from '../'
 
 /**
  * Get a `Properties` object from the content of a `.properties` file.
@@ -15,10 +15,10 @@ export { KeyValueObject } from '../';
  */
 export function getProperties(filePath: string, encoding?: BufferEncoding): Properties {
   if (!existsSync(filePath)) {
-    throw Error(`file not found at ${filePath}`);
+    throw Error(`file not found at ${filePath}`)
   }
 
-  return getPropertiesFromContent(readFileSync(filePath, encoding ? encoding : 'utf-8'));
+  return getPropertiesFromContent(readFileSync(filePath, encoding ? encoding : 'utf-8'))
 }
 
 /**
@@ -30,5 +30,5 @@ export function getProperties(filePath: string, encoding?: BufferEncoding): Prop
  * @returns A (JSON) key/value object representing the content of a `.properties` file.
  */
 export function propertiesToJson(filePath: string, encoding?: BufferEncoding): KeyValueObject {
-  return getProperties(filePath, encoding).toJson();
+  return getProperties(filePath, encoding).toJson()
 }

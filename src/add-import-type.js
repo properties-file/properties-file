@@ -1,7 +1,7 @@
 /**
  * These extra steps are required after the build to pass the correct type when importing `.properties` file directly.
  */
-const { readFileSync, writeFileSync, readdirSync } = require('fs');
+const { readFileSync, writeFileSync, readdirSync } = require('fs')
 
 /**
  * Add a type reference to another type file.
@@ -15,22 +15,22 @@ function addReference(typeFilePath, typeReferenceFilePath) {
     `/// <reference types="${typeReferenceFilePath}" />\r\n\r\n${readFileSync(
       typeFilePath
     ).toString()}`
-  );
+  )
 }
 
 /**
  * Since the type file to open `.properties` files is not a module and cannot be copied, we need to
  * copy it explicitly after the build.
  */
-const declarationFilename = 'properties-file';
-const typeFileContent = readFileSync(`./src/${declarationFilename}.d.ts`).toString();
-writeFileSync(`./lib/${declarationFilename}.d.ts`, typeFileContent);
+const declarationFilename = 'properties-file'
+const typeFileContent = readFileSync(`./src/${declarationFilename}.d.ts`).toString()
+writeFileSync(`./lib/${declarationFilename}.d.ts`, typeFileContent)
 
 /**
  * Now that the declaration file is copied, we can reference it in the main package's module types.
  */
-const packageTypesFilePath = './lib/index.d.ts';
-addReference(packageTypesFilePath, `./${declarationFilename}`);
+const packageTypesFilePath = './lib/index.d.ts'
+addReference(packageTypesFilePath, `./${declarationFilename}`)
 
 /**
  * Since the most common use case to support to require the file type declaration is by configuring
@@ -40,11 +40,11 @@ addReference(packageTypesFilePath, `./${declarationFilename}`);
  * @see https://stackoverflow.com/questions/72187763/how-to-include-a-global-file-type-declaration-in-a-typescript-node-js-package
  */
 
-const fileLoaderDirectoryPath = './lib/loader';
-const fileLoaderFilePaths = readdirSync(fileLoaderDirectoryPath);
+const fileLoaderDirectoryPath = './lib/loader'
+const fileLoaderFilePaths = readdirSync(fileLoaderDirectoryPath)
 
 fileLoaderFilePaths.forEach((fileLoaderFilePath) => {
   if (fileLoaderFilePath.endsWith('d.ts')) {
-    addReference(`${fileLoaderDirectoryPath}/${fileLoaderFilePath}`, `../${declarationFilename}`);
+    addReference(`${fileLoaderDirectoryPath}/${fileLoaderFilePath}`, `../${declarationFilename}`)
   }
-});
+})

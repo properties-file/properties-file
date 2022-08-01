@@ -40,9 +40,9 @@ Both APIs (`getProperties` and `propertiesToJson`) directly under `properties-fi
 This API is probably the most used. You have a `.properties` file that you want to open and access like a simple key/value JSON object. Here is how this can be done with a single API call:
 
 ```ts
-import { propertiesToJson } from 'properties-file';
+import { propertiesToJson } from 'properties-file'
 
-console.log(propertiesToJson('hello-world.properties'));
+console.log(propertiesToJson('hello-world.properties'))
 ```
 
 Output:
@@ -54,11 +54,11 @@ Output:
 If you cannot use `fs` and already have the content of a `.properties` file, your code would look like this instead:
 
 ```ts
-import { propertiesToJson } from 'properties-file/content';
+import { propertiesToJson } from 'properties-file/content'
 
 // ...some code to get the .properties file content into a variable called `propertiesFileContent`
 
-console.log(propertiesToJson(propertiesFileContent));
+console.log(propertiesToJson(propertiesFileContent))
 ```
 
 ### `getProperties` (advanced use case)
@@ -84,13 +84,13 @@ world: world3
 ```
 
 ```ts
-import { getProperties } from 'properties-file';
+import { getProperties } from 'properties-file'
 
-const properties = getProperties('assets/tests/collisions-test.properties');
+const properties = getProperties('assets/tests/collisions-test.properties')
 
 properties.collection.forEach((property) => {
-  console.log(`${property.key} => '${property.value}'`);
-});
+  console.log(`${property.key} => '${property.value}'`)
+})
 
 /**
  * Outputs:
@@ -100,7 +100,7 @@ properties.collection.forEach((property) => {
  *
  */
 
-const keyCollisions = properties.getKeyCollisions();
+const keyCollisions = properties.getKeyCollisions()
 
 keyCollisions.forEach((keyCollision) => {
   console.warn(
@@ -109,8 +109,8 @@ keyCollisions.forEach((keyCollision) => {
     }' on lines ${keyCollision.startingLineNumbers.join(
       ', '
     )} (will use the value at line ${keyCollision.getApplicableLineNumber()}).`
-  );
-});
+  )
+})
 
 /**
  * Outputs:
@@ -140,7 +140,7 @@ module.exports = {
       },
     ],
   },
-};
+}
 ```
 
 As soon as you configure Webpack, the `.properties` type should be available in your IDE when using `import`. If you ever need to add it manually, you can add a `*.properties` type declaration file at the root of your application, like this:
@@ -156,9 +156,9 @@ declare module '*.properties' {
 By adding these configurations you should now be able to import directly `.properties` files just like this:
 
 ```ts
-import helloWorld from './hello-world.properties';
+import helloWorld from './hello-world.properties'
 
-console.dir(helloWorld);
+console.dir(helloWorld)
 ```
 
 Output:
