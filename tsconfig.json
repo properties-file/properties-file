@@ -4,8 +4,7 @@
     "target": "es5",
     "module": "CommonJS",
     "declaration": true,
-    "outDir": "lib/",
-    "newLine": "LF"
+    "outDir": "lib/"
   },
   "include": ["src/**/*.ts"]
 }
