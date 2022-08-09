@@ -4,31 +4,29 @@ import { PropertyLine } from './property-line'
  * Object representing a property (key/value).
  */
 export class Property {
-  /** The line number at which the property starts. */
-  public startingLineNumber: number
-  /** The content of one or multiple lines when applicable. */
-  public linesContent: string
-  /** Positions of the newline characters if any. */
-  public newlinePositions: number[] = []
-  /** Starting line numbers of property objects with the same key. */
-  public keyCollisionLines: number[] = []
-  /** The starting position of the delimiter separating the key from the value. */
-  public delimiterPosition: number | undefined
   /** The length of the delimiter, including its whitespace characters. */
   public delimiterLength: number | undefined
-
+  /** The starting position of the delimiter separating the key from the value. */
+  public delimiterPosition: number | undefined
   /** The property key, including its escaped characters. */
   public escapedKey = ''
   /** The property value, including its escaped characters. */
   public escapedValue = ''
-
+  /** Was the property's key used more than once? */
+  public hasKeyCollisions = false
   /** The property key (unescaped). */
   public key = ''
+  /** Starting line numbers of property objects with the same key. */
+  public keyCollisionLines: number[] = []
+  /** The content of one or multiple lines when applicable. */
+  public linesContent: string
+  /** Positions of the newline characters if any. */
+  public newlinePositions: number[] = []
+  /** The line number at which the property starts. */
+  public startingLineNumber: number
   /** The property value (unescaped). */
   public value = ''
 
-  /** Was the property's key used more than once? */
-  public hasKeyCollisions = false
   /** Does the key definition spread across multiple lines? */
   private hasMultilineKey = false
   /** Is the key empty? */
@@ -53,7 +51,7 @@ export class Property {
    * @param propertyLine - A property line object.
    */
   public addLine(propertyLine: PropertyLine): void {
-    if (this.linesContent.length) {
+    if (this.linesContent.length > 0) {
       this.newlinePositions.push(this.linesContent.length)
     }
     this.linesContent += propertyLine.content
@@ -68,15 +66,13 @@ export class Property {
     if (this.delimiterPosition !== undefined && this.delimiterLength !== undefined) {
       // Set key if present.
       if (!this.hasNoKey) {
-        this.escapedKey = this.linesContent.substring(0, this.delimiterPosition)
+        this.escapedKey = this.linesContent.slice(0, this.delimiterPosition)
         this.key = this.unescape(this.escapedKey, this.startingLineNumber)
       }
 
       // Set value if present.
       if (!this.hasNoValue) {
-        this.escapedValue = this.linesContent.substring(
-          this.delimiterPosition + this.delimiterLength
-        )
+        this.escapedValue = this.linesContent.slice(this.delimiterPosition + this.delimiterLength)
         this.value = this.unescape(this.escapedValue, this.startingLineNumber)
       }
     } else if (this.hasNoValue) {
@@ -97,44 +93,56 @@ export class Property {
   public unescape(escapedContent: string, startingLineNumber: number): string {
     let unescapedContent = ''
     for (
-      let position = 0, character = escapedContent[0];
+      let character = escapedContent[0], position = 0;
       position < escapedContent.length;
       position++, character = escapedContent[position]
     ) {
       if (character === '\\') {
         const nextCharacter = escapedContent[position + 1]
 
-        if (nextCharacter === 'f') {
-          // Formfeed/
-          unescapedContent += '\f'
-          position++
-        } else if (nextCharacter === 'n') {
-          // Newline.
-          unescapedContent += '\n'
-          position++
-        } else if (nextCharacter === 'r') {
-          // Carriage return.
-          unescapedContent += '\r'
-          position++
-        } else if (nextCharacter === 't') {
-          // Tab.
-          unescapedContent += '\t'
-          position++
-        } else if (nextCharacter === 'u') {
-          // Unicode character.
-          const codePoint = escapedContent.substring(position + 2, position + 6)
-          if (!/[0-9a-f]{4}/i.test(codePoint)) {
-            // Code point can only be within Unicode's Multilingual Plane (BMP).
-            throw new Error(
-              `malformed escaped unicode characters '\\u${codePoint}' in property starting at line ${startingLineNumber}`
-            )
+        switch (nextCharacter) {
+          case 'f': {
+            // Formfeed/
+            unescapedContent += '\f'
+            position++
+            break
           }
-          unescapedContent += String.fromCharCode(parseInt(codePoint, 16))
-          position += 5
-        } else {
-          // Otherwise the escape character is not required.
-          unescapedContent += nextCharacter
-          position++
+          case 'n': {
+            // Newline.
+            unescapedContent += '\n'
+            position++
+            break
+          }
+          case 'r': {
+            // Carriage return.
+            unescapedContent += '\r'
+            position++
+            break
+          }
+          case 't': {
+            // Tab.
+            unescapedContent += '\t'
+            position++
+            break
+          }
+          case 'u': {
+            // Unicode character.
+            const codePoint = escapedContent.slice(position + 2, position + 6)
+            if (!/[\da-f]{4}/i.test(codePoint)) {
+              // Code point can only be within Unicode's Multilingual Plane (BMP).
+              throw new Error(
+                `malformed escaped unicode characters '\\u${codePoint}' in property starting at line ${startingLineNumber}`
+              )
+            }
+            unescapedContent += String.fromCodePoint(Number.parseInt(codePoint, 16))
+            position += 5
+            break
+          }
+          default: {
+            // Otherwise the escape character is not required.
+            unescapedContent += nextCharacter
+            position++
+          }
         }
       } else {
         // When there is \, simply add the character.
@@ -155,19 +163,19 @@ export class Property {
     }
 
     for (
-      let position = 0, character = this.linesContent[0];
+      let character = this.linesContent[0], position = 0;
       position < this.linesContent.length;
       position++, character = this.linesContent[position]
     ) {
       // If the character is not a delimiter, check the next one.
-      if (!/[ \t\f=:]/.test(character)) {
+      if (!/[\t\f :=]/.test(character)) {
         continue
       }
 
       // Check if the delimiter might be escaped.
-      const prefix = !position ? '' : this.linesContent.substring(0, position)
+      const prefix = !position ? '' : this.linesContent.slice(0, position)
 
-      if (prefix.length) {
+      if (prefix.length > 0) {
         const backslashMatch = prefix.match(/(?<backslashes>\\+)$/)
         if (backslashMatch?.groups) {
           const delimiterIsEscaped = !!(backslashMatch.groups.backslashes.length % 2)
@@ -180,23 +188,25 @@ export class Property {
 
       let delimiter = ''
       this.delimiterPosition = position
-      this.hasMultilineKey = !!(this.newlinePositions.length && this.newlinePositions[0] > position)
+      this.hasMultilineKey = !!(
+        this.newlinePositions.length > 0 && this.newlinePositions[0] > position
+      )
 
       // Check if the delimiter starts with a whitespace.
-      let nextContent = this.linesContent.substring(position)
+      let nextContent = this.linesContent.slice(position)
       const leadingWhitespaceMatch = nextContent.match(/^(?<whitespace>\s+)/)
       const leadingWhitespace = leadingWhitespaceMatch?.groups?.whitespace || ''
 
       // If there is a whitespace, move to the next character.
-      if (leadingWhitespace.length) {
+      if (leadingWhitespace.length > 0) {
         delimiter += leadingWhitespace
-        nextContent = nextContent.substring(leadingWhitespace.length)
+        nextContent = nextContent.slice(leadingWhitespace.length)
       }
 
       // Check if there is an equal or colon character.
-      if (/[=:]/.test(nextContent[0])) {
+      if (/[:=]/.test(nextContent[0])) {
         delimiter += nextContent[0]
-        nextContent = nextContent.substring(1)
+        nextContent = nextContent.slice(1)
         // If an equal or colon character was found, try to get trailing whitespace.
         const trailingWhitespaceMatch = nextContent.match(/^(?<whitespace>\s+)/)
         const trailingWhitespace = trailingWhitespaceMatch?.groups?.whitespace || ''
@@ -218,7 +228,7 @@ export class Property {
       this.hasNoValue = true
     } else {
       // If the delimiter is after the first newline, mark the key as multiline.
-      if (this.newlinePositions.length) {
+      if (this.newlinePositions.length > 0) {
         const firstLinePosition = this.newlinePositions[0]
         if (firstLinePosition > this.delimiterPosition) {
           this.hasMultilineKey = true

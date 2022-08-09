@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs'
+import { readFileSync } from 'node:fs'
 
 import { getProperties, Properties, propertiesToJson, Property, PropertyLine } from '../src'
 import {
@@ -16,7 +16,7 @@ describe('The test properties file', () => {
 
     let output = ''
     for (const property of properties.collection) {
-      output += `${output.length ? '\r\n' : ''}${property.key} => '${property.value}'`
+      output += `${output.length > 0 ? '\r\n' : ''}${property.key} => '${property.value}'`
     }
 
     const javaOutput = readFileSync('assets/tests/test-all-java-console-output', 'utf8')

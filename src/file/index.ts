@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 import { KeyValueObject, Properties } from '../'
 import { getProperties as getPropertiesFromContent } from '../content/'
@@ -15,10 +15,10 @@ export { KeyValueObject } from '../'
  */
 export function getProperties(filePath: string, encoding?: BufferEncoding): Properties {
   if (!existsSync(filePath)) {
-    throw Error(`file not found at ${filePath}`)
+    throw new Error(`file not found at ${filePath}`)
   }
 
-  return getPropertiesFromContent(readFileSync(filePath, encoding ? encoding : 'utf-8'))
+  return getPropertiesFromContent(readFileSync(filePath, encoding ?? 'utf8'))
 }
 
 /**

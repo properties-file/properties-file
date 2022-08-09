@@ -5,10 +5,10 @@ import { Property } from './property'
  * A class representing the content of a .properties file.
  */
 export class Properties {
-  /** Object associating keys with their starting line numbers. */
-  public keyLineNumbers: KeyLineNumbers = {}
   /** The collection of property object. */
   public collection: Property[] = []
+  /** Object associating keys with their starting line numbers. */
+  public keyLineNumbers: KeyLineNumbers = {}
 
   /**
    * Add a property object into a properties object collection.
@@ -43,19 +43,6 @@ export class Properties {
   }
 
   /**
-   * Get the JSON (key/value) representation of the properties.
-   *
-   * @returns A key/value representing the properties of the object.
-   */
-  public toJson(): KeyValueObject {
-    const keyValueObject: KeyValueObject = {}
-    this.collection.forEach((property) => {
-      keyValueObject[property.key] = property.value
-    })
-    return keyValueObject
-  }
-
-  /**
    * Get keys that have collisions (more than one occurrence).
    */
   public getKeyCollisions(): KeyCollisions[] {
@@ -66,6 +53,19 @@ export class Properties {
       }
     }
     return keyCollisions
+  }
+
+  /**
+   * Get the JSON (key/value) representation of the properties.
+   *
+   * @returns A key/value representing the properties of the object.
+   */
+  public toJson(): KeyValueObject {
+    const keyValueObject: KeyValueObject = {}
+    this.collection.forEach((property) => {
+      keyValueObject[property.key] = property.value
+    })
+    return keyValueObject
   }
 }
 

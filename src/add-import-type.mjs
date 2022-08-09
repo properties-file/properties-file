@@ -1,7 +1,7 @@
 /**
  * These extra steps are required after the build to pass the correct type when importing `.properties` file directly.
  */
-const { readFileSync, writeFileSync, readdirSync } = require('fs')
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 
 /**
  * Add a type reference to another type file.

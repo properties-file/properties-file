@@ -12,7 +12,7 @@ import { PropertyLine } from '../property-line'
  */
 export function getProperties(content: string): Properties {
   // Remove BOM character if present and create an array from lines.
-  const lines = (content.charCodeAt(0) === 0xfeff ? content.slice(1) : content).split(/\r?\n/)
+  const lines = (content.codePointAt(0) === 0xfeff ? content.slice(1) : content).split(/\r?\n/)
 
   /** Line number while parsing properties file content. */
   let lineNumber = 0

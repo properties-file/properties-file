@@ -4,14 +4,14 @@
 export class PropertyLine {
   /** The line content, minus the trailing \ that identifies that the line continues. */
   public content: string
-  /** Is the line object a continuation from a previous line? */
-  public isMultiline: boolean
   /** True if the line continues, otherwise false. */
   public continues = false
-  /** True if the line is a comment, otherwise false. */
-  public isComment = false
   /** True if the line is blank, otherwise false. */
   public isBlank = false
+  /** True if the line is a comment, otherwise false. */
+  public isComment = false
+  /** Is the line object a continuation from a previous line? */
+  public isMultiline: boolean
 
   /**
    * Create a new line object.
@@ -23,13 +23,13 @@ export class PropertyLine {
     this.content = line.trimStart()
     this.isMultiline = isMultiline
 
-    if (!this.content.length) {
+    if (this.content.length === 0) {
       // Line is blank.
       this.isBlank = true
     } else {
       if (!this.isMultiline) {
         // Line is a comment.
-        this.isComment = !!this.content.match(/^[!#]/)
+        this.isComment = !!/^[!#]/.test(this.content)
       }
       if (!this.isComment) {
         // Otherwise, check if the line continues on the next line.
