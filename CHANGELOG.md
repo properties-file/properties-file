@@ -1,12 +1,9 @@
-
-
 ## [2.1.1](https://github.com/Avansai/properties-file/compare/2.1.0...2.1.1) (2022-08-14)
-
 
 ### Bug Fixes
 
-* add missing ESLint `plugin:import/typescript` ([603c0f3](https://github.com/Avansai/properties-file/commit/603c0f3b65bba08ce53159f65dff95d936dcb58b))
-* remove overly intrusive ESLint rules ([425e05d](https://github.com/Avansai/properties-file/commit/425e05d66575b7cee60be7aa7543766c9f47f224))
+- add missing ESLint `plugin:import/typescript` ([603c0f3](https://github.com/Avansai/properties-file/commit/603c0f3b65bba08ce53159f65dff95d936dcb58b))
+- remove overly intrusive ESLint rules ([425e05d](https://github.com/Avansai/properties-file/commit/425e05d66575b7cee60be7aa7543766c9f47f224))
 
 # [2.1.0](https://github.com/Avansai/properties-file/compare/2.0.9...2.1.0) (2022-08-09)
 
