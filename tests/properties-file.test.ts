@@ -28,7 +28,7 @@ describe('The malformed unicode properties file', () => {
   it('throws an error', () => {
     expect(() => {
       getProperties('assets/tests/malformed-unicode-test.properties')
-    }).toThrowError('malformed escaped unicode characters')
+    }).toThrow('malformed escaped unicode characters')
   })
 })
 
@@ -73,7 +73,7 @@ describe('The file `getProperties()` method', () => {
   it('throws an error when a file does not exist', () => {
     expect(() => {
       getProperties('this-file-does-not-exist')
-    }).toThrowError('file not found')
+    }).toThrow('file not found')
   })
 })
 
