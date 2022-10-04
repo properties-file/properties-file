@@ -7,7 +7,7 @@
   },
   "hooks": {
     "before:init": ["npm run build"],
-    "before:git": ["npx prettier --write ./CHANGELOG.md"]
+    "before:git:init": ["npx prettier --write ./CHANGELOG.md"]
   },
   "plugins": {
     "@release-it/conventional-changelog": {
