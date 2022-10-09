@@ -23,7 +23,7 @@ npm install properties-file
 - A modern TypeScript library that reproduces exactly the [Properties Java implementation](/assets/java-implementation.md).
 - Flexible APIs:
   - `propertiesToJson` allows quick conversion from `.properties` files to JSON.
-  - `getProperties` returns a `Properties` object that allows insights into parsing issues such as key collisions.
+  - `getProperties` returns a `Properties` object that provides insights into parsing issues such as key collisions.
   - `propertiesToJson` & `getProperties` also have a browser-compatible version when passing directly the content of a file using the APIs under `properties-file/content`.
   - Out of the box Webpack loader to `import` `.properties` files directly in your application.
 - 100% test coverage based on the output from a Java implementation.
