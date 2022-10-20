@@ -10,7 +10,7 @@ import { PropertyLine } from '../property-line'
  *
  * @returns A `Properties` object representing the content of a `.properties` file.
  */
-export function getProperties(content: string): Properties {
+export const getProperties = (content: string): Properties => {
   // Remove BOM character if present and create an array from lines.
   const lines = (content.codePointAt(0) === 0xfeff ? content.slice(1) : content).split(/\r?\n/)
 
@@ -59,6 +59,4 @@ export function getProperties(content: string): Properties {
  *
  * @returns A (JSON) key/value object representing the content of a `.properties` file.
  */
-export function propertiesToJson(content: string): KeyValueObject {
-  return getProperties(content).toJson()
-}
+export const propertiesToJson = (content: string): KeyValueObject => getProperties(content).toJson()

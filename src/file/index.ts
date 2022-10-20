@@ -13,7 +13,7 @@ export { KeyValueObject } from '../'
  *
  * @returns A `Properties` object representing the content of a `.properties` file.
  */
-export function getProperties(filePath: string, encoding?: BufferEncoding): Properties {
+export const getProperties = (filePath: string, encoding?: BufferEncoding): Properties => {
   if (!existsSync(filePath)) {
     throw new Error(`file not found at ${filePath}`)
   }
@@ -29,6 +29,5 @@ export function getProperties(filePath: string, encoding?: BufferEncoding): Prop
  *
  * @returns A (JSON) key/value object representing the content of a `.properties` file.
  */
-export function propertiesToJson(filePath: string, encoding?: BufferEncoding): KeyValueObject {
-  return getProperties(filePath, encoding).toJson()
-}
+export const propertiesToJson = (filePath: string, encoding?: BufferEncoding): KeyValueObject =>
+  getProperties(filePath, encoding).toJson()
