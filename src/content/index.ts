@@ -25,7 +25,13 @@ export const getProperties = (content: string): Properties => {
     lineNumber++
     const propertyLine = new PropertyLine(line, !!property)
 
-    if (!property) {
+    if (property) {
+      // Continue parsing an existing property.
+      property.addLine(propertyLine)
+      if (propertyLine.continues) {
+        continue
+      }
+    } else {
       // Check if the line is a new property.
       if (propertyLine.isComment || propertyLine.isBlank) {
         continue // Skip line if its a comment or blank.
@@ -36,12 +42,6 @@ export const getProperties = (content: string): Properties => {
 
       if (propertyLine.continues) {
         continue // Continue parsing the next line.
-      }
-    } else {
-      // Continue parsing an existing property.
-      property.addLine(propertyLine)
-      if (propertyLine.continues) {
-        continue
       }
     }
 

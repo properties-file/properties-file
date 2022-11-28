@@ -173,7 +173,7 @@ export class Property {
       }
 
       // Check if the delimiter might be escaped.
-      const prefix = !position ? '' : this.linesContent.slice(0, position)
+      const prefix = position ? this.linesContent.slice(0, position) : ''
 
       if (prefix.length > 0) {
         const backslashMatch = prefix.match(/(?<backslashes>\\+)$/)
