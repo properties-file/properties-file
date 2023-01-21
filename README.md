@@ -51,7 +51,7 @@ Output:
 { hello: 'hello', world: 'world' }
 ```
 
-If you cannot use `fs` and already have the content of a `.properties` file, your code would look like this instead:
+If you cannot use [fs](https://nodejs.org/api/fs.html) (e.g., from a browser) and already have the content of a `.properties` file, your code would look like this instead:
 
 ```ts
 import { propertiesToJson } from 'properties-file/content'
