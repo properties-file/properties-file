@@ -2,10 +2,10 @@
  * Object representing a line from the content of .properties file.
  */
 export class PropertyLine {
-  /** The line content, minus the trailing \ that identifies that the line continues. */
+  /** The line content, minus the trailing \ that identifies that the line is continuing. */
   public content: string
-  /** True if the line continues, otherwise false. */
-  public continues = false
+  /** True if the line is continuing to the next line, otherwise false. */
+  public isContinuing = false
   /** True if the line is blank, otherwise false. */
   public isBlank = false
   /** True if the line is a comment, otherwise false. */
@@ -32,13 +32,13 @@ export class PropertyLine {
         this.isComment = !!/^[!#]/.test(this.content)
       }
       if (!this.isComment) {
-        // Otherwise, check if the line continues on the next line.
+        // Otherwise, check if the line is continuing on the next line.
         const backslashMatch = this.content.match(/(?<backslashes>\\+)$/)
 
         if (backslashMatch?.groups) {
-          // If the number of backslashes is odd, the line continues, otherwise it doesn't.
-          this.continues = !!(backslashMatch.groups.backslashes.length % 2)
-          if (this.continues) {
+          // If the number of backslashes is odd, the line is continuing, otherwise it doesn't.
+          this.isContinuing = !!(backslashMatch.groups.backslashes.length % 2)
+          if (this.isContinuing) {
             // Remove the trailing slash so that we can concatenate the line with the next one.
             this.content = this.content.slice(0, -1)
           }

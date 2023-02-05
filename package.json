@@ -2,32 +2,6 @@
   "name": "properties-file",
   "version": "2.1.26",
   "description": ".properties file parser, JSON converter and Webpack loader.",
-  "author": "Avansai (https://avansai.com)",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Avansai/properties-file.git"
-  },
-  "main": "lib/index.js",
-  "types": "lib/index.d.ts",
-  "exports": {
-    ".": "./lib/index.js",
-    "./content": "./lib/content/index.js",
-    "./webpack-loader": "./lib/loader/webpack.js"
-  },
-  "typesVersions": {
-    "*": {
-      "content": [
-        "lib/content/index.d.ts"
-      ],
-      "webpack-loader": [
-        "lib/loader/webpack.d.ts"
-      ]
-    }
-  },
-  "license": "MIT",
-  "files": [
-    "lib"
-  ],
   "keywords": [
     ".properties",
     "properties",
@@ -41,15 +15,41 @@
     "Webpack loader",
     "internationalization"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Avansai/properties-file.git"
+  },
+  "license": "MIT",
+  "author": "Avansai (https://avansai.com)",
+  "exports": {
+    ".": "./lib/index.js",
+    "./content": "./lib/content/index.js",
+    "./webpack-loader": "./lib/loader/webpack.js"
+  },
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "content": [
+        "lib/content/index.d.ts"
+      ],
+      "webpack-loader": [
+        "lib/loader/webpack.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "lib"
+  ],
   "scripts": {
+    "add-import-type": "node ./src/add-import-type.mjs",
     "build": "npm run prettier && npm run lint-fix && rm -Rf ./lib && tsc && npm run add-import-type && npm run test",
-    "lint-fix": "eslint --ext .js --ext .jsx --ext .ts --ext .tsx --fix .",
-    "lint-check": "eslint --ext .js --ext .jsx --ext .ts --ext .tsx .",
+    "lint-check": "eslint --ext .js --ext .jsx --ext .ts --ext .tsx --ext .json .",
+    "lint-fix": "eslint --ext .js --ext .jsx --ext .ts --ext .tsx --ext .json --fix .",
     "lint-print-config": "eslint --print-config ./eslintrc.yaml",
     "prettier": "prettier --write .",
-    "add-import-type": "node ./src/add-import-type.mjs",
-    "test": "jest --coverage",
-    "release": "dotenv -- release-it --only-version"
+    "release": "dotenv -- release-it --only-version",
+    "test": "jest --coverage"
   },
   "devDependencies": {
     "@release-it/conventional-changelog": "^5.1.1",
@@ -63,6 +63,7 @@
     "eslint-import-resolver-typescript": "^3.5.3",
     "eslint-plugin-import": "^2.27.5",
     "eslint-plugin-jest": "^27.2.1",
+    "eslint-plugin-json-files": "^2.1.0",
     "eslint-plugin-prefer-arrow-functions": "^3.1.4",
     "eslint-plugin-prettier": "^4.2.1",
     "eslint-plugin-tsdoc": "^0.2.17",

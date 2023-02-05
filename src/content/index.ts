@@ -28,7 +28,7 @@ export const getProperties = (content: string): Properties => {
     if (property) {
       // Continue parsing an existing property.
       property.addLine(propertyLine)
-      if (propertyLine.continues) {
+      if (propertyLine.isContinuing) {
         continue
       }
     } else {
@@ -40,7 +40,7 @@ export const getProperties = (content: string): Properties => {
       // The line is a new property.
       property = new Property(propertyLine, lineNumber)
 
-      if (propertyLine.continues) {
+      if (propertyLine.isContinuing) {
         continue // Continue parsing the next line.
       }
     }
