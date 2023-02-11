@@ -18,7 +18,9 @@ export class Properties {
    * @returns Undefined so that we conveniently overwrite the property object.
    */
   public add(property: Property | undefined): undefined {
-    if (property === undefined) return undefined
+    if (property === undefined) {
+      return undefined
+    }
 
     property.setKeyAndValue()
 
