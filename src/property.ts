@@ -67,18 +67,18 @@ export class Property {
       // Set key if present.
       if (!this.hasNoKey) {
         this.escapedKey = this.linesContent.slice(0, this.delimiterPosition)
-        this.key = this.unescape(this.escapedKey, this.startingLineNumber)
+        this.key = Property.unescape(this.escapedKey, this.startingLineNumber)
       }
 
       // Set value if present.
       if (!this.hasNoValue) {
         this.escapedValue = this.linesContent.slice(this.delimiterPosition + this.delimiterLength)
-        this.value = this.unescape(this.escapedValue, this.startingLineNumber)
+        this.value = Property.unescape(this.escapedValue, this.startingLineNumber)
       }
     } else if (this.hasNoValue) {
       // Set key if present (no delimiter).
       this.escapedKey = this.linesContent
-      this.key = this.unescape(this.escapedKey, this.startingLineNumber)
+      this.key = Property.unescape(this.escapedKey, this.startingLineNumber)
     }
   }
 
@@ -90,7 +90,7 @@ export class Property {
    *
    * @returns The unescaped content.
    */
-  public unescape(escapedContent: string, startingLineNumber: number): string {
+  public static unescape(escapedContent: string, startingLineNumber: number): string {
     let unescapedContent = ''
     for (
       let character = escapedContent[0], position = 0;
@@ -151,6 +151,103 @@ export class Property {
     }
 
     return unescapedContent
+  }
+
+  /**
+   * Escape property key.
+   *
+   * @param unescapedKey Property key to be escaped.
+   * @return Escaped string.
+   */
+  public static escapeKey(unescapedKey: string, escapeUnicode = true): string {
+    return Property.escape(unescapedKey, true, escapeUnicode)
+  }
+
+  /**
+   * Escape property value.
+   *
+   * @param unescapedValue Property value to be escaped.
+   * @return Escaped string.
+   */
+  public static escapeValue(unescapedValue: string, escapeUnicode = true): string {
+    return Property.escape(unescapedValue, false, escapeUnicode)
+  }
+
+  /**
+   * Internal escape method.
+   *
+   * @param unescapedContent Text to be escaped.
+   * @param escapeSpace Whether all spaces should be escaped
+   * @param escapeUnicode Whether unicode chars should be escaped
+   * @return Escaped string.
+   */
+  private static escape(
+    unescapedContent: string,
+    escapeSpace: boolean,
+    escapeUnicode: boolean
+  ): string {
+    const result: string[] = []
+
+    // eslint-disable-next-line unicorn/no-for-loop
+    for (let index = 0; index < unescapedContent.length; index++) {
+      const char = unescapedContent[index]
+      switch (char) {
+        case ' ': {
+          // Escape space if required, or if it is first character
+          if (escapeSpace || index === 0) {
+            result.push('\\ ')
+          } else {
+            result.push(' ')
+          }
+          break
+        }
+        case '\\': {
+          result.push('\\\\')
+          break
+        }
+        case '\f': {
+          // Form-feed
+          result.push('\\f')
+          break
+        }
+        case '\n': {
+          // Newline
+          result.push('\\n')
+          break
+        }
+        case '\r': {
+          // Carriage return
+          result.push('\\r')
+          break
+        }
+        case '\t': {
+          // Tab
+          result.push('\\t')
+          break
+        }
+        case '=': // Fall through
+        case ':': // Fall through
+        case '#': // Fall through
+        case '!': {
+          result.push('\\', char)
+          break
+        }
+        default: {
+          if (escapeUnicode) {
+            const codePoint: number = char.codePointAt(0) as number // can never be undefined
+            if (codePoint < 0x0020 || codePoint > 0x007e) {
+              result.push('\\u', codePoint.toString(16).padStart(4, '0'))
+              break
+            }
+          }
+          // Normal char
+          result.push(char)
+          break
+        }
+      }
+    }
+
+    return result.join('')
   }
 
   /**
