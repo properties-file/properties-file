@@ -1,12 +1,8 @@
 # [2.2.0](https://github.com/Avansai/properties-file/compare/2.1.32...2.2.0) (2023-03-18)
 
-### Bug Fixes
-
-- fix dependabot error ([75b5d92](https://github.com/Avansai/properties-file/commit/75b5d9230e3623c0c88e73528fdaa6b029303578))
-
 ### Features
 
-- added functions for property escaping ([1fd2752](https://github.com/Avansai/properties-file/commit/1fd275243be2617301bd79e3924bd7b453df73f4))
+- added functions for property escaping ([95379d8](https://github.com/Avansai/properties-file/commit/95379d81cf0db14f49ff1fc869378ca8b64619b1))
 
 ## [2.1.32](https://github.com/Avansai/properties-file/compare/2.1.31...2.1.32) (2023-03-18)
 
