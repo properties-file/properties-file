@@ -6,7 +6,7 @@
 ![Dependencies](https://img.shields.io/badge/dependencies-0-green)
 [![Known Vulnerabilities](https://snyk.io/test/github/Avansai/properties-file/badge.svg?targetFile=package.json)](https://snyk.io/test/github/Avansai/properties-file?targetFile=package.json)
 
-.properties file parser, JSON converter and Webpack loader.
+`.properties` JSON converter, file parser and Webpack loader.
 
 ## Installation 💻
 
@@ -25,6 +25,7 @@ npm install properties-file
   - `propertiesToJson` allows quick conversion from `.properties` files to JSON.
   - `getProperties` returns a `Properties` object that provides insights into parsing issues such as key collisions.
   - `propertiesToJson` & `getProperties` also have a browser-compatible version when passing directly the content of a file using the APIs under `properties-file/content`.
+  - `escapeKey`, `escapeValue` that can allow you to convert any content to `.properties` compatible format.
   - Out of the box Webpack loader to `import` `.properties` files directly in your application.
 - 100% test coverage based on the output from a Java implementation.
 - Active maintenance (many popular .properties packages have been inactive years).
@@ -35,7 +36,7 @@ We put a lot of effort into adding [TSDoc](https://tsdoc.org/) to all our APIs. 
 
 Both APIs (`getProperties` and `propertiesToJson`) directly under `properties-file` depend on [`fs`](https://nodejs.org/api/fs.html) which means they cannot be used by browsers. If you cannot use `fs` and already have a `.properties` file content, the same APIs are available under `properties-file/content`. Instead of taking the `filePath` as the first argument, they take `content`. The example below will use "`fs`" APIs since they are the most common use cases.
 
-### `propertiesToJson`
+### `propertiesToJson` (common use case)
 
 This API is probably the most used. You have a `.properties` file that you want to open and access like a simple key/value JSON object. Here is how this can be done with a single API call:
 
@@ -59,6 +60,38 @@ import { propertiesToJson } from 'properties-file/content'
 // ...some code to get the .properties file content into a variable called `propertiesFileContent`
 
 console.log(propertiesToJson(propertiesFileContent))
+```
+
+### `escapeKey` and `escapeValue` (converting content to `.properties` format)
+
+> ⚠ This package does not offer full-fledged `.properties` file writer that would include a variety of options like modifying an existing file while keeping comments and line breaks intact. If you have any interest into adding this in, pull requests are welcomed!
+
+It is possible to use this package to do basic conversion between key/value content into `.properties.` compatible format by using `escapeKey` and `escapeValue`. Here is an example of how it can be done:
+
+```ts
+import * as fs from 'node:fs'
+import { EOL } from 'node:os'
+import { getProperties } from 'properties-file'
+import { escapeKey, escapeValue } from 'properties-file/escape'
+
+const properties = getProperties('assets/tests/collisions-test.properties')
+const newProperties: string[] = []
+console.dir(properties)
+
+properties.collection.forEach((property) => {
+  const value = property.value === 'world3' ? 'new world3' : property.value
+  newProperties.push(`${escapeKey(property.key)}: ${escapeValue(value)}`)
+})
+
+fs.writeFileSync('myNewFile.properties', newProperties.join(EOL))
+
+/**
+ * Outputs:
+ *
+ * hello: hello2
+ * world: new world3
+ *
+ */
 ```
 
 ### `getProperties` (advanced use case)

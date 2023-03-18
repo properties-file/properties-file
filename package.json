@@ -24,6 +24,8 @@
   "exports": {
     ".": "./lib/index.js",
     "./content": "./lib/content/index.js",
+    "./escape": "./lib/escape/index.js",
+    "./unescape": "./lib/unescape/index.js",
     "./webpack-loader": "./lib/loader/webpack.js"
   },
   "main": "lib/index.js",
@@ -32,6 +34,12 @@
     "*": {
       "content": [
         "lib/content/index.d.ts"
+      ],
+      "escape": [
+        "lib/escape/index.d.ts"
+      ],
+      "unescape": [
+        "lib/unescape/index.d.ts"
       ],
       "webpack-loader": [
         "lib/loader/webpack.d.ts"

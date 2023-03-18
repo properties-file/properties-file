@@ -1,6 +1,26 @@
-import { Property } from '../src'
+import { escapeKey, escapeValue } from '../src/escape/index'
 
-describe('The property key escaping', () => {
+describe('The property unicode key escaping', () => {
+  it.each([
+    ['こんにちは1', 'こんにちは1'],
+    ['こんにちは2:', 'こんにちは2\\:'],
+    ['こんにちは3=', 'こんにちは3\\='],
+    ['こんにちは4\t', 'こんにちは4\\t'],
+    ['こんにちは5 ', 'こんにちは5\\ '],
+    [' こんにちは6', '\\ こんにちは6'],
+    ['#こんにちは7', '\\#こんにちは7'],
+    ['!こんにちは8#', '\\!こんにちは8\\#'],
+    ['こん  にちは9', 'こん\\ \\ にちは9'],
+    ['こんにちは10\n', 'こんにちは10\\n'],
+    ['こ\r\f\n\tんにちは11', 'こ\\r\\f\\n\\tんにちは11'],
+    ['\\こんにちは12\\', '\\\\こんにちは12\\\\'],
+  ])('should escape key "%s" as "%s"', (key: string, expected: string) => {
+    const result = escapeKey(key)
+    expect(result).toEqual(expected)
+  })
+})
+
+describe('The property ISO-8859-1 compatible encoding key escaping', () => {
   it.each([
     ['foo1', 'foo1'],
     ['foo2:', 'foo2\\:'],
@@ -18,12 +38,32 @@ describe('The property key escaping', () => {
     ['\u3053\u3093\u306B\u3061\u306F', '\\u3053\\u3093\\u306b\\u3061\\u306f'],
     ['こんにちは', '\\u3053\\u3093\\u306b\\u3061\\u306f'],
   ])('should escape key "%s" as "%s"', (key: string, expected: string) => {
-    const result = Property.escapeKey(key)
+    const result = escapeKey(key, true)
     expect(result).toEqual(expected)
   })
 })
 
-describe('The property value escaping', () => {
+describe('The property unicode value escaping', () => {
+  it.each([
+    ['こんにちは1', 'こんにちは1'],
+    ['こんにちは2:', 'こんにちは2\\:'],
+    ['こんにちは3=', 'こんにちは3\\='],
+    ['こんにちは4\t', 'こんにちは4\\t'],
+    ['こんにちは5 ', 'こんにちは5 '],
+    [' こんにちは6', '\\ こんにちは6'],
+    ['#こんにちは7', '\\#こんにちは7'],
+    ['!こんにちは8#', '\\!こんにちは8\\#'],
+    ['こん  にちは9', 'こん  にちは9'],
+    ['こんにちは10\n', 'こんにちは10\\n'],
+    ['こ\r\f\n\tんにちは11', 'こ\\r\\f\\n\\tんにちは11'],
+    ['\\こんにちは12\\', '\\\\こんにちは12\\\\'],
+  ])('should escape key "%s" as "%s"', (key: string, expected: string) => {
+    const result = escapeValue(key)
+    expect(result).toEqual(expected)
+  })
+})
+
+describe('The property ISO-8859-1 compatible encoding value escaping', () => {
   it.each([
     ['foo1', 'foo1'],
     ['foo2:', 'foo2\\:'],
@@ -41,7 +81,7 @@ describe('The property value escaping', () => {
     ['\u3053\u3093\u306B\u3061\u306F', '\\u3053\\u3093\\u306b\\u3061\\u306f'],
     ['こんにちは', '\\u3053\\u3093\\u306b\\u3061\\u306f'],
   ])('should escape value "%s" as "%s"', (key: string, expected: string) => {
-    const result = Property.escapeValue(key)
+    const result = escapeValue(key, true)
     expect(result).toEqual(expected)
   })
 })
