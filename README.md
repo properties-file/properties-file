@@ -64,7 +64,7 @@ console.log(propertiesToJson(propertiesFileContent))
 
 ### `escapeKey` and `escapeValue` (converting content to `.properties` format)
 
-> ⚠ This package does not offer full-fledged `.properties` file writer that would include a variety of options like modifying an existing file while keeping comments and line breaks intact. If you have any interest into adding this in, pull requests are welcomed!
+> ⚠ This package does not offer a full-fledged `.properties` file writer that would include a variety of options like modifying an existing file while keeping comments and line breaks intact. If you have any interest into adding this in, pull requests are welcomed!
 
 It is possible to use this package to do basic conversion between key/value content into `.properties.` compatible format by using `escapeKey` and `escapeValue`. Here is an example of how it can be done:
 
