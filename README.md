@@ -6,7 +6,7 @@
 ![Dependencies](https://img.shields.io/badge/dependencies-0-green)
 [![Known Vulnerabilities](https://snyk.io/test/github/Avansai/properties-file/badge.svg?targetFile=package.json)](https://snyk.io/test/github/Avansai/properties-file?targetFile=package.json)
 
-`.properties` JSON converter, file parser and Webpack loader.
+`.properties` JSON converter, serializer, file parser and Webpack loader.
 
 ## Installation 💻
 
@@ -62,11 +62,11 @@ import { propertiesToJson } from 'properties-file/content'
 console.log(propertiesToJson(propertiesFileContent))
 ```
 
-### `escapeKey` and `escapeValue` (converting content to `.properties` format)
+### `escapeKey` and `escapeValue` (serializing content to `.properties` format)
 
 > ⚠ This package does not offer a full-fledged `.properties` file writer that would include a variety of options like modifying an existing file while keeping comments and line breaks intact. If you have any interest into adding this in, pull requests are welcomed!
 
-It is possible to use this package to do basic conversion between key/value content into `.properties.` compatible format by using `escapeKey` and `escapeValue`. Here is an example of how it can be done:
+It is possible to use this package serialize content to `.properties.` format by using `escapeKey` and `escapeValue`. Here is an example of how it can be done:
 
 ```ts
 import * as fs from 'node:fs'
