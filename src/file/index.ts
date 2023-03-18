@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 
 import { KeyValueObject, Properties } from '../'
 import { getProperties as getPropertiesFromContent } from '../content/'
@@ -14,10 +14,7 @@ export { KeyValueObject } from '../'
  * @returns A `Properties` object representing the content of a `.properties` file.
  */
 export const getProperties = (filePath: string, encoding?: BufferEncoding): Properties => {
-  if (!existsSync(filePath)) {
-    throw new Error(`file not found at ${filePath}`)
-  }
-
+  // No need to check if the file exists first since this will already throw an error.
   return getPropertiesFromContent(readFileSync(filePath, encoding ?? 'utf8'))
 }
 

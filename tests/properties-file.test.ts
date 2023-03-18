@@ -73,7 +73,7 @@ describe('The file `getProperties()` method', () => {
   it('throws an error when a file does not exist', () => {
     expect(() => {
       getProperties('this-file-does-not-exist')
-    }).toThrow('file not found')
+    }).toThrow(`ENOENT: no such file or directory, open 'this-file-does-not-exist'`)
   })
 })
 
