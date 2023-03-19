@@ -6,7 +6,7 @@
 ![Dependencies](https://img.shields.io/badge/dependencies-0-green)
 [![Known Vulnerabilities](https://snyk.io/test/github/Avansai/properties-file/badge.svg?targetFile=package.json)](https://snyk.io/test/github/Avansai/properties-file?targetFile=package.json)
 
-`.properties` JSON converter, serializer, file parser and Webpack loader.
+`.properties` file JSON converter, serializer, parser and Webpack loader.
 
 ## Installation 💻
 
