@@ -1,6 +1,6 @@
 {
   "name": "properties-file",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": ".properties file parser, JSON converter and Webpack loader.",
   "keywords": [
     ".properties",
