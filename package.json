@@ -50,7 +50,7 @@
     "lib"
   ],
   "scripts": {
-    "add-import-type": "node ./src/add-import-type.mjs",
+    "add-import-type": "ts-node ./src/add-import-type.ts && rm -f ./lib/add-import-type.*",
     "build": "npm run prettier && npm run lint-fix && rm -Rf ./lib && tsc && npm run add-import-type && npm run test",
     "ci": "npm run lint-check && rm -Rf ./lib && tsc && npm run add-import-type && npm run test",
     "lint-check": "eslint --ext .js --ext .jsx --ext .ts --ext .tsx --ext .json .",

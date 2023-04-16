@@ -6,10 +6,10 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 /**
  * Add a type reference to another type file.
  *
- * @param {string} typeFilePath - The type file path where to add the reference.
- * @param {string} typeReferenceFilePath - The type reference path being added.
+ * @param typeFilePath - The type file path where to add the reference.
+ * @param typeReferenceFilePath - The type reference path being added.
  */
-function addReference(typeFilePath, typeReferenceFilePath) {
+const addReference = (typeFilePath: string, typeReferenceFilePath: string): void => {
   writeFileSync(
     typeFilePath,
     `/// <reference types="${typeReferenceFilePath}" />\r\n\r\n${readFileSync(
