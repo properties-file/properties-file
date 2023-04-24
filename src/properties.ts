@@ -18,7 +18,7 @@ export const DEFAULT_END_OF_LINE_CHARACTER = '\n'
  *
  * @returns The multiline content's first end of line (EOL) character.
  */
-const getFirstEolCharacter = (content: string): string | undefined => {
+export const getFirstEolCharacter = (content: string): string | undefined => {
   const newlineIndex = content.indexOf('\n')
   return newlineIndex < 0 ? undefined : `${content[newlineIndex - 1] === '\r' ? '\r' : ''}\n`
 }

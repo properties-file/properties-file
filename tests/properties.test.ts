@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { Properties, getProperties } from '../src'
-import { BOM } from '../src/properties'
+import { BOM, getFirstEolCharacter } from '../src/properties'
 import { Property } from '../src/property'
 import { PropertyLine } from '../src/property-line'
 
@@ -83,5 +83,13 @@ describe('The `getProperties()` API', () => {
   it('works as expected', () => {
     const properties = getProperties(propertiesContent)
     expect(properties).toEqual(expectedPropertiesObject)
+  })
+})
+
+describe('The `getFirstEolCharacter()` API', () => {
+  it('works as expected', () => {
+    expect(getFirstEolCharacter('')).toEqual(undefined)
+    expect(getFirstEolCharacter('hi\nhello\r\nworld')).toEqual('\n')
+    expect(getFirstEolCharacter('hi\r\nhello\nworld')).toEqual('\r\n')
   })
 })
