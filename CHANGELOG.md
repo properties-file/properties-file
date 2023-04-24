@@ -1,3 +1,13 @@
+# [3.0.0](https://github.com/Avansai/properties-file/compare/2.2.4...3.0.0) (2023-04-24)
+
+### Features
+
+- add new editing capabilities ([3b07d98](https://github.com/Avansai/properties-file/commit/3b07d980beda337036f73aa96f283eaa72ce6cdc))
+
+### BREAKING CHANGES
+
+- see v2-to-v3 migration guide for the breaking changes details
+
 ## [2.2.4](https://github.com/Avansai/properties-file/compare/2.2.3...2.2.4) (2023-04-16)
 
 ## [2.2.3](https://github.com/Avansai/properties-file/compare/2.2.2...2.2.3) (2023-04-08)
