@@ -6,7 +6,7 @@
 
 ### BREAKING CHANGES
 
-- see v2-to-v3 migration guide for the breaking changes details
+- see [v2-to-v3 migration guide](./V2-TO-V3-MIGRATION-GUIDE.md) for the breaking changes details
 
 ## [2.2.4](https://github.com/Avansai/properties-file/compare/2.2.3...2.2.4) (2023-04-16)
 
