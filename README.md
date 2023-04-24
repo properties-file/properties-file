@@ -28,7 +28,7 @@ npm install properties-file
   - A `PropertiesEditor` class enables the addition, edition, and removal of entries.
   - `escapeKey` and `escapeValue` allow the conversion of any content to a `.properties` compatible format.
   - The library also includes a Webpack loader to import `.properties` files directly into your application.
-- Tiny ([under 2kB compressed](https://bundlephobia.com/package/properties-file)) with 0 dependencies.
+- Tiny ([under 3kB compressed](https://bundlephobia.com/package/properties-file)) with 0 dependencies.
 - 100% test coverage based on the output from a Java implementation.
 - Active maintenance (many popular `.properties` packages have been inactive for years).
 
