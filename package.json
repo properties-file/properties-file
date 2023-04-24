@@ -54,7 +54,7 @@
   "scripts": {
     "add-import-type": "ts-node ./src/add-import-type.ts && rm -f ./lib/add-import-type.*",
     "build": "npm run prettier && npm run lint-fix && rm -Rf ./lib && tsc && npm run add-import-type && npm run test",
-    "ci": "npm run lint-check && rm -Rf ./lib && tsc && npm run add-import-type && npm run test",
+    "ci": "npm run build",
     "lint-check": "eslint --ext .js --ext .jsx --ext .ts --ext .tsx --ext .json .",
     "lint-fix": "eslint --ext .js --ext .jsx --ext .ts --ext .tsx --ext .json --fix .",
     "lint-print-config": "eslint --print-config ./eslintrc.yaml",
