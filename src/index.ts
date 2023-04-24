@@ -1,11 +1,19 @@
-export { getProperties, propertiesToJson } from './file'
-export { KeyLineNumbers, Properties } from './properties'
-export { Property } from './property'
-export { PropertyLine } from './property-line'
+import { Properties } from './properties'
+export { Properties } from './properties'
 
 /**
- * A simple "key/value" object.
+ * A key-value pair object.
  */
-export type KeyValueObject = {
+export type KeyValuePairObject = {
   [key: string]: string
 }
+
+/**
+ * Converts the content of a `.properties` file to a key-value pair object.
+ *
+ * @param content - The content of a `.properties` file.
+ *
+ * @returns A key/value object representing the content of a `.properties` file.
+ */
+export const getProperties = (content: string | Buffer): KeyValuePairObject =>
+  new Properties(content).toObject()

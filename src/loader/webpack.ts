@@ -1,4 +1,4 @@
-import { propertiesToJson } from '../content'
+import { getProperties } from '..'
 
 /**
  * Webpack file loader for `.properties` files.
@@ -8,6 +8,6 @@ import { propertiesToJson } from '../content'
  * @returns A Webpack file loader string containing the content of  a `.properties` file.
  */
 const webpackLoader = (content: string): string =>
-  `module.exports = ${JSON.stringify(propertiesToJson(content))};`
+  `module.exports = ${JSON.stringify(getProperties(content))};`
 
 export default webpackLoader

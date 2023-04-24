@@ -6,11 +6,11 @@
 ![Dependencies](https://img.shields.io/badge/dependencies-0-green)
 [![Known Vulnerabilities](https://snyk.io/test/github/Avansai/properties-file/badge.svg?targetFile=package.json)](https://snyk.io/test/github/Avansai/properties-file?targetFile=package.json)
 
-`.properties` file JSON converter, serializer, parser and Webpack loader.
+`.properties` file parser, editor, formatter and Webpack loader.
 
 ## Installation 💻
 
-> ⚠ in June 2022 we have released version 2 of this package which is not compatible with the previous versions. Make sure to read the documentation before upgrading.
+> ⚠ In April 2023, we released version 3 of this package, which includes breaking changes. Please refer to the [migration guide](./V2-TO-V3-MIGRATION-GUIDE.md) before upgrading.
 
 Add the package as a dependency:
 
@@ -20,30 +20,31 @@ npm install properties-file
 
 ## What's in it for me? 🤔
 
-- A modern TypeScript library that reproduces exactly the [Properties Java implementation](/assets/java-implementation.md).
+- A modern library written entirely in TypeScript that exactly reproduces the [Properties Java implementation](/assets/java-implementation.md).
+- Works for both Node.js applications and browsers that support at least [ES5](https://www.w3schools.com/js/js_es5.asp).
 - Flexible APIs:
-  - `propertiesToJson` allows quick conversion from `.properties` files to JSON.
-  - `getProperties` returns a `Properties` object that provides insights into parsing issues such as key collisions.
-  - `propertiesToJson` & `getProperties` also have a browser-compatible version when passing directly the content of a file using the APIs under `properties-file/content`.
-  - `escapeKey`, `escapeValue` that can allow you to convert any content to `.properties` compatible format.
-  - Out of the box Webpack loader to `import` `.properties` files directly in your application.
+  - `getProperties` converts the content of `.properties` files to a key-value pair object.
+  - A `Properties` class provides insights into parsing data.
+  - A `PropertiesEditor` class enables the addition, edition, and removal of entries.
+  - `escapeKey` and `escapeValue` allow the conversion of any content to a `.properties` compatible format.
+  - The library also includes a Webpack loader to import `.properties` files directly into your application.
+- Tiny ([under 2kB compressed](https://bundlephobia.com/package/properties-file)) with 0 dependencies.
 - 100% test coverage based on the output from a Java implementation.
-- Active maintenance (many popular .properties packages have been inactive years).
+- Active maintenance (many popular `.properties` packages have been inactive for years).
 
 ## Usage 🎬
 
-We put a lot of effort into adding [TSDoc](https://tsdoc.org/) to all our APIs. Please check directly in your IDE if you are unsure how to use certain APIs provided in our examples.
+We have put a lot of effort into incorporating [TSDoc](https://tsdoc.org/) into all our APIs. If you are unsure about how to use certain APIs provided in our examples, please check directly in your IDE.
 
-Both APIs (`getProperties` and `propertiesToJson`) directly under `properties-file` depend on [`fs`](https://nodejs.org/api/fs.html) which means they cannot be used by browsers. If you cannot use `fs` and already have a `.properties` file content, the same APIs are available under `properties-file/content`. Instead of taking the `filePath` as the first argument, they take `content`. The example below will use "`fs`" APIs since they are the most common use cases.
+### `getProperties` (converting `.properties` to an object)
 
-### `propertiesToJson` (common use case)
-
-This API is probably the most used. You have a `.properties` file that you want to open and access like a simple key/value JSON object. Here is how this can be done with a single API call:
+The most common use case for `.properties` files is for Node.js applications that need to read the file's content into a simple key-value pair object. Here is how this can be done with a single API call:
 
 ```ts
-import { propertiesToJson } from 'properties-file'
+import { readFileSync } from 'node:fs'
+import { getProperties } from 'properties-file'
 
-console.log(propertiesToJson('hello-world.properties'))
+console.log(getProperties(readFileSync('hello-world.properties')))
 ```
 
 Output:
@@ -52,85 +53,37 @@ Output:
 { hello: 'hello', world: 'world' }
 ```
 
-If you cannot use [fs](https://nodejs.org/api/fs.html) (e.g., from a browser) and already have the content of a `.properties` file, your code would look like this instead:
+### `Properties` (using parsing metadata)
+
+The `Properties` object is what makes `getProperties` work under the hood, but when using it directly, you can access granular parsing metadata. Here is an example of how the object can be used to find key collisions:
 
 ```ts
-import { propertiesToJson } from 'properties-file/content'
+import { Properties } from 'properties-file'
 
-// ...some code to get the .properties file content into a variable called `propertiesFileContent`
-
-console.log(propertiesToJson(propertiesFileContent))
-```
-
-### `escapeKey` and `escapeValue` (serializing content to `.properties` format)
-
-> ⚠ This package does not offer a full-fledged `.properties` file writer that would include a variety of options like modifying an existing file while keeping comments and line breaks intact. If you have any interest into adding this in, pull requests are welcomed!
-
-It is possible to use this package serialize content to `.properties.` format by using `escapeKey` and `escapeValue`. Here is an example of how it can be done:
-
-```ts
-import * as fs from 'node:fs'
-import { EOL } from 'node:os'
-import { getProperties } from 'properties-file'
-import { escapeKey, escapeValue } from 'properties-file/escape'
-
-const properties = getProperties('assets/tests/collisions-test.properties')
-const newProperties: string[] = []
-console.dir(properties)
-
-properties.collection.forEach((property) => {
-  const value = property.value === 'world3' ? 'new world3' : property.value
-  newProperties.push(`${escapeKey(property.key)}: ${escapeValue(value)}`)
-})
-
-fs.writeFileSync('myNewFile.properties', newProperties.join(EOL))
+const properties = new Properties(
+  'hello = hello1\nworld = world1\nworld = world2\nhello = hello2\nworld = world3'
+)
+console.log(properties.format())
 
 /**
  * Outputs:
  *
- * hello: hello2
- * world: new world3
- *
+ * hello = hello1
+ * world = world1
+ * world = world2
+ * hello = hello2
+ * world = world3
  */
-```
-
-### `getProperties` (advanced use case)
-
-Java's implementation of `Properties` is quite resilient. In fact, there are only two ways an exception can be thrown:
-
-- The file is not found.
-- A (`\u`) Unicode escape character is malformed.
-
-This means that almost all files will be valid.
-
-But what about a file that has duplicate keys? Duplicate keys have no reason to exist and they probably should have thrown errors as well but instead Java decided to simply overwrite the value with the latest occurrence in a file.
-
-So how can we know if there were duplicate keys if we want to log some warnings? Simply by using `getProperties` which will return all the data that was used to parse the content. Here is an example on how it can be used:
-
-```properties
-# collisions-test.properties
-hello: hello1
-world: world1
-world: world2
-hello: hello2
-world: world3
-```
-
-```ts
-import { getProperties } from 'properties-file'
-
-const properties = getProperties('assets/tests/collisions-test.properties')
 
 properties.collection.forEach((property) => {
-  console.log(`${property.key} => '${property.value}'`)
+  console.log(`${property.key} = ${property.value}`)
 })
 
 /**
  * Outputs:
  *
- * hello => 'hello2'
- * world => 'world3'
- *
+ * hello = hello2
+ * world = world3
  */
 
 const keyCollisions = properties.getKeyCollisions()
@@ -150,7 +103,84 @@ keyCollisions.forEach((keyCollision) => {
  *
  * Found a key collision for key 'hello' on lines 1, 4 (will use the value at line 4).
  * Found a key collision for key 'world' on lines 2, 3, 5 (will use the value at line 5).
+ */
+```
+
+For purposes where you require more parsing metadata, such as building a syntax highlighter, it is recommended that you access the `Property` objects included in the `Properties.collection`. These objects provide comprehensive information about each key-value pair.
+
+### `PropertiesEditor` (editing `.properties` content)
+
+In certain scenarios, it may be necessary to modify the content of the `.properties` key-value pair objects. This can be achieved easily using the `Properties` object, with the assistance of the `escapeKey` and `escapeValue` APIs, as demonstrated below:
+
+```ts
+import { Properties } from 'properties-file'
+import { escapeKey, escapeValue } from 'properties-file/escape'
+
+const properties = new Properties('hello = hello\n# This is a comment\nworld = world')
+const newProperties: string[] = []
+
+properties.collection.forEach((property) => {
+  const key = property.key === 'world' ? 'new world' : property.key
+  const value = property.value === 'world' ? 'new world' : property.value
+  newProperties.push(`${escapeKey(key)} = ${escapeValue(value)}`)
+})
+
+console.log(newProperties.join('\n'))
+
+/**
+ * Outputs:
  *
+ * hello = hello
+ * new\ world = new world
+ */
+```
+
+The limitation of this approach is that its output contains only valid keys, without any comments or whitespace. However, if you require a more advanced editor that preserves these original elements, then the `PropertiesEditor` object is exactly what you need.
+
+```ts
+import { PropertiesEditor } from 'properties-file/editor'
+
+const properties = new PropertiesEditor('hello = hello\n# This is a comment\nworld = world')
+console.log(properties.format())
+
+/**
+ * Outputs:
+ *
+ * hello = hello
+ * # This is a comment
+ * world = world
+ */
+
+properties.insertComment('This is a multiline\ncomment before `newKey3`')
+properties.insert('newKey3', 'This is my third key')
+
+properties.insert('newKey1', 'This is my first new key', {
+  referenceKey: 'newKey3',
+  position: 'before',
+  comment: 'Below are the new keys being edited',
+  commentDelimiter: '!',
+})
+
+properties.insert('newKey2', 'こんにちは', {
+  referenceKey: 'newKey1',
+  position: 'after',
+  escapeUnicode: true,
+})
+
+properties.remove('hello')
+console.log(properties.format())
+
+/**
+ * Outputs:
+ *
+ * # This is a comment
+ * world = world
+ * ! Below are the new keys being edited
+ * newKey1 = This is my first new key
+ * newKey2 = \u3053\u3093\u306b\u3061\u306f
+ * # This is a multiline
+ * # comment before `newKey3`
+ * newKey3 = This is my third key
  */
 ```
 
@@ -202,17 +232,17 @@ Output:
 
 ## Why another `.properties` file package?
 
-There are probably over 20 similar packages available but:
+There are probably over 20 similar packages available, but:
 
-- A lot of the most popular packages have had no activity for over 5 years.
-- A large portion of the packages will not replicate the current Java implementation.
+- Many of the most popular packages have had no activity for over 5 years.
+- Most packages will not replicate the current Java implementation.
 - No package offers the same capabilities as this one.
 
-Unfortunately the `.properties` file specification is not well documented. One reason for this is that it was originally used in Java to store configurations. Most applications will handle this using JSON, YAML or other modern formats today because the formats are more flexible.
+Unfortunately, the `.properties` file specification is not well-documented. One reason for this is that it was originally used in Java to store configurations. Today, most applications handle this using JSON, YAML, or other modern formats because these formats are more flexible.
 
 ### So why `.properties` files?
 
-While many options exists today to handle configurations, `.properties` file remain one of the best option to store localizable strings (also known as messages). On the Java side, `PropertyResourceBundle` is how most implementations handle localization today. Because of its simplicity and maturity, `.properties` files remain one of the best options today when it comes to internationalization (i18n):
+While many options exist today to handle configurations, `.properties` files remain one of the best options to store localizable strings (also known as messages). On the Java side, `PropertyResourceBundle` is how most implementations handle localization today. Because of its simplicity and maturity, `.properties` files remain one of the best options today when it comes to internationalization (i18n):
 
 | File format   | Key/value based  | Supports inline comments | Built for localization | Good linguistic tools support |
 | ------------- | ---------------- | ------------------------ | ---------------------- | ----------------------------- |
@@ -220,20 +250,19 @@ While many options exists today to handle configurations, `.properties` file rem
 | `JSON`        | No (can do more) | No (requires JSON5)      | No                     | Depends on the schema         |
 | `YAML`        | No (can do more) | Yes                      | No                     | Depends on the schema         |
 
-By having good JavaScript/TypeScript support for `.properties` files, it provides more options when it comes to i18n.
+Having good JavaScript/TypeScript support for .properties files offers more internationalization (i18n) options.
 
 ### How does this package work?
 
-Basically our goal was to offer parity with the Java implementation, which is the closest thing to a specification `.properties` file have. Here is in a nutshell the logic behind this package:
+Basically, our goal was to offer parity with the Java implementation, which is the closest thing to a specification for `.properties` files. Here is the logic behind this package in a nutshell:
 
-1. Split the file content by lines (create line objects)
-2. Create `LineObjects` by combining multi-line properties and removing trailing backslash
-3. Create `PropertyObjects` from `LineObjects` that combined all lines of a property
-4. Identify the key/value delimiter and populate escaped keys and values.
-5. Unescape keys and values
-6. Create a `PropertiesObject` that will include all `PropertyObjects` while removing collisions
+1. The content is split by lines, creating an array of strings where each line is an element.
+2. All lines are parsed to create a collection of `Property` objects that:
+   1. Identify key-value pair lines from the other lines (e.g., comments, blank lines, etc.).
+   2. Merge back multiline key-value pairs on single lines by removing trailing backslashes.
+   3. Unescape the keys and values.
 
-Just like Java, if a Unicode escaped characters (`\u`) is malformed, it will throw an error. But of course, we do not recommend using Unicode escaped characters but rather UTF-8 encoding that supports more characters.
+Just like Java, if a Unicode-escaped character (`\u`) is malformed, an error will be thrown. However, we do not recommend using Unicode-escaped characters, but rather using UTF-8 encoding that supports more characters.
 
 ## Additional references
 

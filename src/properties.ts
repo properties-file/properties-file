@@ -1,14 +1,101 @@
-import { KeyValueObject } from './'
+import { KeyValuePairObject } from '.'
 import { Property } from './property'
+import { PropertyLine } from './property-line'
+
+/**
+ * Byte-order mark.
+ */
+export const BOM = '\uFEFF'
+export const BOM_CODE_POINT = BOM.codePointAt(0)
+
+/** The default end of line character. */
+export const DEFAULT_END_OF_LINE_CHARACTER = '\n'
+
+/**
+ * Get the first end of line (EOL) character from multiline content.
+ *
+ * @param content - The content of a `.properties` file.
+ *
+ * @returns The multiline content's first end of line (EOL) character.
+ */
+const getFirstEolCharacter = (content: string): string | undefined => {
+  const newlineIndex = content.indexOf('\n')
+  return newlineIndex < 0 ? undefined : `${content[newlineIndex - 1] === '\r' ? '\r' : ''}\n`
+}
 
 /**
  * A class representing the content of a .properties file.
  */
 export class Properties {
+  /** Does the .properties content starts with a BOM character? */
+  public readonly hasBom: boolean
+  /** The end of line character. */
+  public readonly eolCharacter: string
+  /** `.properties` content split by line. */
+  protected lines: string[]
   /** The collection of property object. */
   public collection: Property[] = []
   /** Object associating keys with their starting line numbers. */
   public keyLineNumbers: KeyLineNumbers = {}
+
+  /**
+   * Create `Properties` object.
+   *
+   * @param content - The content of a `.properties` file.
+   */
+  constructor(content: string | Buffer) {
+    const stringContent = Buffer.isBuffer(content) ? content.toString() : content
+    this.hasBom = stringContent.codePointAt(0) === BOM_CODE_POINT
+    this.eolCharacter = getFirstEolCharacter(stringContent) ?? DEFAULT_END_OF_LINE_CHARACTER
+    this.lines = (this.hasBom ? stringContent.slice(1) : stringContent).split(/\r?\n/)
+    this.parseLines()
+  }
+
+  /**
+   * Parse the `.properties` content line by line.
+   */
+  protected parseLines(): void {
+    /** reset existing object properties to their initial values. */
+    this.collection = []
+    this.keyLineNumbers = {}
+
+    /** Line number while parsing properties file content. */
+    let lineNumber = 0
+    /** The current property object being parsed. */
+    let property: Property | undefined
+    /** The previous property object that was parsed. */
+    let previousProperty: Property | undefined
+
+    for (const line of this.lines) {
+      lineNumber++
+      const propertyLine = new PropertyLine(line, !!property)
+
+      if (property) {
+        // Continue parsing an existing property.
+        property.addLine(propertyLine)
+        if (propertyLine.isContinuing) {
+          continue
+        }
+      } else {
+        // Check if the line is a new property.
+        if (propertyLine.isComment || propertyLine.isBlank) {
+          continue // Skip line if its a comment or blank.
+        }
+
+        // The line is a new property.
+        property = new Property(propertyLine, lineNumber, previousProperty)
+
+        if (propertyLine.isContinuing) {
+          continue // Continue parsing the next line.
+        }
+      }
+
+      // If the line does not continue, add the property to the collection.
+      this.addToCollection(property)
+      previousProperty = property
+      property = undefined
+    }
+  }
 
   /**
    * Add a property object into a properties object collection.
@@ -17,11 +104,7 @@ export class Properties {
    *
    * @returns Undefined so that we conveniently overwrite the property object.
    */
-  public add(property: Property | undefined): undefined {
-    if (property === undefined) {
-      return undefined
-    }
-
+  private addToCollection(property: Property): void {
     property.setKeyAndValue()
 
     if (this.keyLineNumbers[property.key]?.length) {
@@ -40,8 +123,6 @@ export class Properties {
 
     // Add the property to the collection.
     this.collection.push(property)
-
-    return undefined
   }
 
   /**
@@ -58,16 +139,27 @@ export class Properties {
   }
 
   /**
-   * Get the JSON (key/value) representation of the properties.
+   * Get the key/value object representing the properties.
    *
-   * @returns A key/value representing the properties of the object.
+   * @returns A key/value object representing the properties.
    */
-  public toJson(): KeyValueObject {
-    const keyValueObject: KeyValueObject = {}
+  public toObject(): KeyValuePairObject {
+    const keyValueObject: KeyValuePairObject = {}
     this.collection.forEach((property) => {
       keyValueObject[property.key] = property.value
     })
     return keyValueObject
+  }
+
+  /**
+   * Format the object in `.properties`.
+   *
+   * @param endOfLineCharacter - The character used for end of lines.
+   *
+   * @returns The object in `.properties` format.
+   */
+  public format(endOfLineCharacter?: '\n' | '\r\n'): string {
+    return `${this.hasBom ? BOM : ''}${this.lines.join(endOfLineCharacter || this.eolCharacter)}`
   }
 }
 

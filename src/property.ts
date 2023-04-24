@@ -5,35 +5,51 @@ import { unescapeContent } from './unescape'
  * Object representing a property (key/value).
  */
 export class Property {
-  /** The length of the delimiter, including its whitespace characters. */
-  public delimiterLength: number | undefined
-  /** The starting position of the delimiter separating the key from the value. */
-  public delimiterPosition: number | undefined
-  /** The property key, including its escaped characters. */
-  public escapedKey = ''
-  /** The property value, including its escaped characters. */
-  public escapedValue = ''
-  /** Was the property's key used more than once? */
-  public hasKeyCollisions = false
-  /** The property key (unescaped). */
-  public key = ''
-  /** Starting line numbers of property objects with the same key. */
-  public keyCollisionLines: number[] = []
   /** The content of one or multiple lines when applicable. */
   public linesContent: string
-  /** Positions of the newline characters if any. */
-  public newlinePositions: number[] = []
-  /** The line number at which the property starts. */
-  public startingLineNumber: number
-  /** The property value (unescaped). */
-  public value = ''
 
-  /** Does the key definition spread across multiple lines? */
-  private hasMultilineKey = false
+  /** The property key (unescaped). */
+  public key = ''
+  /** The property key, including its escaped characters. */
+  public escapedKey = ''
   /** Is the key empty? */
   private hasNoKey = false
+  /** Does the key definition spread across multiple lines? */
+  private hasMultilineKey = false
+
+  /** Starting line numbers of property objects with the same key. */
+  public keyCollisionLines: number[] = []
+  /** Was the property's key used more than once? */
+  public hasKeyCollisions = false
+
+  /** The key/value pair separator */
+  public separator: string | undefined
+  /** The length of the key/value pair separator, including its whitespace characters. */
+  public separatorLength: number | undefined
+  /** The starting position of the key/value pair separator. */
+  public separatorPosition: number | undefined
+
+  /** The property value (unescaped). */
+  public value = ''
+  /** The starting position of the value. */
+  public valuePosition: number | undefined
+  /** The property value, including its escaped characters. */
+  public escapedValue = ''
   /** Is the value empty? */
   private hasNoValue = false
+
+  /** Positions of the newline characters if any. */
+  public newlinePositions: number[] = []
+
+  /** The line number at which the property starts. */
+  public readonly startingLineNumber: number
+  /** The line number at which the property ends. */
+  public endingLineNumber: number
+
+  /** The previous property object if it exists. */
+  public readonly previousProperty?: Property
+  /** The next property object if it exists. */
+  public nextProperty?: Property
 
   /**
    * Create a new property object.
@@ -41,9 +57,21 @@ export class Property {
    * @param propertyLine - A property line object.
    * @param startingLineNumber - The line number at which the property starts.
    */
-  constructor(propertyLine: PropertyLine, startingLineNumber: number) {
+  constructor(propertyLine: PropertyLine, startingLineNumber: number, previousProperty?: Property) {
     this.linesContent = propertyLine.content
     this.startingLineNumber = startingLineNumber
+    this.endingLineNumber = startingLineNumber
+    this.previousProperty = previousProperty
+    previousProperty?.setNextProperty(this)
+  }
+
+  /**
+   * Set the next property object.
+   *
+   * @param property - The next property object
+   */
+  public setNextProperty(property: Property): void {
+    this.nextProperty = property
   }
 
   /**
@@ -54,6 +82,7 @@ export class Property {
   public addLine(propertyLine: PropertyLine): void {
     if (this.linesContent.length > 0) {
       this.newlinePositions.push(this.linesContent.length)
+      this.endingLineNumber++
     }
     this.linesContent += propertyLine.content
   }
@@ -62,22 +91,22 @@ export class Property {
    * Set the property's key and value.
    */
   public setKeyAndValue(): void {
-    this.findDelimiter()
+    this.findSeparator()
 
-    if (this.delimiterPosition !== undefined && this.delimiterLength !== undefined) {
+    if (this.separatorPosition !== undefined && this.separatorLength !== undefined) {
       // Set key if present.
       if (!this.hasNoKey) {
-        this.escapedKey = this.linesContent.slice(0, this.delimiterPosition)
+        this.escapedKey = this.linesContent.slice(0, this.separatorPosition)
         this.key = this.unescapeLine(this.escapedKey, this.startingLineNumber)
       }
 
       // Set value if present.
       if (!this.hasNoValue) {
-        this.escapedValue = this.linesContent.slice(this.delimiterPosition + this.delimiterLength)
+        this.escapedValue = this.linesContent.slice(this.separatorPosition + this.separatorLength)
         this.value = this.unescapeLine(this.escapedValue, this.startingLineNumber)
       }
     } else if (this.hasNoValue) {
-      // Set key if present (no delimiter).
+      // Set key if present (no separator).
       this.escapedKey = this.linesContent
       this.key = this.unescapeLine(this.escapedKey, this.startingLineNumber)
     }
@@ -105,11 +134,11 @@ export class Property {
   }
 
   /**
-   * Find the delimiting characters separating the key from the value.
+   * Find the character separating the key from the value.
    */
-  private findDelimiter(): void {
-    // If the delimiter was already found, skip.
-    if (this.hasNoKey || this.hasNoValue || this.delimiterPosition) {
+  private findSeparator(): void {
+    // If the separator was already found, skip.
+    if (this.hasNoKey || this.hasNoValue || this.separatorPosition) {
       return
     }
 
@@ -118,55 +147,57 @@ export class Property {
       position < this.linesContent.length;
       position++, character = this.linesContent[position]
     ) {
-      // If the character is not a delimiter, check the next one.
+      // If the character is not a separator, check the next one.
       if (!/[\t\f :=]/.test(character)) {
         continue
       }
 
-      // Check if the delimiter might be escaped.
+      // Check if the separator might be escaped.
       const prefix = position ? this.linesContent.slice(0, position) : ''
 
       if (prefix.length > 0) {
         const backslashMatch = prefix.match(/(?<backslashes>\\+)$/)
         if (backslashMatch?.groups) {
-          const delimiterIsEscaped = !!(backslashMatch.groups.backslashes.length % 2)
-          if (delimiterIsEscaped) {
-            // If the delimiter is escaped, check the next character.
+          const separatorIsEscaped = !!(backslashMatch.groups.backslashes.length % 2)
+          if (separatorIsEscaped) {
+            // If the separator is escaped, check the next character.
             continue
           }
         }
       }
 
-      let delimiter = ''
-      this.delimiterPosition = position
-      this.hasMultilineKey = !!(
-        this.newlinePositions.length > 0 && this.newlinePositions[0] > position
-      )
+      let separator = ''
+      this.separatorPosition = position
 
-      // Check if the delimiter starts with a whitespace.
+      // Check if the separator starts with a whitespace.
       let nextContent = this.linesContent.slice(position)
       const leadingWhitespaceMatch = nextContent.match(/^(?<whitespace>\s+)/)
       const leadingWhitespace = leadingWhitespaceMatch?.groups?.whitespace || ''
 
       // If there is a whitespace, move to the next character.
       if (leadingWhitespace.length > 0) {
-        delimiter += leadingWhitespace
+        separator += leadingWhitespace
         nextContent = nextContent.slice(leadingWhitespace.length)
       }
 
       // Check if there is an equal or colon character.
       if (/[:=]/.test(nextContent[0])) {
-        delimiter += nextContent[0]
+        separator += nextContent[0]
         nextContent = nextContent.slice(1)
         // If an equal or colon character was found, try to get trailing whitespace.
         const trailingWhitespaceMatch = nextContent.match(/^(?<whitespace>\s+)/)
         const trailingWhitespace = trailingWhitespaceMatch?.groups?.whitespace || ''
-        delimiter += trailingWhitespace
+        separator += trailingWhitespace
       }
 
-      this.delimiterLength = delimiter.length
+      this.separatorLength = separator.length
+      this.valuePosition = this.separatorPosition + this.separatorLength
+      this.separator = this.linesContent.slice(
+        this.separatorPosition,
+        this.separatorPosition + this.separatorLength
+      )
 
-      // If the line starts with a delimiter, the property has no key.
+      // If the line starts with a separator, the property has no key.
       if (!position) {
         this.hasNoKey = true
       }
@@ -174,17 +205,15 @@ export class Property {
       break
     }
 
-    // If there was no delimiter found, the property has no value.
-    if (this.delimiterPosition === undefined) {
+    if (this.separatorPosition === undefined) {
+      // If there was no separator found, the property has no value.
       this.hasNoValue = true
-    } else {
-      // If the delimiter is after the first newline, mark the key as multiline.
-      if (this.newlinePositions.length > 0) {
-        const firstLinePosition = this.newlinePositions[0]
-        if (firstLinePosition > this.delimiterPosition) {
-          this.hasMultilineKey = true
-        }
-      }
+    } else if (
+      this.newlinePositions.length > 0 &&
+      this.newlinePositions[0] < this.separatorPosition
+    ) {
+      // If the separator is after the first newline, the key is on multiple lines.
+      this.hasMultilineKey = true
     }
   }
 }

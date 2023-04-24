@@ -2,7 +2,7 @@
 
 ## Testing
 
-One of the most important part of this package is alignment with the Java implementation. Since the `.properties` files specification is poorly documented, one of the most reliable way to validate this is to use an [example](example.properties)) that contains all edge cases and verify its output.
+One of the most important part of this package is alignment with the Java implementation. Since the `.properties` files specification is poorly documented, one of the most reliable way to validate this is to use an [example](./tests/test-all.properties)) that contains all edge cases and verify its output.
 
 Here is the Java code of `TestProperties.java` that can output the entire content of a `.properties` file, sorted alphabetically:
 
@@ -41,7 +41,7 @@ public class TestProperties {
 
 A working example can be tested online without any local Java configuration: https://codehs.com/sandbox/id/java-main-kYynuh
 
-The [output](tests-java-console-output) of this test will be used for our test coverage. Because of the way consoles work, invisible characters need to be verified before using the output for tests.
+The [output](./tests/test-all-java-console-output) of this test will be used for our test coverage. Because of the way consoles work, invisible characters need to be verified before using the output for tests.
 
 ## Java Source
 
