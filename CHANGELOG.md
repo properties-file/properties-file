@@ -1,3 +1,15 @@
+# [3.1.0](https://github.com/Avansai/properties-file/compare/3.0.0...3.1.0) (2023-04-25)
+
+### Features
+
+- add `upsert` method ([8a356fc](https://github.com/Avansai/properties-file/commit/8a356fcbed5ff0cb8d48a8610f0391eaaa1bf7b3))
+
+### BREAKING CHANGES
+
+- - re-aligned method names to be closer to SQL conventions since using `upsert`
+  - the `PropertiesEditor` `remove` method was renamed to `delete`
+  - the `PropertiesEditor` `edit` method was renamed to `update`
+
 # [3.0.0](https://github.com/Avansai/properties-file/compare/2.2.4...3.0.0) (2023-04-24)
 
 ### Features
