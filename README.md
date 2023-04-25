@@ -168,13 +168,16 @@ properties.insert('newKey2', 'こんにちは', {
 })
 
 properties.delete('hello')
+properties.update('world', {
+  newValue: 'new world',
+})
 console.log(properties.format())
 
 /**
  * Outputs:
  *
  * # This is a comment
- * world = world
+ * world = new world
  * ! Below are the new keys being edited
  * newKey1 = This is my first new key
  * newKey2 = \u3053\u3093\u306b\u3061\u306f
@@ -184,7 +187,7 @@ console.log(properties.format())
  */
 ```
 
-We were not able to show all methods in the example, but the `update` and `upsert` methods can also be useful to modify content.
+For convenience, we also added an `upsert` method that allows updating a key if it exists or adding it at the end, when it doesn't. Make sure to check in your IDE for all available methods and options in our TSDoc.
 
 ### Webpack File Loader
 
