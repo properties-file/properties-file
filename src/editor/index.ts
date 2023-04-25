@@ -40,8 +40,8 @@ export type InsertCommentOptions = {
   commentDelimiter?: CommentDelimiter
 }
 
-/** Options on the `Properties.edit` method. */
-export type EditOptions = {
+/** Options on the `Properties.update` method. */
+export type UpdateOptions = {
   /** Optionally replace the existing value with a new value. */
   newValue?: string
   /** Optionally replace the existing key with a new key name. */
@@ -52,6 +52,18 @@ export type EditOptions = {
   separator?: ' ' | ':' | '='
   /** Optionally insert a new comment, or replace the existing one (including white-space characters). */
   newComment?: string
+  /** The comment's delimiter. */
+  commentDelimiter?: CommentDelimiter
+}
+
+/** Options on the `Properties.upsert` method. */
+export type UpsertOptions = {
+  /** Escape unicode characters into ISO-8859-1 compatible encoding? */
+  escapeUnicode?: boolean
+  /** The key/value separator character. */
+  separator?: KeyValuePairSeparator
+  /** A comment to insert before. */
+  comment?: string
   /** The comment's delimiter. */
   commentDelimiter?: CommentDelimiter
 }
@@ -75,8 +87,10 @@ export class PropertiesEditor extends Properties {
    * @param key - A property key (unescaped).
    * @param value - A property value (unescaped).
    * @param options - Additional options.
+   *
+   * @returns True if the key was inserted, otherwise false.
    */
-  public insert(key: string, value: string, options?: InsertOptions): void {
+  public insert(key: string, value: string, options?: InsertOptions): boolean {
     const escapeUnicode = options?.escapeUnicode || false
     const separator = options?.separator
       ? options.separator === ' '
@@ -86,19 +100,19 @@ export class PropertiesEditor extends Properties {
     const referenceKey = options?.referenceKey
     const position = options?.position || 'after'
 
-    // Allow to add multiline keys.
+    // Allow multiline keys.
     const multilineKey = key
       .split(/\r?\n/)
       .map((key) => escapeKey(key, escapeUnicode))
       .join('\\\n')
 
-    // Allow to add multiline values.
+    // Allow multiline values.
     const multilineValue = value
       .split(/\r?\n/)
       .map((value) => escapeValue(value, escapeUnicode))
       .join('\\\n')
 
-    // Allow to add multiline comments.
+    // Allow multiline comments.
     const commentPrefix = `${options?.commentDelimiter || DEFAULT_COMMENT_DELIMITER} `
     const multilineComment =
       options?.comment === undefined
@@ -111,6 +125,7 @@ export class PropertiesEditor extends Properties {
       // Insert the new property at the end if the reference key was not defined.
       this.lines.push(...newLines)
       this.parseLines()
+      return true
     } else {
       // Find the last occurrence of the reference key.
       const property = [...this.collection]
@@ -129,7 +144,9 @@ export class PropertiesEditor extends Properties {
           ...this.lines.slice(insertPosition),
         ]
         this.parseLines()
+        return true
       }
+      return false
     }
   }
 
@@ -138,12 +155,14 @@ export class PropertiesEditor extends Properties {
    *
    * @param comment - The comment to add.
    * @param options - Additional options.
+   *
+   * @returns True if the comment was inserted, otherwise false.
    */
-  public insertComment(comment: string, options?: InsertCommentOptions): void {
+  public insertComment(comment: string, options?: InsertCommentOptions): boolean {
     const referenceKey = options?.referenceKey
     const position = options?.position || 'after'
 
-    // Allow to add multiline comments.
+    // Allow multiline comments.
     const commentPrefix = `${options?.commentDelimiter || DEFAULT_COMMENT_DELIMITER} `
     const newLines = `${commentPrefix}${comment}`
       .replace(/\r?\n/g, `\n${commentPrefix}`)
@@ -153,6 +172,7 @@ export class PropertiesEditor extends Properties {
       // Insert the new comment at the end if the reference key was not defined.
       this.lines.push(...newLines)
       this.parseLines()
+      return true
     } else {
       // Find the last occurrence of the reference key.
       const property = [...this.collection]
@@ -171,28 +191,34 @@ export class PropertiesEditor extends Properties {
           ...this.lines.slice(insertPosition),
         ]
         this.parseLines()
+        return true
       }
+      return false
     }
   }
 
   /**
-   * Remove the last occurrence of a given key from the existing object.
+   * Delete the last occurrence of a given key from the existing object.
    *
-   * @param key - The name of the key to remove.
-   * @param removeCommentsAndWhiteSpace - By default, comments and white-space characters before the key will be removed.
+   * @param key - The name of the key to delete.
+   * @param deleteCommentsAndWhiteSpace - By default, comments and white-space characters before the key will be deleted.
+   *
+   * @returns True if the key was deleted, otherwise false.
    */
-  public remove(key: string, removeCommentsAndWhiteSpace = true): void {
+  public delete(key: string, deleteCommentsAndWhiteSpace = true): boolean {
     // Find the last occurrence of the key.
     const property = [...this.collection].reverse().find((property) => property.key === key)
 
     if (property) {
-      const startLine = removeCommentsAndWhiteSpace
+      const startLine = deleteCommentsAndWhiteSpace
         ? property.previousProperty?.endingLineNumber ?? 0
         : property.startingLineNumber - 1
       const endLine = property.endingLineNumber
       this.lines = [...this.lines.slice(0, startLine), ...this.lines.slice(endLine)]
       this.parseLines()
+      return true
     }
+    return false
   }
 
   /**
@@ -238,42 +264,44 @@ export class PropertiesEditor extends Properties {
   }
 
   /**
-   * Edit the last occurrence of a given key from the existing object.
+   * Update the last occurrence of a given key from the existing object.
    *
-   * @param key - The name of the key to edit.
+   * @param key - The name of the key to update.
    * @param options - Additional options.
+   *
+   * @returns True if the key was updated, otherwise false.
    */
-  public edit(key: string, options?: EditOptions): void {
-    // Find the last occurrence of the key to edit.
+  public update(key: string, options?: UpdateOptions): boolean {
+    // Find the last occurrence of the key to update.
     const property = [...this.collection].reverse().find((property) => property.key === key)
 
-    if (!property) {
-      return
+    if (!property || !options) {
+      return false
     }
 
-    const escapeUnicode = options?.escapeUnicode || false
-    const separator = options?.separator
+    const escapeUnicode = options.escapeUnicode || false
+    const separator = options.separator
       ? options.separator === ' '
         ? ' '
         : ` ${options.separator} `
       : property.separator || ` ${DEFAULT_SEPARATOR} `.replace('  ', ' ')
 
-    // Allow to edit multiline keys.
-    const multilineKey = (options?.newKey ?? this.getKeyWithNewlines(property))
+    // Allow multiline keys.
+    const multilineKey = (options.newKey ?? this.getKeyWithNewlines(property))
       .split(/\r?\n/)
       .map((key) => escapeKey(key, escapeUnicode))
       .join('\\\n')
 
-    // Allow to edit multiline values.
-    const multilineValue = (options?.newValue ?? this.getValueWithNewlines(property))
+    // Allow multiline values.
+    const multilineValue = (options.newValue ?? this.getValueWithNewlines(property))
       .split(/\r?\n/)
       .map((value) => escapeValue(value, escapeUnicode))
       .join('\\\n')
 
-    // Allow to edit multiline comments.
-    const commentPrefix = `${options?.commentDelimiter || DEFAULT_COMMENT_DELIMITER} `
+    // Allow multiline comments.
+    const commentPrefix = `${options.commentDelimiter || DEFAULT_COMMENT_DELIMITER} `
     const multilineComment =
-      options?.newComment === undefined
+      options.newComment === undefined
         ? ''
         : `${`${commentPrefix}${options.newComment}`.split(/\r?\n/).join(`\n${commentPrefix}`)}\n`
 
@@ -283,7 +311,7 @@ export class PropertiesEditor extends Properties {
     this.lines = [
       ...this.lines.slice(
         0,
-        options?.newComment === undefined
+        options.newComment === undefined
           ? property.startingLineNumber - 1
           : property.previousProperty?.endingLineNumber ?? 0
       ),
@@ -291,5 +319,27 @@ export class PropertiesEditor extends Properties {
       ...this.lines.slice(property.endingLineNumber),
     ]
     this.parseLines()
+    return true
+  }
+
+  /**
+   * Update a key if it exist, otherwise add it at the end.
+   *
+   * @param key - A property key (unescaped).
+   * @param value - A property value (unescaped).
+   * @param options - Additional options.
+   *
+   * @returns True if the key was updated or inserted, otherwise false.
+   */
+  public upsert(key: string, value: string, options?: UpsertOptions): boolean {
+    return this.keyLineNumbers[key]
+      ? this.update(key, {
+          newValue: value,
+          newComment: options?.comment,
+          commentDelimiter: options?.commentDelimiter,
+          separator: options?.separator,
+          escapeUnicode: options?.escapeUnicode,
+        })
+      : this.insert(key, value, options)
   }
 }

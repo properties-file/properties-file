@@ -167,7 +167,7 @@ properties.insert('newKey2', 'こんにちは', {
   escapeUnicode: true,
 })
 
-properties.remove('hello')
+properties.delete('hello')
 console.log(properties.format())
 
 /**
@@ -183,6 +183,8 @@ console.log(properties.format())
  * newKey3 = This is my third key
  */
 ```
+
+We were not able to show all methods in the example, but the `update` and `upsert` methods can also be useful to modify content.
 
 ### Webpack File Loader
 

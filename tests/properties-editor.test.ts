@@ -4,32 +4,49 @@ let propertiesContent = 'hi\nhello = hello\n# This is a comment\nworld = world'
 const properties = new PropertiesEditor(propertiesContent)
 
 describe('The `PropertiesEditor` class', () => {
-  it('`.edit()` method does nothing when the key does not exist', () => {
-    properties.edit('doesNotExist', {
+  it('`.update()` method does nothing when the key does not exist', () => {
+    const result = properties.update('doesNotExist', {
       newValue: 'not going to be used',
     })
+    expect(result).toEqual(false)
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.edit()` method does nothing with no options', () => {
-    properties.edit('hello')
+  it('`.update()` method does nothing with no options', () => {
+    const result = properties.update('hello')
+    expect(result).toEqual(false)
     expect(properties.format()).toEqual(propertiesContent)
   })
 
   it('`.insert()` method does nothing when a reference key is not found', () => {
-    properties.insert('notGoingToBeInserted', 'not going to be inserted', {
+    const result = properties.insert('notGoingToBeInserted', 'not going to be inserted', {
       referenceKey: 'doesNotExist',
     })
+    expect(result).toEqual(false)
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.edit()` method can add a value to a key without value', () => {
-    properties.edit('hi', {
+  it('`.insertComment()` method does nothing when a reference key is not found', () => {
+    const result = properties.insertComment('notGoingToBeInserted', {
+      referenceKey: 'doesNotExist',
+    })
+    expect(result).toEqual(false)
+    expect(properties.format()).toEqual(propertiesContent)
+  })
+
+  it('`.delete()` method does nothing when a reference key is not found', () => {
+    const result = properties.delete('doesNotExist')
+    expect(result).toEqual(false)
+    expect(properties.format()).toEqual(propertiesContent)
+  })
+
+  it('`.update()` method can add a value to a key without value', () => {
+    properties.update('hi', {
       newValue: 'there',
     })
     propertiesContent = 'hi = there\nhello = hello\n# This is a comment\nworld = world'
     expect(properties.format()).toEqual(propertiesContent)
-    properties.remove('hi')
+    properties.delete('hi')
     propertiesContent = 'hello = hello\n# This is a comment\nworld = world'
   })
 
@@ -90,8 +107,8 @@ describe('The `PropertiesEditor` class', () => {
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.remove()` method removes a property from the content', () => {
-    properties.remove('newKey1')
+  it('`.delete()` method removes a property from the content', () => {
+    properties.delete('newKey1')
     propertiesContent = [
       'hello = hello',
       '# This is a comment',
@@ -105,8 +122,8 @@ describe('The `PropertiesEditor` class', () => {
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.edit()` method change the key, value and comment for an existing property', () => {
-    properties.edit('newKey2', {
+  it('`.update()` method change the key, value and comment for an existing property', () => {
+    properties.update('newKey2', {
       newKey: 'newKey1',
       newValue: 'this is the new value for the old newKey2\non 2 lines',
       newComment: 'The new comment for newKey1 that used to be newKey2\non 2 lines',
@@ -198,8 +215,8 @@ describe('The `PropertiesEditor` class', () => {
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.remove()` method removes a key without its comments', () => {
-    properties.remove('こんにちは', false)
+  it('`.delete()` method removes a key without its comments', () => {
+    properties.delete('こんにちは', false)
     propertiesContent = [
       '# こんにちは',
       '# This comment was inserted before `hello`',
@@ -219,8 +236,8 @@ describe('The `PropertiesEditor` class', () => {
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.remove()` method removes the first key correctly', () => {
-    properties.remove('hello')
+  it('`.delete()` method removes the first key correctly', () => {
+    properties.delete('hello')
     propertiesContent = [
       '# This is a comment',
       'world = world',
@@ -235,8 +252,8 @@ describe('The `PropertiesEditor` class', () => {
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.edit()` method change the key, value and comment for an existing property while escaping unicode', () => {
-    properties.edit('newKey1', {
+  it('`.update()` method change the key, value and comment for an existing property while escaping unicode', () => {
+    properties.update('newKey1', {
       newKey: 'newKey2',
       newValue: 'こんにちは',
       escapeUnicode: true,
@@ -256,8 +273,8 @@ describe('The `PropertiesEditor` class', () => {
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.edit()` method changes only the key on 2 lines', () => {
-    properties.edit('world', {
+  it('`.update()` method changes only the key on 2 lines', () => {
+    properties.update('world', {
       newKey: 'new\nKey1',
     })
     propertiesContent = [
@@ -273,8 +290,8 @@ describe('The `PropertiesEditor` class', () => {
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.edit()` method changes only the value on 2 lines', () => {
-    properties.edit('newKey1', {
+  it('`.update()` method changes only the value on 2 lines', () => {
+    properties.update('newKey1', {
       newValue: 'new value for `newKey1`\non 2 lines',
     })
     propertiesContent = [
@@ -291,8 +308,8 @@ describe('The `PropertiesEditor` class', () => {
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.edit()` method changes only the comment on 2 lines', () => {
-    properties.edit('newKey1', {
+  it('`.update()` method changes only the comment on 2 lines', () => {
+    properties.update('newKey1', {
       newComment: 'This is the first comment of the file\non 2 lines',
     })
     propertiesContent = [
@@ -310,8 +327,8 @@ describe('The `PropertiesEditor` class', () => {
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.edit()` method changes only the key on a single line', () => {
-    properties.edit('newKey1', {
+  it('`.update()` method changes only the key on a single line', () => {
+    properties.update('newKey1', {
       newKey: 'newKey1',
       separator: ':',
       escapeUnicode: false,
@@ -330,8 +347,8 @@ describe('The `PropertiesEditor` class', () => {
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.edit()` method changes only the separator on a single line', () => {
-    properties.edit('newKey2', {
+  it('`.update()` method changes only the separator on a single line', () => {
+    properties.update('newKey2', {
       separator: '=',
       escapeUnicode: true,
     })
@@ -349,8 +366,8 @@ describe('The `PropertiesEditor` class', () => {
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.edit()` method changes only the unescape unicode on a single line', () => {
-    properties.edit('newKey2', {
+  it('`.update()` method changes only the unescape unicode on a single line', () => {
+    properties.update('newKey2', {
       escapeUnicode: false,
     })
     propertiesContent = [
@@ -367,8 +384,8 @@ describe('The `PropertiesEditor` class', () => {
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.edit()` method changes only the value on a single line', () => {
-    properties.edit('newKey2', {
+  it('`.update()` method changes only the value on a single line', () => {
+    properties.update('newKey2', {
       newValue: 'This is `newKey2`',
       separator: ' ',
       escapeUnicode: true,
@@ -387,8 +404,8 @@ describe('The `PropertiesEditor` class', () => {
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`.edit()` method changes only the comment on a single line', () => {
-    properties.edit('newKey2', {
+  it('`.update()` method changes only the comment on a single line', () => {
+    properties.update('newKey2', {
       newComment: 'New comment for `newKey2`',
       commentDelimiter: '#',
       escapeUnicode: true,
@@ -423,6 +440,69 @@ describe('The `PropertiesEditor` class', () => {
       '# comment before the new third key',
       'newKey3 = This is my third key',
       '! New comment after `newKey3`',
+    ].join('\n')
+    expect(properties.format()).toEqual(propertiesContent)
+  })
+
+  it('`.upsert()` method inserts a new property at the end', () => {
+    properties.upsert('newKey4', 'The value of the fourth key', {
+      comment: 'comment before the new fourth key',
+      commentDelimiter: '!',
+    })
+    propertiesContent = [
+      '# This is the first comment of the file',
+      '# on 2 lines',
+      'newKey1 : new value for `newKey1`\\',
+      'on 2 lines',
+      '# New comment for `newKey2`',
+      'newKey2 This is `newKey2`',
+      '# This is a multiline',
+      '# comment before the new third key',
+      'newKey3 = This is my third key',
+      '! New comment after `newKey3`',
+      '! comment before the new fourth key',
+      'newKey4 = The value of the fourth key',
+    ].join('\n')
+    expect(properties.format()).toEqual(propertiesContent)
+  })
+
+  it('`.upsert()` method updates an existing property', () => {
+    properties.upsert('newKey4', 'The new value of the fourth key', {
+      comment: 'new comment before the new fourth key',
+      commentDelimiter: '#',
+      escapeUnicode: true,
+      separator: ':',
+    })
+    propertiesContent = [
+      '# This is the first comment of the file',
+      '# on 2 lines',
+      'newKey1 : new value for `newKey1`\\',
+      'on 2 lines',
+      '# New comment for `newKey2`',
+      'newKey2 This is `newKey2`',
+      '# This is a multiline',
+      '# comment before the new third key',
+      'newKey3 = This is my third key',
+      '# new comment before the new fourth key',
+      'newKey4 : The new value of the fourth key',
+    ].join('\n')
+    expect(properties.format()).toEqual(propertiesContent)
+  })
+
+  it('`.upsert()` method updates an existing property with no options', () => {
+    properties.upsert('newKey4', 'The new value of the fourth key with no option')
+    propertiesContent = [
+      '# This is the first comment of the file',
+      '# on 2 lines',
+      'newKey1 : new value for `newKey1`\\',
+      'on 2 lines',
+      '# New comment for `newKey2`',
+      'newKey2 This is `newKey2`',
+      '# This is a multiline',
+      '# comment before the new third key',
+      'newKey3 = This is my third key',
+      '# new comment before the new fourth key',
+      'newKey4 : The new value of the fourth key with no option',
     ].join('\n')
     expect(properties.format()).toEqual(propertiesContent)
   })

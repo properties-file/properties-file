@@ -112,7 +112,7 @@ export class Properties {
       property.hasKeyCollisions = true
       property.keyCollisionLines = this.keyLineNumbers[property.key]
 
-      // Remove collision so that we can overwrite it with the latest object.
+      // Remove the collision from the collection (we only keep latest value).
       this.collection = this.collection.filter(
         (existingPropertyObject) => existingPropertyObject.key !== property.key
       )
