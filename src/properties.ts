@@ -44,7 +44,7 @@ export class Properties {
    * @param content - The content of a `.properties` file.
    */
   constructor(content: string | Buffer) {
-    const stringContent = Buffer.isBuffer(content) ? content.toString() : content
+    const stringContent = typeof content === 'string' ? content : content.toString()
     this.hasBom = stringContent.codePointAt(0) === BOM_CODE_POINT
     this.eolCharacter = getFirstEolCharacter(stringContent) ?? DEFAULT_END_OF_LINE_CHARACTER
     this.lines = (this.hasBom ? stringContent.slice(1) : stringContent).split(/\r?\n/)
