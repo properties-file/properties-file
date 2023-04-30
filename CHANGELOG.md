@@ -1,3 +1,9 @@
+## [3.1.1](https://github.com/Avansai/properties-file/compare/3.1.0...3.1.1) (2023-04-30)
+
+### Bug Fixes
+
+- Buffer not found error ([26dde24](https://github.com/Avansai/properties-file/commit/26dde24cd78764110dede1bbed11620a97ba0157))
+
 # [3.1.0](https://github.com/Avansai/properties-file/compare/3.0.0...3.1.0) (2023-04-25)
 
 ### Features
