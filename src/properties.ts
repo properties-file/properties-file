@@ -194,8 +194,6 @@ export class KeyCollisions {
    * Get the number of the line from which the value will be used.
    */
   public getApplicableLineNumber(): number | undefined {
-    // return this.startingLineNumbers.at(-1)
-    // eslint-disable-next-line unicorn/prefer-at
     return this.startingLineNumbers.slice(-1)[0]
   }
 }

@@ -71,6 +71,12 @@ rules:
   'unicorn/prefer-type-error':
     # Not really applicable when using TypeScript (mostly triggers false positives).
     - off
+  'unicorn/prefer-string-replace-all':
+    # Using this would require to transpile the code to keep the same backward compatibility and it adds no value.
+    - off
+  'unicorn/prefer-at':
+    # Using this would require to transpile the code to keep the same backward compatibility and it adds little value.
+    - off
   'prefer-arrow-functions/prefer-arrow-functions':
     # There is no recommended configuration to extend so we have to set it here to enforce arrow functions.
     # @see https://github.com/JamieMason/eslint-plugin-prefer-arrow-functions

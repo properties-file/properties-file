@@ -165,7 +165,6 @@ export class PropertiesEditor extends Properties {
     // Allow multiline comments.
     const commentPrefix = `${options?.commentDelimiter || DEFAULT_COMMENT_DELIMITER} `
     const newLines = `${commentPrefix}${comment}`
-      // eslint-disable-next-line unicorn/prefer-string-replace-all
       .replace(/\r?\n/g, `\n${commentPrefix}`)
       .split(/\n/)
 
@@ -235,7 +234,6 @@ export class PropertiesEditor extends Properties {
       : // eslint-disable-next-line unicorn/no-array-reduce
         [...property.key].reduce<string>(
           (accumulator, character, index) =>
-            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
             `${accumulator}${property.newlinePositions.includes(index) ? '\n' : ''}${character}`,
           ''
         )
@@ -258,7 +256,6 @@ export class PropertiesEditor extends Properties {
               property.newlinePositions.includes(index + (property.valuePosition as number))
                 ? '\n'
                 : ''
-              // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
             }${character}`,
           ''
         )
