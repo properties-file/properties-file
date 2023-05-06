@@ -1,3 +1,9 @@
+# [3.2.0](https://github.com/Avansai/properties-file/compare/3.1.1...3.2.0) (2023-05-06)
+
+### Features
+
+- adding Babel to transpile and minify the build ([cfb0cb4](https://github.com/Avansai/properties-file/commit/cfb0cb464d9b48c145ec0837f0820e5f7e96e22e))
+
 ## [3.1.1](https://github.com/Avansai/properties-file/compare/3.1.0...3.1.1) (2023-04-30)
 
 ### Bug Fixes
