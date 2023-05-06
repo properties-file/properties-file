@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "strict": true,
+    "lib": ["esnext"],
     "target": "es5",
     "module": "CommonJS",
     "declaration": true,

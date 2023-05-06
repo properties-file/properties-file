@@ -193,7 +193,7 @@ export class KeyCollisions {
   /**
    * Get the number of the line from which the value will be used.
    */
-  public getApplicableLineNumber(): number {
-    return this.startingLineNumbers.slice(-1)[0]
+  public getApplicableLineNumber(): number | undefined {
+    return this.startingLineNumbers.at(-1)
   }
 }

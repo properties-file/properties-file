@@ -165,7 +165,7 @@ export class PropertiesEditor extends Properties {
     // Allow multiline comments.
     const commentPrefix = `${options?.commentDelimiter || DEFAULT_COMMENT_DELIMITER} `
     const newLines = `${commentPrefix}${comment}`
-      .replace(/\r?\n/g, `\n${commentPrefix}`)
+      .replaceAll(/\r?\n/g, `\n${commentPrefix}`)
       .split(/\n/)
 
     if (referenceKey === undefined) {
