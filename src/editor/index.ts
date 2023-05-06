@@ -165,7 +165,8 @@ export class PropertiesEditor extends Properties {
     // Allow multiline comments.
     const commentPrefix = `${options?.commentDelimiter || DEFAULT_COMMENT_DELIMITER} `
     const newLines = `${commentPrefix}${comment}`
-      .replaceAll(/\r?\n/g, `\n${commentPrefix}`)
+      // eslint-disable-next-line unicorn/prefer-string-replace-all
+      .replace(/\r?\n/g, `\n${commentPrefix}`)
       .split(/\n/)
 
     if (referenceKey === undefined) {

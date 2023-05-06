@@ -6,11 +6,6 @@
       {
         "targets": {
           "browsers": ["> 0.25%", "not dead"]
-        },
-        "useBuiltIns": "usage",
-        "corejs": {
-          "version": 3,
-          "proposals": true
         }
       }
     ],
