@@ -1,3 +1,9 @@
+## [3.2.1](https://github.com/Avansai/properties-file/compare/3.2.0...3.2.1) (2023-05-06)
+
+### Bug Fixes
+
+- remove corejs dependency ([b2c13cd](https://github.com/Avansai/properties-file/commit/b2c13cdd7b3677d5635e1848d39796736913014c))
+
 # [3.2.0](https://github.com/Avansai/properties-file/compare/3.1.1...3.2.0) (2023-05-06)
 
 ### Features
