@@ -53,7 +53,7 @@
   ],
   "scripts": {
     "add-import-type": "ts-node ./src/add-import-type.ts && rm -f ./lib/add-import-type.*",
-    "build": "npm run prettier && npm run lint-fix && rm -Rf ./lib && tsc && npm run add-import-type && npm run test",
+    "build": "npm run prettier && npm run lint-fix && rm -Rf ./lib && babel --config-file ./.babelrc --extensions .ts src -d lib && tsc && npm run add-import-type && npm run test",
     "ci": "npm run build",
     "lint-check": "eslint --ext .js --ext .jsx --ext .ts --ext .tsx --ext .json .",
     "lint-fix": "eslint --ext .js --ext .jsx --ext .ts --ext .tsx --ext .json --fix .",
@@ -63,10 +63,15 @@
     "test": "jest --coverage"
   },
   "devDependencies": {
+    "@babel/cli": "^7.21.5",
+    "@babel/core": "^7.21.8",
+    "@babel/preset-env": "^7.21.5",
+    "@babel/preset-typescript": "^7.21.5",
     "@release-it/conventional-changelog": "5.1.1",
     "@types/jest": "29.5.1",
     "@typescript-eslint/eslint-plugin": "5.59.2",
     "@typescript-eslint/parser": "5.59.2",
+    "babel-preset-minify": "^0.5.2",
     "dotenv-cli": "7.2.1",
     "eslint": "8.40.0",
     "eslint-config-prettier": "8.8.0",

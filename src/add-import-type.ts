@@ -12,9 +12,7 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 const addReference = (typeFilePath: string, typeReferenceFilePath: string): void => {
   writeFileSync(
     typeFilePath,
-    `/// <reference types="${typeReferenceFilePath}" />\r\n\r\n${readFileSync(
-      typeFilePath
-    ).toString()}`
+    `/// <reference types="${typeReferenceFilePath}" />\r\n${readFileSync(typeFilePath).toString()}`
   )
 }
 
