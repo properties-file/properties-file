@@ -10,7 +10,7 @@
 
 ## Installation 💻
 
-> ⚠ In April 2023, we released version 3 of this package, which includes breaking changes. Please refer to the [migration guide](./V2-TO-V3-MIGRATION-GUIDE.md) before upgrading.
+> ⚠ In April 2023, we released version 3 of this package, which includes breaking changes. Please refer to the [upgrade guide](./V2-TO-V3-UPGRADE-GUIDE.md) before upgrading.
 
 Add the package as a dependency:
 

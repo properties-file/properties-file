@@ -1,4 +1,4 @@
-# V2 to V3 migration guide
+# V2 to V3 upgrade guide
 
 ## Overview
 
