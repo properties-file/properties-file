@@ -1,3 +1,5 @@
+## [3.2.9](https://github.com/Avansai/properties-file/compare/3.2.8...3.2.9) (2023-07-01)
+
 ## [3.2.8](https://github.com/Avansai/properties-file/compare/3.2.7...3.2.8) (2023-06-24)
 
 ## [3.2.7](https://github.com/Avansai/properties-file/compare/3.2.6...3.2.7) (2023-06-17)
