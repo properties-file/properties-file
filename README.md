@@ -4,7 +4,6 @@
 [![npm download](https://img.shields.io/npm/dw/properties-file.svg?color=brightgreen)](https://www.npmjs.com/package/properties-file)
 ![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen.svg)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)
-[![Known Vulnerabilities](https://snyk.io/test/github/Avansai/properties-file/badge.svg?targetFile=package.json)](https://snyk.io/test/github/Avansai/properties-file?targetFile=package.json)
 
 `.properties` file parser, editor, formatter and Webpack loader.
 
