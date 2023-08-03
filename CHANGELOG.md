@@ -1,3 +1,9 @@
+## [3.2.14](https://github.com/Avansai/properties-file/compare/3.2.13...3.2.14) (2023-08-03)
+
+### Bug Fixes
+
+- fix leader/trailing non breaking spaces ([c782613](https://github.com/Avansai/properties-file/commit/c78261312500abc8d286a0205e4f4327c4075964))
+
 ## [3.2.13](https://github.com/Avansai/properties-file/compare/3.2.12...3.2.13) (2023-07-29)
 
 ## [3.2.12](https://github.com/Avansai/properties-file/compare/3.2.11...3.2.12) (2023-07-22)
