@@ -11,6 +11,7 @@ keyWithBackslashes => 'This has random backslashes'
 keyWithDelimiters:=  => 'This is the value for the key "keyWithDelimiters:= "'
 keyWitheven\ => 'this colon is not escaped'
 language => 'English'
+leadingNonBreakingSpace => ' this space should be part of the key'
 multiline => 'This line continues on 3 lines'
 multilineKey => 'this is a multiline key'
 noWhiteSpace => 'The key will be "noWhiteSpace" without any whitespace.    '
@@ -18,6 +19,7 @@ oddKey => 'This is line one and\# This is line two'
 orLikeThis => ''
 path => 'c:\wiki\templates'
 topic => '.properties file'
+trailingNonBreakingSpace => 'this line will have a trailing non-breaking space '
 valueWithEscapes => 'This is a newline
 , a carriage return, a tab	 and a formfeed.'
 website => 'https://en.wikipedia.org/'

@@ -171,7 +171,8 @@ export class Property {
 
       // Check if the separator starts with a whitespace.
       let nextContent = this.linesContent.slice(position)
-      const leadingWhitespaceMatch = nextContent.match(/^(?<whitespace>\s+)/)
+      // All white-space characters, excluding non-breaking spaces.
+      const leadingWhitespaceMatch = nextContent.match(/^(?<whitespace>[\t\n\v\f\r ]+)/)
       const leadingWhitespace = leadingWhitespaceMatch?.groups?.whitespace || ''
 
       // If there is a whitespace, move to the next character.
@@ -185,7 +186,7 @@ export class Property {
         separator += nextContent[0]
         nextContent = nextContent.slice(1)
         // If an equal or colon character was found, try to get trailing whitespace.
-        const trailingWhitespaceMatch = nextContent.match(/^(?<whitespace>\s+)/)
+        const trailingWhitespaceMatch = nextContent.match(/^(?<whitespace>[\t\n\v\f\r ]+)/)
         const trailingWhitespace = trailingWhitespaceMatch?.groups?.whitespace || ''
         separator += trailingWhitespace
       }

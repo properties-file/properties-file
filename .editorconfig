@@ -25,3 +25,12 @@ tab_width = 2
 
 # This will automatically map to Prettier's `printWidth: 100` option.
 max_line_length = 100
+
+# Do not change the Java output.
+[test-all-java-console-output]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+indent_style = unset
+indent_size = unset
