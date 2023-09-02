@@ -1,6 +1,6 @@
 {
   "name": "properties-file",
-  "version": "3.2.18",
+  "version": "3.2.19",
   "description": ".properties file parser, editor, formatter and Webpack loader.",
   "keywords": [
     ".properties",
