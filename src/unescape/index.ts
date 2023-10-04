@@ -8,9 +8,8 @@
  * @throws {@link Error}
  * This exception is thrown if malformed escaped unicode characters are present.
  */
-export const unescapeContent = (escapedContent: string): string => escapedContent.replace(
-  /\\[^u]|\\u..../g,
-  function unescapeOne(escapeSequence: string): string {
+export const unescapeContent = (escapedContent: string): string =>
+  escapedContent.replace(/\\[^u]|\\u.{4}/g, (escapeSequence: string): string => {
     const nextCharacter = escapeSequence.charAt(1)
     switch (nextCharacter) {
       case 'f': {
