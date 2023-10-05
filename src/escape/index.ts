@@ -35,66 +35,50 @@ const escapeContent = (
   unescapedContent: string,
   escapeSpace: boolean,
   escapeUnicode: boolean
-): string => {
-  let escapedContent = ''
-  for (
-    let character = unescapedContent[0], position = 0;
-    position < unescapedContent.length;
-    position++, character = unescapedContent[position]
-  ) {
+): string =>
+  // By using a regular expression we avoid iterating through all characters and improve performance.
+  unescapedContent.replace(/[\s!#:=\\]|[^\u0020-\u007E]/g, (character) => {
     switch (character) {
       case ' ': {
-        // Escape space if required, or if it is first character.
-        escapedContent += escapeSpace || position === 0 ? '\\ ' : ' '
-        break
+        // Escape space if required, or if it's the first character.
+        return escapeSpace || character === unescapedContent[0] ? '\\ ' : ' '
       }
-      // Backslash.
       case '\\': {
-        escapedContent += '\\\\'
-        break
+        // Backslash.
+        return '\\\\'
       }
       case '\f': {
         // Formfeed.
-        escapedContent += '\\f'
-        break
+        return '\\f'
       }
       case '\n': {
         // Newline.
-        escapedContent += '\\n'
-        break
+        return '\\n'
       }
       case '\r': {
         // Carriage return.
-        escapedContent += '\\r'
-        break
+        return '\\r'
       }
       case '\t': {
         // Tab.
-        escapedContent += '\\t'
-        break
+        return '\\t'
       }
       case '=':
       case ':':
       case '#':
       case '!': {
-        // Escapes =, :, # and !.
-        escapedContent += `\\${character}`
-        break
+        // =, :, # and !.
+        return `\\${character}`
       }
       default: {
         if (escapeUnicode) {
           const codePoint: number = character.codePointAt(0) as number // Can never be `undefined`.
           if (codePoint < 0x0020 || codePoint > 0x007e) {
-            escapedContent += `\\u${codePoint.toString(16).padStart(4, '0')}`
-            break
+            // Any character that is not in the range of ASCII printable characters.
+            return `\\u${codePoint.toString(16).padStart(4, '0')}`
           }
         }
-        // Non-escapable characters.
-        escapedContent += character
-        break
+        return character
       }
     }
-  }
-
-  return escapedContent
-}
+  })

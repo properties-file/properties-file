@@ -9,6 +9,7 @@
  * This exception is thrown if malformed escaped unicode characters are present.
  */
 export const unescapeContent = (escapedContent: string): string =>
+  // By using a regular expression we avoid iterating through all characters and improve performance.
   escapedContent.replace(/\\[^u]|\\u.{4}/g, (escapeSequence: string): string => {
     const nextCharacter = escapeSequence.charAt(1)
     switch (nextCharacter) {
