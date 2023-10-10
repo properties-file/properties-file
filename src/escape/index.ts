@@ -38,11 +38,11 @@ const escapeContent = (
 ): string =>
   unescapedContent.replace(
     new RegExp(`[\\s!#:=\\\\${escapeUnicode ? '\\u0000-\\u001F\\u007F-\\uFFFF' : ''}]`, 'g'),
-    (character) => {
+    (character, position) => {
       switch (character) {
         case ' ': {
-          // Escape space if required, or if it's the first character.
-          return escapeSpace ? '\\ ' : ' '
+          // Spaces.
+          return escapeSpace || position === 0 ? '\\ ' : ' '
         }
         case '\\': {
           // Backslash.

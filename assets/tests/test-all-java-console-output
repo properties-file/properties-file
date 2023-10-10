@@ -22,5 +22,6 @@ topic => '.properties file'
 trailingNonBreakingSpace => 'this line will have a trailing non-breaking space '
 valueWithEscapes => 'This is a newline
 , a carriage return, a tab	 and a formfeed.'
+valueWithLeadingSpaces => '   There are 3 leading spaces.'
 website => 'https://en.wikipedia.org/'
 welcome => 'Welcome to Wikipedia!    '
