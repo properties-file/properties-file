@@ -1,3 +1,9 @@
+## [3.3.1](https://github.com/Avansai/properties-file/compare/3.3.0...3.3.1) (2023-10-10)
+
+### Bug Fixes
+
+- fix leading space behavior on values ([d7b2ee5](https://github.com/Avansai/properties-file/commit/d7b2ee5e45ee0b59b27a628dcadc9e2ea3539b57))
+
 # [3.3.0](https://github.com/Avansai/properties-file/compare/3.2.25...3.3.0) (2023-10-10)
 
 ### Bug Fixes
