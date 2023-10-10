@@ -1,3 +1,9 @@
+# [3.3.0](https://github.com/Avansai/properties-file/compare/3.2.25...3.3.0) (2023-10-10)
+
+### Bug Fixes
+
+- fix issue [#18](https://github.com/Avansai/properties-file/issues/18) (performance optimization for `escapeContent`) ([7ea1b2b](https://github.com/Avansai/properties-file/commit/7ea1b2b1c53fe9f991473a8d655beafa15220cf9))
+
 ## [3.2.25](https://github.com/Avansai/properties-file/compare/3.2.24...3.2.25) (2023-10-05)
 
 ### Bug Fixes
