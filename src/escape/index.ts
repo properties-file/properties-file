@@ -29,56 +29,52 @@ export const escapeValue = (unescapedValue: string, escapeUnicode = false): stri
  * @param escapeSpace - Escape spaces?
  * @param escapeUnicode - Escape unicode characters into ISO-8859-1 compatible encoding?
  *
- * @returns The unescaped content.
+ * @returns The escaped content.
  */
 const escapeContent = (
   unescapedContent: string,
   escapeSpace: boolean,
   escapeUnicode: boolean
 ): string =>
-  // By using a regular expression we avoid iterating through all characters and improve performance.
-  unescapedContent.replace(/[\s!#:=\\]|[^\u0020-\u007E]/g, (character) => {
-    switch (character) {
-      case ' ': {
-        // Escape space if required, or if it's the first character.
-        return escapeSpace || character === unescapedContent[0] ? '\\ ' : ' '
-      }
-      case '\\': {
-        // Backslash.
-        return '\\\\'
-      }
-      case '\f': {
-        // Formfeed.
-        return '\\f'
-      }
-      case '\n': {
-        // Newline.
-        return '\\n'
-      }
-      case '\r': {
-        // Carriage return.
-        return '\\r'
-      }
-      case '\t': {
-        // Tab.
-        return '\\t'
-      }
-      case '=':
-      case ':':
-      case '#':
-      case '!': {
-        // =, :, # and !.
-        return `\\${character}`
-      }
-      default: {
-        if (escapeUnicode) {
-          const codePoint: number = character.codePointAt(0) as number // Can never be `undefined`.
-          if (codePoint < 0x0020 || codePoint > 0x007e) {
-            // Any character that is not in the range of ASCII printable characters.
-            return `\\u${codePoint.toString(16).padStart(4, '0')}`
-          }
+  unescapedContent.replace(
+    new RegExp(`[\\s!#:=\\\\${escapeUnicode ? '\\u0000-\\u001F\\u007F-\\uFFFF' : ''}]`, 'g'),
+    (character) => {
+      switch (character) {
+        case ' ': {
+          // Escape space if required, or if it's the first character.
+          return escapeSpace ? '\\ ' : ' '
         }
-        return character
+        case '\\': {
+          // Backslash.
+          return '\\\\'
+        }
+        case '\f': {
+          // Formfeed.
+          return '\\f'
+        }
+        case '\n': {
+          // Newline.
+          return '\\n'
+        }
+        case '\r': {
+          // Carriage return.
+          return '\\r'
+        }
+        case '\t': {
+          // Tab.
+          return '\\t'
+        }
+        case '=':
+        case ':':
+        case '#':
+        case '!': {
+          // =, :, # and !.
+          return `\\${character}`
+        }
+        default: {
+          // Any character that is not in the range of ASCII printable characters.
+          return `\\u${(character.codePointAt(0) as number).toString(16).padStart(4, '0')}`
+        }
       }
     }
-  })
+  )
