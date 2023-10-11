@@ -1,3 +1,9 @@
+## [3.3.3](https://github.com/Avansai/properties-file/compare/3.3.2...3.3.3) (2023-10-11)
+
+### Bug Fixes
+
+- fix [#17](https://github.com/Avansai/properties-file/issues/17) (improve `PropertiesEditor .insert()` performance) ([73531d5](https://github.com/Avansai/properties-file/commit/73531d53cbfd2b88979538343555fb65f15e314a))
+
 ## [3.3.2](https://github.com/Avansai/properties-file/compare/3.3.1...3.3.2) (2023-10-11)
 
 ### Bug Fixes
