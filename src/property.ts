@@ -142,27 +142,19 @@ export class Property {
       return
     }
 
-    for (
-      let character = this.linesContent[0], position = 0;
-      position < this.linesContent.length;
-      position++, character = this.linesContent[position]
-    ) {
-      // If the character is not a separator, check the next one.
-      if (!/[\t\f :=]/.test(character)) {
-        continue
-      }
+    // Only match separators to avoid iterating all characters.
+    for (const match of this.linesContent.matchAll(/[\t\f :=]/g)) {
+      const position = match.index!
 
       // Check if the separator might be escaped.
-      const prefix = position ? this.linesContent.slice(0, position) : ''
+      const prefix = this.linesContent.slice(0, position)
+      const backslashMatch = prefix.match(/(?<backslashes>\\+)$/)
 
-      if (prefix.length > 0) {
-        const backslashMatch = prefix.match(/(?<backslashes>\\+)$/)
-        if (backslashMatch?.groups) {
-          const separatorIsEscaped = !!(backslashMatch.groups.backslashes.length % 2)
-          if (separatorIsEscaped) {
-            // If the separator is escaped, check the next character.
-            continue
-          }
+      if (backslashMatch?.groups) {
+        const separatorIsEscaped = !!(backslashMatch.groups.backslashes.length % 2)
+        if (separatorIsEscaped) {
+          // If the separator is escaped, check the next character.
+          continue
         }
       }
 

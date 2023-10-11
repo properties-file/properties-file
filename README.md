@@ -270,7 +270,7 @@ Just like Java, if a Unicode-escaped character (`\u`) is malformed, an error wil
 
 ## Additional references
 
-- Java [Test Sandbox](https://codehs.com/sandbox/id/java-main-uSOlNK)
+- Java [Test Sandbox](https://codehs.com/sandbox/id/java-main-FObePj)
 - Java's `Properties` class [documentation](https://docs.oracle.com/javase/9/docs/api/java/util/Properties.html)
 - Java's `PropertyResourceBundle` [documentation](https://docs.oracle.com/javase/9/docs/api/java/util/PropertyResourceBundle.html)
 - Java's Internationalization [Guide](https://docs.oracle.com/en/java/javase/18/intl/internationalization-overview.html)
