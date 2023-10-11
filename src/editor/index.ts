@@ -72,6 +72,9 @@ export type UpsertOptions = {
  * A .properties file editor.
  */
 export class PropertiesEditor extends Properties {
+  /** Is line parsing required to re-async the object's properties? */
+  private needsLineParsing = false
+
   /**
    * Create `PropertiesEditor` object.
    *
@@ -79,6 +82,16 @@ export class PropertiesEditor extends Properties {
    */
   constructor(content: string) {
     super(content)
+  }
+
+  /**
+   * Parse the `.properties` content line by line only when needed.
+   */
+  private parseLinesIfNeeded(): void {
+    if (this.needsLineParsing) {
+      this.parseLines()
+      this.needsLineParsing = false
+    }
   }
 
   /**
@@ -99,6 +112,10 @@ export class PropertiesEditor extends Properties {
       : ` ${DEFAULT_SEPARATOR} `.replace('  ', ' ')
     const referenceKey = options?.referenceKey
     const position = options?.position || 'after'
+
+    if (referenceKey) {
+      this.parseLinesIfNeeded()
+    }
 
     // Allow multiline keys.
     const multilineKey = key
@@ -124,7 +141,7 @@ export class PropertiesEditor extends Properties {
     if (referenceKey === undefined) {
       // Insert the new property at the end if the reference key was not defined.
       this.lines.push(...newLines)
-      this.parseLines()
+      this.needsLineParsing = true
       return true
     } else {
       // Find the last occurrence of the reference key.
@@ -143,7 +160,7 @@ export class PropertiesEditor extends Properties {
           ...newLines,
           ...this.lines.slice(insertPosition),
         ]
-        this.parseLines()
+        this.needsLineParsing = true
         return true
       }
       return false
@@ -162,6 +179,10 @@ export class PropertiesEditor extends Properties {
     const referenceKey = options?.referenceKey
     const position = options?.position || 'after'
 
+    if (referenceKey) {
+      this.parseLinesIfNeeded()
+    }
+
     // Allow multiline comments.
     const commentPrefix = `${options?.commentDelimiter || DEFAULT_COMMENT_DELIMITER} `
     const newLines = `${commentPrefix}${comment}`
@@ -171,7 +192,7 @@ export class PropertiesEditor extends Properties {
     if (referenceKey === undefined) {
       // Insert the new comment at the end if the reference key was not defined.
       this.lines.push(...newLines)
-      this.parseLines()
+      this.needsLineParsing = true
       return true
     } else {
       // Find the last occurrence of the reference key.
@@ -190,7 +211,7 @@ export class PropertiesEditor extends Properties {
           ...newLines,
           ...this.lines.slice(insertPosition),
         ]
-        this.parseLines()
+        this.needsLineParsing = true
         return true
       }
       return false
@@ -206,6 +227,8 @@ export class PropertiesEditor extends Properties {
    * @returns True if the key was deleted, otherwise false.
    */
   public delete(key: string, deleteCommentsAndWhiteSpace = true): boolean {
+    this.parseLinesIfNeeded()
+
     // Find the last occurrence of the key.
     const property = [...this.collection].reverse().find((property) => property.key === key)
 
@@ -215,7 +238,7 @@ export class PropertiesEditor extends Properties {
         : property.startingLineNumber - 1
       const endLine = property.endingLineNumber
       this.lines = [...this.lines.slice(0, startLine), ...this.lines.slice(endLine)]
-      this.parseLines()
+      this.needsLineParsing = true
       return true
     }
     return false
@@ -270,6 +293,8 @@ export class PropertiesEditor extends Properties {
    * @returns True if the key was updated, otherwise false.
    */
   public update(key: string, options?: UpdateOptions): boolean {
+    this.parseLinesIfNeeded()
+
     // Find the last occurrence of the key to update.
     const property = [...this.collection].reverse().find((property) => property.key === key)
 
@@ -316,7 +341,7 @@ export class PropertiesEditor extends Properties {
       ...newLines,
       ...this.lines.slice(property.endingLineNumber),
     ]
-    this.parseLines()
+    this.needsLineParsing = true
     return true
   }
 
@@ -330,6 +355,8 @@ export class PropertiesEditor extends Properties {
    * @returns True if the key was updated or inserted, otherwise false.
    */
   public upsert(key: string, value: string, options?: UpsertOptions): boolean {
+    this.parseLinesIfNeeded()
+
     return this.keyLineNumbers[key]
       ? this.update(key, {
           newValue: value,
