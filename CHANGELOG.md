@@ -1,3 +1,9 @@
+## [3.3.2](https://github.com/Avansai/properties-file/compare/3.3.1...3.3.2) (2023-10-11)
+
+### Bug Fixes
+
+- fix [#19](https://github.com/Avansai/properties-file/issues/19) (improve parsing performance) ([1b2ef59](https://github.com/Avansai/properties-file/commit/1b2ef595f3bd218968615a7febdf05d7aee82610))
+
 ## [3.3.1](https://github.com/Avansai/properties-file/compare/3.3.0...3.3.1) (2023-10-10)
 
 ### Bug Fixes
