@@ -1,3 +1,5 @@
+## [3.3.4](https://github.com/Avansai/properties-file/compare/3.3.3...3.3.4) (2023-10-13)
+
 ## [3.3.3](https://github.com/Avansai/properties-file/compare/3.3.2...3.3.3) (2023-10-11)
 
 ### Bug Fixes
