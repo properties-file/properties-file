@@ -5,11 +5,11 @@
       "@babel/preset-env",
       {
         "targets": {
-          "browsers": ["> 0.25%", "not dead"],
-        },
-      },
+          "browsers": ["> 0.25%", "not dead"]
+        }
+      }
     ],
-    "@babel/preset-typescript",
+    "@babel/preset-typescript"
   ],
-  "ignore": ["**/*.d.ts"],
+  "ignore": ["**/*.d.ts"]
 }
