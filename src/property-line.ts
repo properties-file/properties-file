@@ -2,7 +2,7 @@
  * Object representing a line from the content of .properties file.
  */
 export class PropertyLine {
-  /** The line content, minus the trailing \ that identifies that the line is continuing. */
+  /** The line content, minus the trailing `\` that identifies that the line is continuing. */
   public content: string
   /** True if the line is continuing to the next line, otherwise false. */
   public isContinuing = false

@@ -1,13 +1,10 @@
 {
   "compilerOptions": {
-    "strict": true,
     "lib": ["esnext"],
     "target": "es5",
-    "module": "CommonJS",
     "declaration": true,
-    "emitDeclarationOnly": true,
-    "outDir": "lib/",
-    "downlevelIteration": true
+    "downlevelIteration": true,
+    "strict": true
   },
   "include": ["src/**/*.ts"]
 }

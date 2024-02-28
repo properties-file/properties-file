@@ -4,7 +4,7 @@
  * @param unescapedKey - A property key to be escaped.
  * @param escapeUnicode - Escape unicode characters into ISO-8859-1 compatible encoding?
  *
- * @return The escaped key.
+ * @returns The escaped key.
  */
 export const escapeKey = (unescapedKey: string, escapeUnicode = false): string => {
   return escapeContent(unescapedKey, true, escapeUnicode)
@@ -16,7 +16,7 @@ export const escapeKey = (unescapedKey: string, escapeUnicode = false): string =
  * @param unescapedValue - Property value to be escaped.
  * @param escapeUnicode - Escape unicode characters into ISO-8859-1 compatible encoding?
  *
- * @return The escaped value.
+ * @returns The escaped value.
  */
 export const escapeValue = (unescapedValue: string, escapeUnicode = false): string => {
   return escapeContent(unescapedValue, false, escapeUnicode)
