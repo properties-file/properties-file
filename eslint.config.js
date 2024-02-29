@@ -141,6 +141,7 @@ export default [
     files: TYPESCRIPT_FILES,
     plugins: {
       tsdoc: tsdocPlugin,
+      import: importPlugin,
       '@typescript-eslint': tsPlugin,
     },
     languageOptions: {
