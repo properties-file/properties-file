@@ -1,7 +1,8 @@
-/** This allows to get the correct type when using `import` on `.properties` files. */
 declare module '*.properties' {
-  const properties: {
+  /** A key/value object representing the content of a `.properties` file. */
+  const keyValuePairObject: {
+    /** The value of a `.properties` file key. */
     readonly [key: string]: string
   }
-  export default properties
+  export = keyValuePairObject
 }

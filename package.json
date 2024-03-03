@@ -84,7 +84,7 @@
   ],
   "scripts": {
     "add-file-type-declaration": "node ./lib/esm/add-import-type.js && find ./lib -name 'add-import-type.*' -type f -delete",
-    "build": "check-node-version --node '>=16' && npm run prettier && npm run lint-fix && rm -Rf ./lib && tsc -p tsconfig.cjs.json && tsc -p tsconfig.esm.json && echo '{ \"type\": \"commonjs\" }' > lib/cjs/package.json && tsc -p tsconfig.build-scripts.json && node lib/build-scripts/run-all.js && npm run test",
+    "build": "check-node-version --node '>=16' && npm run prettier && npm run lint-fix && rm -Rf ./lib && tsc -p tsconfig.cjs.json && tsc -p tsconfig.esm.json && echo '{ \"type\": \"commonjs\" }' > lib/cjs/package.json && tsc -p tsconfig.build-scripts.json && node lib/build-scripts/build.js && npm run test",
     "ci": "npm run build",
     "lint-fix": "eslint --fix .",
     "prettier": "prettier --write .",
@@ -94,7 +94,7 @@
   "devDependencies": {
     "@release-it/conventional-changelog": "8.0.1",
     "@types/jest": "29.5.12",
-    "@types/node": "^20.11.22",
+    "@types/node": "^20.11.24",
     "@typescript-eslint/eslint-plugin": "7.1.0",
     "@typescript-eslint/parser": "7.1.0",
     "check-node-version": "^4.2.1",
