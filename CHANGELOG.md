@@ -1,3 +1,9 @@
+## [3.4.1](https://github.com/Avansai/properties-file/compare/3.4.0...3.4.1) (2024-03-03)
+
+### Bug Fixes
+
+- correct ESM paths for dual CJS/ESM compatibility ([98f53c8](https://github.com/Avansai/properties-file/commit/98f53c8d5f37f2c6a16a3f8e814a993d387c75d6))
+
 # [3.4.0](https://github.com/Avansai/properties-file/compare/3.3.19...3.4.0) (2024-02-28)
 
 ### Features
