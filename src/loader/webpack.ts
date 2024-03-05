@@ -8,6 +8,6 @@ import { getProperties } from '..'
  * @returns A Webpack file loader string containing the content of  a `.properties` file.
  */
 const webpackLoader = (content: string): string =>
-  `module.exports = ${JSON.stringify(getProperties(content))};`
+  `exports.properties = ${JSON.stringify(getProperties(content))};`
 
 export default webpackLoader

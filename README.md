@@ -212,18 +212,21 @@ module.exports = {
 
 As soon as you configure Webpack, the `.properties` type should be available in your IDE when using `import`. If you ever need to add it manually, you can add a `*.properties` type declaration file at the root of your application, like this:
 
-```js
-// properties-file.d.ts
+```ts
 declare module '*.properties' {
-  const properties: { readonly [key: string]: string };
-  export default properties;
+  /** A key/value object representing the content of a `.properties` file. */
+  const properties: {
+    /** The value of a `.properties` file key. */
+    [key: string]: string
+  }
+  export { properties }
 }
 ```
 
 By adding these configurations you should now be able to import directly `.properties` files just like this:
 
 ```ts
-import helloWorld from './hello-world.properties'
+import { properties as helloWorld } from './hello-world.properties'
 
 console.dir(helloWorld)
 ```

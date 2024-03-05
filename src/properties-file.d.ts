@@ -1,8 +1,8 @@
 declare module '*.properties' {
   /** A key/value object representing the content of a `.properties` file. */
-  const keyValuePairObject: {
+  const properties: {
     /** The value of a `.properties` file key. */
-    readonly [key: string]: string
+    [key: string]: string
   }
-  export = keyValuePairObject
+  export { properties }
 }
