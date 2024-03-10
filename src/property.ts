@@ -144,7 +144,7 @@ export class Property {
 
     // Only match separators to avoid iterating all characters.
     for (const match of this.linesContent.matchAll(/[\t\f :=]/g)) {
-      const position = match.index!
+      const position = match.index
 
       // Check if the separator might be escaped.
       const prefix = this.linesContent.slice(0, position)
