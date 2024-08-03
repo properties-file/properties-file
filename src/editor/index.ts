@@ -154,7 +154,7 @@ export class PropertiesEditor extends Properties {
         const insertPosition =
           position === 'after'
             ? property.endingLineNumber
-            : property.previousProperty?.endingLineNumber ?? 0
+            : (property.previousProperty?.endingLineNumber ?? 0)
         this.lines = [
           ...this.lines.slice(0, insertPosition),
           ...newLines,
@@ -205,7 +205,7 @@ export class PropertiesEditor extends Properties {
         const insertPosition =
           position === 'after'
             ? property.endingLineNumber
-            : property.previousProperty?.endingLineNumber ?? 0
+            : (property.previousProperty?.endingLineNumber ?? 0)
         this.lines = [
           ...this.lines.slice(0, insertPosition),
           ...newLines,
@@ -234,7 +234,7 @@ export class PropertiesEditor extends Properties {
 
     if (property) {
       const startLine = deleteCommentsAndWhiteSpace
-        ? property.previousProperty?.endingLineNumber ?? 0
+        ? (property.previousProperty?.endingLineNumber ?? 0)
         : property.startingLineNumber - 1
       const endLine = property.endingLineNumber
       this.lines = [...this.lines.slice(0, startLine), ...this.lines.slice(endLine)]
@@ -336,7 +336,7 @@ export class PropertiesEditor extends Properties {
         0,
         options.newComment === undefined
           ? property.startingLineNumber - 1
-          : property.previousProperty?.endingLineNumber ?? 0
+          : (property.previousProperty?.endingLineNumber ?? 0)
       ),
       ...newLines,
       ...this.lines.slice(property.endingLineNumber),

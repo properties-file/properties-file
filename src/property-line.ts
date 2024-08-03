@@ -33,11 +33,11 @@ export class PropertyLine {
       }
       if (!this.isComment) {
         // Otherwise, check if the line is continuing on the next line.
-        const backslashMatch = this.content.match(/(?<backslashes>\\+)$/)
+        const backslashMatch = this.content.match(/(\\+)$/)
 
-        if (backslashMatch?.groups) {
+        if (backslashMatch) {
           // If the number of backslashes is odd, the line is continuing, otherwise it doesn't.
-          this.isContinuing = !!(backslashMatch.groups.backslashes.length % 2)
+          this.isContinuing = !!(backslashMatch[1].length % 2)
           if (this.isContinuing) {
             // Remove the trailing slash so that we can concatenate the line with the next one.
             this.content = this.content.slice(0, -1)
