@@ -1,5 +1,8 @@
 ## [3.5.5](https://github.com/Avansai/properties-file/compare/3.5.4...3.5.5) (2024-08-03)
 
+- ESLint 9 cannot be upgraded yet because some dependencies are still incompatible.
+- TypeScript has been upgraded to the latest version, and non-ES5 compatible code has been identified and corrected.
+
 ## [3.5.4](https://github.com/Avansai/properties-file/compare/3.5.3...3.5.4) (2024-04-01)
 
 ## [3.5.3](https://github.com/Avansai/properties-file/compare/3.5.2...3.5.3) (2024-03-23)
