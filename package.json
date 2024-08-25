@@ -85,7 +85,7 @@
   "scripts": {
     "add-file-type-declaration": "node ./lib/esm/add-import-type.js && find ./lib -name 'add-import-type.*' -type f -delete",
     "build": "check-node-version --node '>=16' && npm run prettier && npm run lint-fix && rm -Rf ./lib && tsc -p tsconfig.cjs.json && tsc -p tsconfig.esm.json && echo '{ \"type\": \"commonjs\" }' > lib/cjs/package.json && tsc -p tsconfig.build-scripts.json && node lib/build-scripts/build.js && npm run test",
-    "ci": "npm run build",
+    "ci": "npm run build --legacy-peer-deps",
     "depcheck": "depcheck",
     "lint-fix": "eslint --fix .",
     "prettier": "prettier --write .",
