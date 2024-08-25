@@ -254,8 +254,7 @@ export class PropertiesEditor extends Properties {
   private getKeyWithNewlines(property: Property): string {
     return property.newlinePositions.length === 0
       ? property.key
-      : // eslint-disable-next-line unicorn/no-array-reduce
-        [...property.key].reduce<string>(
+      : [...property.key].reduce<string>(
           (accumulator, character, index) =>
             `${accumulator}${property.newlinePositions.includes(index) ? '\n' : ''}${character}`,
           ''
@@ -272,8 +271,7 @@ export class PropertiesEditor extends Properties {
   private getValueWithNewlines(property: Property): string {
     return property.newlinePositions.length === 0 || property.valuePosition === undefined
       ? property.value
-      : // eslint-disable-next-line unicorn/no-array-reduce
-        [...property.value].reduce<string>(
+      : [...property.value].reduce<string>(
           (accumulator, character, index) =>
             `${accumulator}${
               property.newlinePositions.includes(index + (property.valuePosition as number))

@@ -37,12 +37,12 @@ const escapeContent = (
   escapeUnicode: boolean
 ): string =>
   unescapedContent.replace(
-    new RegExp(`[\\s!#:=\\\\${escapeUnicode ? '\\u0000-\\u001F\\u007F-\\uFFFF' : ''}]`, 'g'),
+    new RegExp(`[\\s!#:=\\\\${escapeUnicode ? String.raw`\u0000-\u001F\u007F-\uFFFF` : ''}]`, 'g'),
     (character, position) => {
       switch (character) {
         case ' ': {
           // Spaces.
-          return escapeSpace || position === 0 ? '\\ ' : ' '
+          return escapeSpace || position === 0 ? String.raw`\ ` : ' '
         }
         case '\\': {
           // Backslash.
@@ -50,19 +50,19 @@ const escapeContent = (
         }
         case '\f': {
           // Formfeed.
-          return '\\f'
+          return String.raw`\f`
         }
         case '\n': {
           // Newline.
-          return '\\n'
+          return String.raw`\n`
         }
         case '\r': {
           // Carriage return.
-          return '\\r'
+          return String.raw`\r`
         }
         case '\t': {
           // Tab.
-          return '\\t'
+          return String.raw`\t`
         }
         case '=':
         case ':':

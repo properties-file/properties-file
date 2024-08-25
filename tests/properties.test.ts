@@ -34,7 +34,7 @@ describe('The `Properties` class', () => {
 
   it('throws an error when there are malformed unicode characters', () => {
     expect(() => {
-      getProperties('hello = \\uhello')
+      getProperties(String.raw`hello = \uhello`)
     }).toThrow('malformed escaped unicode characters')
   })
 
