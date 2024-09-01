@@ -1,3 +1,5 @@
+## [3.5.7](https://github.com/properties-file/properties-file/compare/3.5.6...3.5.7) (2024-09-01)
+
 ## [3.5.6](https://github.com/Avansai/properties-file/compare/3.5.5...3.5.6) (2024-08-25)
 
 ### Bug Fixes
