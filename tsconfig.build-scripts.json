@@ -4,8 +4,6 @@
     "target": "ESNext",
     "module": "ESNext",
     "esModuleInterop": true,
-    "declaration": true,
-    "downlevelIteration": true,
     "strict": true,
     "outDir": "lib/build-scripts",
     "moduleResolution": "node"
