@@ -121,7 +121,7 @@
     "prettier-plugin-organize-imports": "4.0.0",
     "prettier-plugin-sh": "0.14.0",
     "release-it": "17.6.0",
-    "terser": "5.32.0",
+    "terser": "5.33.0",
     "ts-jest": "29.2.5",
     "typescript": "5.6.2"
   },
