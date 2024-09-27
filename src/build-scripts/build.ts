@@ -9,7 +9,7 @@ import { minify_sync as minify } from 'terser'
  * +------------------------------------------------------------------+
  */
 
-console.log(`🏃 Running build step: add file type declarations.${EOL}`)
+console.log(`${EOL}🏃 Running build step: add file type declarations.${EOL}`)
 
 /**
  * Append a type declaration to another type file.

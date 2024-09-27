@@ -194,7 +194,7 @@ export default [
     files: TYPESCRIPT_FILES.map((pattern) => `src/build-scripts/${pattern}`),
     languageOptions: {
       parserOptions: {
-        project: ['tsconfig.build-scripts.json'],
+        project: ['src/build-scripts/tsconfig.json'],
       },
     },
   },

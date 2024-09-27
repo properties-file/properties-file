@@ -2,12 +2,6 @@
 
 ## [3.5.6](https://github.com/Avansai/properties-file/compare/3.5.5...3.5.6) (2024-08-25)
 
-### Bug Fixes
-
-- fix automated GitHub tests ([8e2ea8e](https://github.com/Avansai/properties-file/commit/8e2ea8e13d61c96a7b524c8ebf86a5fe86da86e3))
-- fix automated GitHub tests ([be6c317](https://github.com/Avansai/properties-file/commit/be6c3170d83b8ace94dd12b71c62db51ff4f535a))
-- fix automated GitHub tests ([133a7ea](https://github.com/Avansai/properties-file/commit/133a7eae4e9881bb2f5f037ae0311e6929e62905))
-
 ## [3.5.5](https://github.com/Avansai/properties-file/compare/3.5.4...3.5.5) (2024-08-03)
 
 - ESLint 9 cannot be upgraded yet because some dependencies are still incompatible.
