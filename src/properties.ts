@@ -20,7 +20,7 @@ export const DEFAULT_END_OF_LINE_CHARACTER = '\n'
  */
 export const getFirstEolCharacter = (content: string): string | undefined => {
   const newlineIndex = content.indexOf('\n')
-  return newlineIndex < 0 ? undefined : `${content[newlineIndex - 1] === '\r' ? '\r' : ''}\n`
+  return newlineIndex === -1 ? undefined : `${content[newlineIndex - 1] === '\r' ? '\r' : ''}\n`
 }
 
 /**
