@@ -1,3 +1,5 @@
+## [3.5.10](https://github.com/properties-file/properties-file/compare/3.5.9...3.5.10) (2024-11-23)
+
 ## [3.5.9](https://github.com/properties-file/properties-file/compare/3.5.8...3.5.9) (2024-10-05)
 
 ## [3.5.8](https://github.com/properties-file/properties-file/compare/3.5.7...3.5.8) (2024-09-27)
