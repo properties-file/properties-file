@@ -31,7 +31,7 @@ const appendFileTypeDeclaration = (
 }
 
 // Since the package supports both CommonJS and ECMAScript modules, we need to add the type reference to both.
-const declarationDirectoryPaths = ['lib/cjs', 'lib/esm']
+const declarationDirectoryPaths = ['dist/cjs', 'dist/esm']
 
 /**
  * Since the type file to open `.properties` files is not a module and cannot be copied, we need to
@@ -101,7 +101,7 @@ const getEsmFilePaths = (esmBuildDirectoryPath: string): string[] =>
 
 console.log(`${EOL}🏃 Running build step: add ESM file extensions.${EOL}`)
 
-getEsmFilePaths('lib/esm').forEach((filePath) => {
+getEsmFilePaths('dist/esm').forEach((filePath) => {
   const fileContent = readFileSync(filePath).toString()
   const newFileContent = fileContent.replaceAll(
     /(?<importClause>from\s*|import\s*)(?<quote>["'])(?<modulePath>(?!.*\.(js|ts))(\.|\.?\.\/.*?)\.?)(\k<quote>)/gm,
@@ -160,7 +160,7 @@ const getJsFilePaths = (buildDirectoryPath: string): string[] =>
     return files
   }, [])
 
-const minifyBuildDirectoryPaths = ['lib/cjs', 'lib/esm']
+const minifyBuildDirectoryPaths = ['dist/cjs', 'dist/esm']
 
 console.log(`${EOL}🏃 Running build script: minify build.${EOL}`)
 
@@ -183,4 +183,4 @@ minifyBuildDirectoryPaths.forEach((buildDirectoryPath) => {
 
 console.log(`${EOL}🏃 Running build script: delete build scripts.${EOL}`)
 
-rmSync('lib/build-scripts', { recursive: true, force: true })
+rmSync('dist/build-scripts', { recursive: true, force: true })

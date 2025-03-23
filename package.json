@@ -27,64 +27,64 @@
   "exports": {
     ".": {
       "import": {
-        "types": "./lib/esm/index.d.ts",
-        "default": "./lib/esm/index.js"
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
       },
       "require": {
-        "types": "./lib/cjs/index.d.ts",
-        "default": "./lib/cjs/index.js"
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
       }
     },
     "./editor": {
       "import": {
-        "types": "./lib/esm/editor/index.d.ts",
-        "default": "./lib/esm/editor/index.js"
+        "types": "./dist/esm/editor/index.d.ts",
+        "default": "./dist/esm/editor/index.js"
       },
       "require": {
-        "types": "./lib/cjs/editor/index.d.ts",
-        "default": "./lib/cjs/editor/index.js"
+        "types": "./dist/cjs/editor/index.d.ts",
+        "default": "./dist/cjs/editor/index.js"
       }
     },
     "./escape": {
       "import": {
-        "types": "./lib/esm/escape/index.d.ts",
-        "default": "./lib/esm/escape/index.js"
+        "types": "./dist/esm/escape/index.d.ts",
+        "default": "./dist/esm/escape/index.js"
       },
       "require": {
-        "types": "./lib/cjs/escape/index.d.ts",
-        "default": "./lib/cjs/escape/index.js"
+        "types": "./dist/cjs/escape/index.d.ts",
+        "default": "./dist/cjs/escape/index.js"
       }
     },
     "./unescape": {
       "import": {
-        "types": "./lib/esm/unescape/index.d.ts",
-        "default": "./lib/esm/unescape/index.js"
+        "types": "./dist/esm/unescape/index.d.ts",
+        "default": "./dist/esm/unescape/index.js"
       },
       "require": {
-        "types": "./lib/cjs/unescape/index.d.ts",
-        "default": "./lib/cjs/unescape/index.js"
+        "types": "./dist/cjs/unescape/index.d.ts",
+        "default": "./dist/cjs/unescape/index.js"
       }
     },
     "./webpack-loader": {
       "import": {
-        "types": "./lib/esm/loader/webpack.d.ts",
-        "default": "./lib/esm/loader/webpack.js"
+        "types": "./dist/esm/loader/webpack.d.ts",
+        "default": "./dist/esm/loader/webpack.js"
       },
       "require": {
-        "types": "./lib/cjs/loader/webpack.d.ts",
-        "default": "./lib/cjs/loader/webpack.js"
+        "types": "./dist/cjs/loader/webpack.d.ts",
+        "default": "./dist/cjs/loader/webpack.js"
       }
     }
   },
-  "main": "lib/cjs/index.js",
-  "module": "lib/esm/index.js",
-  "types": "lib/esm/index.d.ts",
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
   "files": [
-    "lib"
+    "dist"
   ],
   "scripts": {
-    "add-file-type-declaration": "node ./lib/esm/add-import-type.js && find ./lib -name 'add-import-type.*' -type f -delete",
-    "build": "npm run check-nvm-node-version && npm run prettier-write && npm run eslint-fix && rm -Rf ./lib && tsc -p tsconfig.cjs.json && tsc -p tsconfig.esm.json && echo '{ \"type\": \"commonjs\" }' > lib/cjs/package.json && tsc -p src/build-scripts/tsconfig.json && node lib/build-scripts/build.js && npm run test",
+    "add-file-type-declaration": "node ./dist/esm/add-import-type.js && find ./dist -name 'add-import-type.*' -type f -delete",
+    "build": "npm run check-nvm-node-version && npm run prettier-write && npm run eslint-fix && rm -Rf ./dist && tsc -p tsconfig.cjs.json && tsc -p tsconfig.esm.json && echo '{ \"type\": \"commonjs\" }' > dist/cjs/package.json && tsc -p src/build-scripts/tsconfig.json && node dist/build-scripts/build.js && npm run test",
     "check-nvm-node-version": "check-node-version --node $(node -p \"'>=' + require('fs').readFileSync('.nvmrc', 'utf-8').trim()\")",
     "depcheck": "depcheck",
     "eslint-fix": "eslint --fix",

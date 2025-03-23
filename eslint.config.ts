@@ -17,10 +17,12 @@ export default tsEslint.config(
     // ESLint ignores `node_modules` and dot-files by default.
     // @see https://eslint.org/docs/latest/user-guide/configuring/ignoring-code
     ignores: [
-      // Compiled project.
-      'lib/',
+      // Distribution (compiled code).
+      'dist/',
       // Jest files.
       'coverage/',
+      // Asset (static) files.
+      'assets/',
     ],
   },
   // Prettier recommended configs.
