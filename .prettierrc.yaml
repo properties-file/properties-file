@@ -20,4 +20,3 @@ singleQuote: true
 
 plugins:
   - prettier-plugin-organize-imports
-  - prettier-plugin-sh
