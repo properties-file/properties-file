@@ -96,7 +96,7 @@
   "devDependencies": {
     "@release-it/conventional-changelog": "10.0.0",
     "@types/jest": "29.5.14",
-    "@types/node": "22.13.11",
+    "@types/node": "22.13.14",
     "check-node-version": "4.2.1",
     "depcheck": "1.4.7",
     "dotenv-cli": "8.0.0",
