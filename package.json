@@ -100,7 +100,7 @@
     "check-node-version": "4.2.1",
     "depcheck": "1.4.7",
     "dotenv-cli": "8.0.0",
-    "eslint": "9.23.0",
+    "eslint": "9.26.0",
     "eslint-config-prettier": "10.1.1",
     "eslint-import-resolver-typescript": "4.3.1",
     "eslint-plugin-compat": "6.0.2",
