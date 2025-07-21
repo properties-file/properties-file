@@ -1,5 +1,7 @@
 # Changelog
 
+## [3.5.13](https://github.com/properties-file/properties-file/compare/3.5.12...3.5.13) (2025-07-21)
+
 ## [3.5.12](https://github.com/properties-file/properties-file/compare/3.5.11...3.5.12) (2025-03-23)
 
 ## [3.5.11](https://github.com/properties-file/properties-file/compare/3.5.10...3.5.11) (2024-12-16)
