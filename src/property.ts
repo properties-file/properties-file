@@ -35,8 +35,6 @@ export class Property {
   public valuePosition: number | undefined
   /** The property value, including its escaped characters. */
   public escapedValue = ''
-  /** Is the value empty? */
-  private hasNoValue = false
 
   /** Positions of the newline characters if any. */
   public newlinePositions: number[] = []
@@ -101,11 +99,9 @@ export class Property {
       }
 
       // Set value if present.
-      if (!this.hasNoValue) {
-        this.escapedValue = this.linesContent.slice(this.separatorPosition + this.separatorLength)
-        this.value = this.unescapeLine(this.escapedValue, this.startingLineNumber)
-      }
-    } else if (this.hasNoValue) {
+      this.escapedValue = this.linesContent.slice(this.separatorPosition + this.separatorLength)
+      this.value = this.unescapeLine(this.escapedValue, this.startingLineNumber)
+    } else {
       // Set key if present (no separator).
       this.escapedKey = this.linesContent
       this.key = this.unescapeLine(this.escapedKey, this.startingLineNumber)
@@ -138,7 +134,7 @@ export class Property {
    */
   private findSeparator(): void {
     // If the separator was already found, skip.
-    if (this.hasNoKey || this.hasNoValue || this.separatorPosition) {
+    if (this.hasNoKey || this.separator) {
       return
     }
 
@@ -195,10 +191,8 @@ export class Property {
       break
     }
 
-    if (this.separatorPosition === undefined) {
-      // If there was no separator found, the property has no value.
-      this.hasNoValue = true
-    } else if (
+    if (
+      this.separatorPosition !== undefined &&
       this.newlinePositions.length > 0 &&
       this.newlinePositions[0] < this.separatorPosition
     ) {

@@ -38,6 +38,10 @@ describe('The `Properties` class', () => {
     }).toThrow('malformed escaped unicode characters')
   })
 
+  it('`getKeyCollisions()` methods works as expected when not containing collisions', () => {
+    expect(new Properties('hello = world').getKeyCollisions()).toEqual([])
+  })
+
   const properties = new Properties(propertiesContent)
 
   it('`.toObject()` method works as expected', () => {
@@ -48,7 +52,7 @@ describe('The `Properties` class', () => {
     expect(properties.format()).toEqual(propertiesContent)
   })
 
-  it('`getKeyCollisions()` methods works as expected', () => {
+  it('`getKeyCollisions()` methods works as expected when containing collisions', () => {
     const collisions = properties.getKeyCollisions()
     expect(collisions).toEqual([
       { key: 'hello', startingLineNumbers: [1, 4] },
@@ -75,7 +79,20 @@ describe('The `Property` class', () => {
   it('`setKeyAndValue()` method works as expected', () => {
     const property = new Property(new PropertyLine('hello = world', false), 1)
     property.setKeyAndValue()
-    expect(property.setKeyAndValue()).toEqual(undefined)
+    expect(property.key).toBe('hello')
+    expect(property.value).toBe('world')
+    // This one should do nothing as the key and value are already set.
+    property.setKeyAndValue()
+    expect(property.key).toBe('hello')
+    expect(property.value).toBe('world')
+  })
+
+  it('`addLine()` method handles empty line as expected', () => {
+    const property = new Property(new PropertyLine('', false), 1)
+    property.addLine(new PropertyLine('', false))
+    expect(property.linesContent).toBe('')
+    expect(property.newlinePositions.length).toBe(0)
+    expect(property.endingLineNumber).toBe(1)
   })
 })
 
