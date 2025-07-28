@@ -99,7 +99,7 @@
     "@types/node": "24.0.15",
     "check-node-version": "4.2.1",
     "depcheck": "1.4.7",
-    "dotenv-cli": "8.0.0",
+    "dotenv-cli": "9.0.0",
     "eslint": "9.31.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-import-resolver-typescript": "4.4.4",
