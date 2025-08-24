@@ -1,5 +1,11 @@
 # Changelog
 
+# [3.6.0](https://github.com/properties-file/properties-file/compare/3.5.13...3.6.0) (2025-08-24)
+
+### Features
+
+- small performance improvement and update dependencies ([2ba0950](https://github.com/properties-file/properties-file/commit/2ba0950628c15bb779141add66241d450b00fddd))
+
 ## [3.5.13](https://github.com/properties-file/properties-file/compare/3.5.12...3.5.13) (2025-07-21)
 
 ## [3.5.12](https://github.com/properties-file/properties-file/compare/3.5.11...3.5.12) (2025-03-23)
