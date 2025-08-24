@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { Properties, getProperties } from '../src'
-import { BOM, getFirstEolCharacter } from '../src/properties'
+import { BOM, getFirstEolCharacter, Properties } from '../src/properties'
 import { Property } from '../src/property'
 import { PropertyLine } from '../src/property-line'
 
@@ -34,8 +33,10 @@ describe('The `Properties` class', () => {
 
   it('throws an error when there are malformed unicode characters', () => {
     expect(() => {
-      getProperties(String.raw`hello = \uhello`)
-    }).toThrow('malformed escaped unicode characters')
+      new Properties(String.raw`hello = \uhello`)
+    }).toThrow(
+      String.raw`malformed escaped unicode characters '\uhell' in property starting at line 1`
+    )
   })
 
   it('`getKeyCollisions()` methods works as expected when not containing collisions', () => {
@@ -93,13 +94,6 @@ describe('The `Property` class', () => {
     expect(property.linesContent).toBe('')
     expect(property.newlinePositions.length).toBe(0)
     expect(property.endingLineNumber).toBe(1)
-  })
-})
-
-describe('The `getProperties()` API', () => {
-  it('works as expected', () => {
-    const properties = getProperties(propertiesContent)
-    expect(properties).toEqual(expectedPropertiesObject)
   })
 })
 
