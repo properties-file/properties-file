@@ -39,6 +39,12 @@ describe('The `Properties` class', () => {
     )
   })
 
+  it('decode escaped unicode characters', () => {
+    const properties = new Properties(String.raw`city1=M\u00FCnchen
+city2=B\u00FCckeburg`)
+    expect(properties.toObject()).toEqual({ city1: 'München', city2: 'Bückeburg' })
+  })
+
   it('`getKeyCollisions()` methods works as expected when not containing collisions', () => {
     expect(new Properties('hello = world').getKeyCollisions()).toEqual([])
   })

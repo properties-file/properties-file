@@ -1,8 +1,9 @@
 /**
- * Matches malformed Unicode escape sequences (e.g., `\u` not followed by 4 hex digits).
- * Used to validate input before unescaping.
+ * Matches malformed Unicode escape sequences: a `\u` not followed by 4 hex digits.
+ * Java's `.properties` parser treats `\u12345` as `\u1234` + literal `5`, so only a
+ * missing 4th hex digit is invalid.
  */
-const REGEX_INVALID_UNICODE_ESCAPE = /\\u(?![0-9a-fA-F]{4}(?![0-9a-fA-F]))/
+const REGEX_INVALID_UNICODE_ESCAPE = /\\u(?![0-9a-fA-F]{4})/
 
 /**
  * Captures supported escape sequences: standard (`\\f`, `\\n`, `\\r`, `\\t`), Unicode (`\\uXXXX`),
