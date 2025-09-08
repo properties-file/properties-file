@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.6.1](https://github.com/properties-file/properties-file/compare/3.6.0...3.6.1) (2025-09-08)
+
+### Bug Fixes
+
+- **unescape:** correct invalid \u escape detection so \u00FC decodes (closes [#158](https://github.com/properties-file/properties-file/issues/158)) + update package version ([409e9ff](https://github.com/properties-file/properties-file/commit/409e9ff560cd7c542393dc346583925d9c638726))
+
 # [3.6.0](https://github.com/properties-file/properties-file/compare/3.5.13...3.6.0) (2025-08-24)
 
 ### Features
