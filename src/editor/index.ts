@@ -1,3 +1,4 @@
+import { KeyValuePairObject } from '..'
 import { escapeKey, escapeValue } from '../escape'
 import { Properties } from '../properties'
 import { Property } from '../property'
@@ -364,5 +365,15 @@ export class PropertiesEditor extends Properties {
           escapeUnicode: options?.escapeUnicode,
         })
       : this.insert(key, value, options)
+  }
+
+  /**
+   * Get the key/value object representing the properties.
+   *
+   * @returns A key/value object representing the properties.
+   */
+  public toObject(): KeyValuePairObject {
+    this.parseLinesIfNeeded()
+    return super.toObject()
   }
 }

@@ -506,4 +506,52 @@ describe('The `PropertiesEditor` class', () => {
     ].join('\n')
     expect(properties.format()).toEqual(propertiesContent)
   })
+
+  it('`.toObject()` method returns updated collection immediately after `.delete()`', () => {
+    const config = new PropertiesEditor('app.foo = bar \napp.lang = en-US')
+    expect(config.toObject()).toEqual({ 'app.foo': 'bar ', 'app.lang': 'en-US' })
+
+    const deleteResult = config.delete('app.lang')
+    expect(deleteResult).toEqual(true)
+
+    // The key should be removed immediately when calling toObject().
+    expect(config.toObject()).toEqual({ 'app.foo': 'bar ' })
+  })
+
+  it('`.toObject()` method returns updated collection immediately after `.upsert()`', () => {
+    const config = new PropertiesEditor('app.foo = bar \napp.lang = en-US')
+    expect(config.toObject()).toEqual({ 'app.foo': 'bar ', 'app.lang': 'en-US' })
+
+    const upsertResult = config.upsert('app.version', '1.0.0')
+    expect(upsertResult).toEqual(true)
+
+    // The new key should be added immediately when calling toObject().
+    expect(config.toObject()).toEqual({
+      'app.foo': 'bar ',
+      'app.lang': 'en-US',
+      'app.version': '1.0.0',
+    })
+  })
+
+  it('`.toObject()` method returns updated collection immediately after `.update()`', () => {
+    const config = new PropertiesEditor('app.foo = bar \napp.lang = en-US')
+    expect(config.toObject()).toEqual({ 'app.foo': 'bar ', 'app.lang': 'en-US' })
+
+    const updateResult = config.update('app.lang', { newValue: 'fr-FR' })
+    expect(updateResult).toEqual(true)
+
+    // The updated value should be reflected immediately when calling toObject().
+    expect(config.toObject()).toEqual({ 'app.foo': 'bar ', 'app.lang': 'fr-FR' })
+  })
+
+  it('`.toObject()` method returns updated collection immediately after `.insert()`', () => {
+    const config = new PropertiesEditor('app.foo = bar ')
+    expect(config.toObject()).toEqual({ 'app.foo': 'bar ' })
+
+    const insertResult = config.insert('app.lang', 'en-US')
+    expect(insertResult).toEqual(true)
+
+    // The new key should be added immediately when calling toObject().
+    expect(config.toObject()).toEqual({ 'app.foo': 'bar ', 'app.lang': 'en-US' })
+  })
 })
