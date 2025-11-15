@@ -73,7 +73,7 @@ const escapeContent = (
         }
         default: {
           // Any character that is not in the range of ASCII printable characters.
-          return `\\u${(character.codePointAt(0) as number).toString(16).padStart(4, '0')}`
+          return String.raw`\u${(character.codePointAt(0) as number).toString(16).padStart(4, '0')}`
         }
       }
     }
