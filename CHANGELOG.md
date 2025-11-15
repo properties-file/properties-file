@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.6.2](https://github.com/properties-file/properties-file/compare/3.6.1...3.6.2) (2025-11-15)
+
+### Bug Fixes
+
+- sync PropertiesEditor.toObject() after mutations ([#175](https://github.com/properties-file/properties-file/issues/175)) ([c81ec08](https://github.com/properties-file/properties-file/commit/c81ec08e294f4236acce4d803a842be25b63fc10))
+
 ## [3.6.1](https://github.com/properties-file/properties-file/compare/3.6.0...3.6.1) (2025-09-08)
 
 ### Bug Fixes
