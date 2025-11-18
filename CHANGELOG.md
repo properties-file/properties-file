@@ -1,5 +1,7 @@
 # Changelog
 
+## [3.6.3](/compare/3.6.2...3.6.3) (2025-11-18)
+
 ## [3.6.2](https://github.com/properties-file/properties-file/compare/3.6.1...3.6.2) (2025-11-15)
 
 ### Bug Fixes
