@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/npm/l/make-coverage-badge.svg?color=brightgreen)](https://opensource.org/licenses/MIT)
 [![npm download](https://img.shields.io/npm/dw/properties-file.svg?color=brightgreen)](https://www.npmjs.com/package/properties-file)
 ![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen.svg)
-![package size](https://deno.bundlejs.com/badge?q=properties-file@latest)
+![package size](https://deno.bundlejs.com/badge?q=properties-file@latest&treeshake=[*])
 ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)
 
 `.properties` file parser, editor, formatter and Webpack loader.
@@ -28,7 +28,7 @@ npm install properties-file
   - A `PropertiesEditor` class enables the addition, edition, and removal of entries.
   - `escapeKey` and `escapeValue` allow the conversion of any content to a `.properties` compatible format.
   - The library also includes a Webpack loader to import `.properties` files directly into your application.
-- [Tiny](https://bundlejs.com/?q=properties-file%40latest) with 0 dependencies.
+- [Tiny](https://bundlejs.com/?q=properties-file%40latest&treeshake=%5B*%5D) with 0 dependencies.
 - 100% test coverage based on the output from a Java implementation.
 - Active maintenance (many popular `.properties` packages have been inactive for years).
 
