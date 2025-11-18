@@ -23,6 +23,7 @@
   },
   "license": "MIT",
   "author": "properties-file",
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": {
@@ -96,7 +97,7 @@
     "test": "jest --coverage"
   },
   "devDependencies": {
-    "@release-it/conventional-changelog": "10.0.1",
+    "@release-it/conventional-changelog": "10.0.2",
     "@types/jest": "30.0.0",
     "@types/node": "24.10.1",
     "check-node-version": "4.2.1",
@@ -124,7 +125,7 @@
     "terser": "5.44.1",
     "ts-jest": "29.4.5",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.46.4"
+    "typescript-eslint": "8.47.0"
   },
   "engines": {
     "node": "*"
