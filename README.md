@@ -1,9 +1,9 @@
 # properties-file
 
 [![License](https://img.shields.io/npm/l/make-coverage-badge.svg?color=brightgreen)](https://opensource.org/licenses/MIT)
-[![npm download](https://img.shields.io/npm/dw/properties-file.svg?color=brightgreen)](https://www.npmjs.com/package/properties-file)
+[![Download Stats](https://img.shields.io/npm/dw/properties-file.svg?color=brightgreen)](https://www.npmjs.com/package/properties-file)
 ![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen.svg)
-![package size](https://deno.bundlejs.com/badge?q=properties-file@latest&treeshake=[*])
+[![Package Size](https://deno.bundlejs.com/badge?q=properties-file@latest&treeshake=[*])](https://bundlejs.com/?q=properties-file@latest&treeshake=[*])
 ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)
 
 `.properties` file parser, editor, formatter and Webpack loader.
