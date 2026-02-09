@@ -97,7 +97,7 @@
     "test": "jest --coverage"
   },
   "devDependencies": {
-    "@release-it/conventional-changelog": "10.0.4",
+    "@release-it/conventional-changelog": "10.0.5",
     "@types/jest": "30.0.0",
     "@types/node": "25.1.0",
     "baseline-browser-mapping": "2.9.19",
