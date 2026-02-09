@@ -99,7 +99,7 @@
   "devDependencies": {
     "@release-it/conventional-changelog": "10.0.4",
     "@types/jest": "30.0.0",
-    "@types/node": "25.1.0",
+    "@types/node": "25.2.2",
     "baseline-browser-mapping": "2.9.19",
     "check-node-version": "4.2.1",
     "depcheck": "1.4.7",
