@@ -29,7 +29,7 @@ export class PropertyLine {
     } else {
       if (!this.isMultiline) {
         // Line is a comment.
-        this.isComment = !!/^[!#]/.test(this.content)
+        this.isComment = /^[!#]/.test(this.content)
       }
       if (!this.isComment) {
         // Otherwise, check if the line is continuing on the next line.
@@ -37,7 +37,7 @@ export class PropertyLine {
 
         if (backslashMatch) {
           // If the number of backslashes is odd, the line is continuing, otherwise it doesn't.
-          this.isContinuing = !!(backslashMatch[1].length % 2)
+          this.isContinuing = backslashMatch[1].length % 2 === 1
           if (this.isContinuing) {
             // Remove the trailing slash so that we can concatenate the line with the next one.
             this.content = this.content.slice(0, -1)

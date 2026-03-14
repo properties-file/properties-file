@@ -34,7 +34,8 @@ export const unescapeContent = (content: string): string => {
   // reading garbage memory. Our implementation properly validates before processing.
   const malformedUnicodeMatch = content.match(REGEX_INVALID_UNICODE_ESCAPE)
   if (malformedUnicodeMatch) {
-    const startIndex = malformedUnicodeMatch.index!
+    // istanbul ignore next -- .index is always defined when match succeeds
+    const startIndex = malformedUnicodeMatch.index ?? 0
     const errorContext = content.slice(startIndex, startIndex + 6)
     throw new Error(`malformed escaped unicode characters '${errorContext}'`)
   }
@@ -54,7 +55,8 @@ export const unescapeContent = (content: string): string => {
       }
 
       // Handle any other character after \ (taken literally per Java behavior).
-      return otherChar!
+      // istanbul ignore next -- capture group (.) always matches a character
+      return otherChar ?? ''
     }
   )
 }

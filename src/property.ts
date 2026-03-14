@@ -147,7 +147,7 @@ export class Property {
       const backslashMatch = prefix.match(/(\\+)$/)
 
       if (backslashMatch) {
-        const separatorIsEscaped = !!(backslashMatch[1].length % 2)
+        const separatorIsEscaped = backslashMatch[1].length % 2 === 1
         if (separatorIsEscaped) {
           // If the separator is escaped, check the next character.
           continue
@@ -160,7 +160,7 @@ export class Property {
       // Check if the separator starts with a whitespace.
       let nextContent = this.linesContent.slice(position)
       // All white-space characters, excluding non-breaking spaces.
-      const leadingWhitespace = (nextContent.match(/^([\t\n\v\f\r ]+)/) || [''])[0]
+      const leadingWhitespace = nextContent.match(/^([\t\n\v\f\r ]+)/)?.[0] ?? ''
 
       // If there is a whitespace, move to the next character.
       if (leadingWhitespace.length > 0) {
@@ -173,7 +173,7 @@ export class Property {
         separator += nextContent[0]
         nextContent = nextContent.slice(1)
         // If an equal or colon character was found, try to get trailing whitespace.
-        separator += (nextContent.match(/^([\t\n\v\f\r ]+)/) || [''])[0]
+        separator += nextContent.match(/^([\t\n\v\f\r ]+)/)?.[0] ?? ''
       }
 
       this.separatorLength = separator.length
