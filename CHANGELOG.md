@@ -1,5 +1,11 @@
 # Changelog
 
+# [3.7.0](https://github.com/properties-file/properties-file/compare/3.6.5...3.7.0) (2026-03-15)
+
+### Features
+
+- enforce ES5 runtime API compatibility and improve parsing performance ([7d51f8c](https://github.com/properties-file/properties-file/commit/7d51f8c0e37a100e315a07b654b49311063d9bc8))
+
 ## [3.6.5](https://github.com/properties-file/properties-file/compare/3.6.3...3.6.5) (2026-03-15)
 
 ## [3.6.4](https://github.com/Avansai/properties-file/compare/3.6.3...3.6.4) (2026-01-31)
