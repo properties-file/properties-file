@@ -25,7 +25,7 @@ const ESCAPE_MAP = { f: '\f', n: '\n', r: '\r', t: '\t' } as const
  */
 export const unescapeContent = (content: string): string => {
   // Performance optimization: avoid regex if no escape characters are present.
-  if (!content.includes('\\')) {
+  if (content.indexOf('\\') === -1) {
     return content
   }
 
@@ -51,7 +51,7 @@ export const unescapeContent = (content: string): string => {
 
       if (unicodeHex) {
         // Handle valid \uXXXX sequences.
-        return String.fromCodePoint(Number.parseInt(unicodeHex, 16))
+        return String.fromCharCode(parseInt(unicodeHex, 16))
       }
 
       // Handle any other character after \ (taken literally per Java behavior).

@@ -1,3 +1,12 @@
+/** Matches leading whitespace characters. */
+const REGEX_LEADING_WHITESPACE = /^\s+/
+
+/** Matches a comment line starting with `!` or `#`. */
+const REGEX_COMMENT = /^[!#]/
+
+/** Matches trailing backslashes. */
+const REGEX_TRAILING_BACKSLASHES = /(\\+)$/
+
 /**
  * Object representing a line from the content of .properties file.
  */
@@ -20,7 +29,7 @@ export class PropertyLine {
    * @param isMultiline - Is the line spreading on multiple lines?
    */
   constructor(line: string, isMultiline: boolean) {
-    this.content = line.trimStart()
+    this.content = line.replace(REGEX_LEADING_WHITESPACE, '')
     this.isMultiline = isMultiline
 
     if (this.content.length === 0) {
@@ -29,11 +38,11 @@ export class PropertyLine {
     } else {
       if (!this.isMultiline) {
         // Line is a comment.
-        this.isComment = /^[!#]/.test(this.content)
+        this.isComment = REGEX_COMMENT.test(this.content)
       }
       if (!this.isComment) {
         // Otherwise, check if the line is continuing on the next line.
-        const backslashMatch = this.content.match(/(\\+)$/)
+        const backslashMatch = this.content.match(REGEX_TRAILING_BACKSLASHES)
 
         if (backslashMatch) {
           // If the number of backslashes is odd, the line is continuing, otherwise it doesn't.

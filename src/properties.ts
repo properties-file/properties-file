@@ -6,7 +6,10 @@ import { PropertyLine } from './property-line'
  * Byte-order mark.
  */
 export const BOM = '\uFEFF'
-export const BOM_CODE_POINT = BOM.codePointAt(0)
+export const BOM_CODE_POINT = BOM.charCodeAt(0)
+
+/** Matches a newline, optionally preceded by a carriage return. */
+export const REGEX_NEWLINE = /\r?\n/
 
 /** The default end of line character. */
 export const DEFAULT_END_OF_LINE_CHARACTER = '\n'
@@ -45,9 +48,9 @@ export class Properties {
    */
   constructor(content: string | Buffer) {
     const stringContent = typeof content === 'string' ? content : content.toString()
-    this.hasBom = stringContent.codePointAt(0) === BOM_CODE_POINT
+    this.hasBom = stringContent.charCodeAt(0) === BOM_CODE_POINT
     this.eolCharacter = getFirstEolCharacter(stringContent) ?? DEFAULT_END_OF_LINE_CHARACTER
-    this.lines = (this.hasBom ? stringContent.slice(1) : stringContent).split(/\r?\n/)
+    this.lines = (this.hasBom ? stringContent.slice(1) : stringContent).split(REGEX_NEWLINE)
     this.parseLines()
   }
 
@@ -130,7 +133,9 @@ export class Properties {
    */
   public getKeyCollisions(): KeyCollisions[] {
     const keyCollisions: KeyCollisions[] = []
-    for (const [key, startingLineNumbers] of Object.entries(this.keyLineNumbers)) {
+    const keys = Object.keys(this.keyLineNumbers)
+    for (const key of keys) {
+      const startingLineNumbers = this.keyLineNumbers[key]
       if (startingLineNumbers.length > 1) {
         keyCollisions.push(new KeyCollisions(key, startingLineNumbers))
       }

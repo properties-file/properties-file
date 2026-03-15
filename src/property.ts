@@ -1,6 +1,18 @@
 import { PropertyLine } from './property-line'
 import { unescapeContent } from './unescape'
 
+/** Matches trailing backslashes. */
+const REGEX_TRAILING_BACKSLASHES = /(\\+)$/
+
+/** Matches leading whitespace characters (excluding non-breaking spaces). */
+const REGEX_LEADING_WHITESPACE = /^([\t\n\v\f\r ]+)/
+
+/** Matches separator characters (tab, formfeed, space, colon, equals). */
+const REGEX_SEPARATOR = /[\t\f :=]/g
+
+/** Matches a colon or equals sign. */
+const REGEX_COLON_OR_EQUALS = /[:=]/
+
 /**
  * Object representing a property (key/value).
  */
@@ -139,12 +151,14 @@ export class Property {
     }
 
     // Only match separators to avoid iterating all characters.
-    for (const match of this.linesContent.matchAll(/[\t\f :=]/g)) {
+    REGEX_SEPARATOR.lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = REGEX_SEPARATOR.exec(this.linesContent)) !== null) {
       const position = match.index
 
       // Check if the separator might be escaped.
       const prefix = this.linesContent.slice(0, position)
-      const backslashMatch = prefix.match(/(\\+)$/)
+      const backslashMatch = prefix.match(REGEX_TRAILING_BACKSLASHES)
 
       if (backslashMatch) {
         const separatorIsEscaped = backslashMatch[1].length % 2 === 1
@@ -160,7 +174,7 @@ export class Property {
       // Check if the separator starts with a whitespace.
       let nextContent = this.linesContent.slice(position)
       // All white-space characters, excluding non-breaking spaces.
-      const leadingWhitespace = nextContent.match(/^([\t\n\v\f\r ]+)/)?.[0] ?? ''
+      const leadingWhitespace = nextContent.match(REGEX_LEADING_WHITESPACE)?.[0] ?? ''
 
       // If there is a whitespace, move to the next character.
       if (leadingWhitespace.length > 0) {
@@ -169,11 +183,11 @@ export class Property {
       }
 
       // Check if there is an equal or colon character.
-      if (/[:=]/.test(nextContent[0])) {
+      if (REGEX_COLON_OR_EQUALS.test(nextContent[0])) {
         separator += nextContent[0]
         nextContent = nextContent.slice(1)
         // If an equal or colon character was found, try to get trailing whitespace.
-        separator += nextContent.match(/^([\t\n\v\f\r ]+)/)?.[0] ?? ''
+        separator += nextContent.match(REGEX_LEADING_WHITESPACE)?.[0] ?? ''
       }
 
       this.separatorLength = separator.length

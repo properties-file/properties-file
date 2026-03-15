@@ -1,7 +1,13 @@
 import { KeyValuePairObject } from '..'
 import { escapeKey, escapeValue } from '../escape'
-import { Properties } from '../properties'
+import { Properties, REGEX_NEWLINE } from '../properties'
 import { Property } from '../property'
+
+/** Matches a newline, optionally preceded by a carriage return (global). */
+const REGEX_NEWLINE_GLOBAL = /\r?\n/g
+
+/** Matches a newline character. */
+const REGEX_LF = /\n/
 
 /** The default separator between keys and values. */
 export const DEFAULT_SEPARATOR = '='
@@ -86,6 +92,23 @@ export class PropertiesEditor extends Properties {
   }
 
   /**
+   * Find the last occurrence of a property by key (iterates backward for performance).
+   *
+   * @param key - The property key to search for.
+   *
+   * @returns The last matching property, or undefined if not found.
+   */
+  private findLastPropertyByKey(key: string): Property | undefined {
+    for (let index = this.collection.length - 1; index >= 0; index--) {
+      const property = this.collection[index]
+      if (property.key === key) {
+        return property
+      }
+    }
+    return undefined
+  }
+
+  /**
    * Parse the `.properties` content line by line only when needed.
    */
   private parseLinesIfNeeded(): void {
@@ -120,13 +143,13 @@ export class PropertiesEditor extends Properties {
 
     // Allow multiline keys.
     const multilineKey = key
-      .split(/\r?\n/)
+      .split(REGEX_NEWLINE)
       .map((key) => escapeKey(key, escapeUnicode))
       .join('\\\n')
 
     // Allow multiline values.
     const multilineValue = value
-      .split(/\r?\n/)
+      .split(REGEX_NEWLINE)
       .map((value) => escapeValue(value, escapeUnicode))
       .join('\\\n')
 
@@ -135,9 +158,11 @@ export class PropertiesEditor extends Properties {
     const multilineComment =
       options?.comment === undefined
         ? ''
-        : `${`${commentPrefix}${options.comment}`.split(/\r?\n/).join(`\n${commentPrefix}`)}\n`
+        : `${`${commentPrefix}${options.comment}`.split(REGEX_NEWLINE).join(`\n${commentPrefix}`)}\n`
 
-    const newLines = `${multilineComment}${multilineKey}${separator}${multilineValue}`.split(/\n/)
+    const newLines = `${multilineComment}${multilineKey}${separator}${multilineValue}`.split(
+      REGEX_LF
+    )
 
     if (referenceKey === undefined) {
       // Insert the new property at the end if the reference key was not defined.
@@ -146,9 +171,7 @@ export class PropertiesEditor extends Properties {
       return true
     } else {
       // Find the last occurrence of the reference key.
-      const property = [...this.collection]
-        .reverse()
-        .find((property) => property.key === referenceKey)
+      const property = this.findLastPropertyByKey(referenceKey)
 
       // Insert the new property when a reference key defined only when found.
       if (property) {
@@ -187,8 +210,8 @@ export class PropertiesEditor extends Properties {
     // Allow multiline comments.
     const commentPrefix = `${options?.commentDelimiter || DEFAULT_COMMENT_DELIMITER} `
     const newLines = `${commentPrefix}${comment}`
-      .replace(/\r?\n/g, `\n${commentPrefix}`)
-      .split(/\n/)
+      .replace(REGEX_NEWLINE_GLOBAL, `\n${commentPrefix}`)
+      .split(REGEX_LF)
 
     if (referenceKey === undefined) {
       // Insert the new comment at the end if the reference key was not defined.
@@ -197,9 +220,7 @@ export class PropertiesEditor extends Properties {
       return true
     } else {
       // Find the last occurrence of the reference key.
-      const property = [...this.collection]
-        .reverse()
-        .find((property) => property.key === referenceKey)
+      const property = this.findLastPropertyByKey(referenceKey)
 
       // Insert the new comment when a reference key defined only when found.
       if (property) {
@@ -231,7 +252,7 @@ export class PropertiesEditor extends Properties {
     this.parseLinesIfNeeded()
 
     // Find the last occurrence of the key.
-    const property = [...this.collection].reverse().find((property) => property.key === key)
+    const property = this.findLastPropertyByKey(key)
 
     if (property) {
       const startLine = deleteCommentsAndWhiteSpace
@@ -257,7 +278,7 @@ export class PropertiesEditor extends Properties {
       ? property.key
       : [...property.key].reduce<string>(
           (accumulator, character, index) =>
-            `${accumulator}${property.newlinePositions.includes(index) ? '\n' : ''}${character}`,
+            `${accumulator}${property.newlinePositions.indexOf(index) !== -1 ? '\n' : ''}${character}`,
           ''
         )
   }
@@ -275,7 +296,7 @@ export class PropertiesEditor extends Properties {
       : [...property.value].reduce<string>(
           (accumulator, character, index) =>
             `${accumulator}${
-              property.newlinePositions.includes(index + (property.valuePosition as number))
+              property.newlinePositions.indexOf(index + (property.valuePosition as number)) !== -1
                 ? '\n'
                 : ''
             }${character}`,
@@ -295,7 +316,7 @@ export class PropertiesEditor extends Properties {
     this.parseLinesIfNeeded()
 
     // Find the last occurrence of the key to update.
-    const property = [...this.collection].reverse().find((property) => property.key === key)
+    const property = this.findLastPropertyByKey(key)
 
     if (!property || !options) {
       return false
@@ -310,13 +331,13 @@ export class PropertiesEditor extends Properties {
 
     // Allow multiline keys.
     const multilineKey = (options.newKey ?? this.getKeyWithNewlines(property))
-      .split(/\r?\n/)
+      .split(REGEX_NEWLINE)
       .map((key) => escapeKey(key, escapeUnicode))
       .join('\\\n')
 
     // Allow multiline values.
     const multilineValue = (options.newValue ?? this.getValueWithNewlines(property))
-      .split(/\r?\n/)
+      .split(REGEX_NEWLINE)
       .map((value) => escapeValue(value, escapeUnicode))
       .join('\\\n')
 
@@ -325,9 +346,11 @@ export class PropertiesEditor extends Properties {
     const multilineComment =
       options.newComment === undefined
         ? ''
-        : `${`${commentPrefix}${options.newComment}`.split(/\r?\n/).join(`\n${commentPrefix}`)}\n`
+        : `${`${commentPrefix}${options.newComment}`.split(REGEX_NEWLINE).join(`\n${commentPrefix}`)}\n`
 
-    const newLines = `${multilineComment}${multilineKey}${separator}${multilineValue}`.split(/\n/)
+    const newLines = `${multilineComment}${multilineKey}${separator}${multilineValue}`.split(
+      REGEX_LF
+    )
 
     // Replace the existing property with the new one.
     this.lines = [
