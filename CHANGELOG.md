@@ -1,5 +1,7 @@
 # Changelog
 
+## [3.6.5](https://github.com/properties-file/properties-file/compare/3.6.3...3.6.5) (2026-03-15)
+
 ## [3.6.4](https://github.com/Avansai/properties-file/compare/3.6.3...3.6.4) (2026-01-31)
 
 ## [3.6.3](/compare/3.6.2...3.6.3) (2025-11-18)
