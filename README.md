@@ -27,7 +27,7 @@ npm install properties-file
   - A `Properties` class provides insights into parsing data.
   - A `PropertiesEditor` class enables the addition, edition, and removal of entries.
   - `escapeKey` and `escapeValue` allow the conversion of any content to a `.properties` compatible format.
-  - The library also includes a Webpack loader to import `.properties` files directly into your application.
+  - The library also includes a Webpack and Bun loader to import `.properties` files directly into your application.
 - [Tiny](https://bundlejs.com/?q=properties-file%40latest&treeshake=%5B*%5D) with 0 dependencies.
 - 100% test coverage based on the output from a Java implementation.
 - Active maintenance (many popular `.properties` packages have been inactive for years).
@@ -189,9 +189,9 @@ console.log(properties.format())
 
 For convenience, we also added an `upsert` method that allows updating a key if it exists or adding it at the end, when it doesn't. Make sure to check in your IDE for all available methods and options in our TSDoc.
 
-### Webpack File Loader
+### Webpack/Bun File Loader
 
-If you would like to import `.properties` directly using `import`, this package comes with its own Webpack file loader located under `properties-file/webpack-loader`. Here is an example of how to configure it:
+If you would like to import `.properties` directly using `import`, this package comes with its own Webpack and Bun file loader located under `properties-file/webpack-loader` and `properties-file/bun-plugin` respectively. Here is an example of how to configure it for webpack:
 
 ```js
 // webpack.config.js
@@ -211,7 +211,25 @@ module.exports = {
 }
 ```
 
-As soon as you configure Webpack, the `.properties` type should be available in your IDE when using `import`. If you ever need to add it manually, you can add a `*.properties` type declaration file at the root of your application, like this:
+And here is how to configure it for bun:
+
+```js
+// index.ts (optional)
+
+import propertiesLoader from 'properties-file/bun-plugin'
+
+await Bun.plugin(propertiesLoader)
+
+// build.ts
+
+import propertiesLoader from 'properties-file/bun-plugin'
+
+await Bun.build({
+  plugins: [propertiesLoader],
+})
+```
+
+As soon as you configure Webpack or Bun, the `.properties` type should be available in your IDE when using `import`. If you ever need to add it manually, you can add a `*.properties` type declaration file at the root of your application, like this:
 
 ```ts
 declare module '*.properties' {
