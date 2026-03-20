@@ -15,6 +15,7 @@
     "i18n",
     "properties Webpack loader",
     "Webpack loader",
+    "Bun plugin",
     "internationalization"
   ],
   "repository": {
@@ -34,6 +35,16 @@
       "require": {
         "types": "./dist/cjs/index.d.ts",
         "default": "./dist/cjs/index.js"
+      }
+    },
+    "./bun-plugin": {
+      "import": {
+        "types": "./dist/esm/loader/bun.d.ts",
+        "default": "./dist/esm/loader/bun.js"
+      },
+      "require": {
+        "types": "./dist/cjs/loader/bun.d.ts",
+        "default": "./dist/cjs/loader/bun.js"
       }
     },
     "./editor": {
@@ -98,6 +109,7 @@
   },
   "devDependencies": {
     "@release-it/conventional-changelog": "10.0.6",
+    "@types/bun": "1.3.11",
     "@types/jest": "30.0.0",
     "@types/node": "25.5.0",
     "check-node-version": "4.2.1",
