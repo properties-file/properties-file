@@ -50,7 +50,7 @@ const setUnicornRules = (
  * would require polyfills.
  */
 const ES_X_SYNTAX_RULES_HANDLED_BY_TYPESCRIPT = Object.fromEntries(
-  Object.keys(esXPlugin.configs['flat/restrict-to-es5'].rules)
+  Object.keys(esXPlugin.configs['flat/restrict-to-es5'].rules ?? {})
     .filter(
       (rule) =>
         !rule.includes('prototype') &&
@@ -182,11 +182,20 @@ export default tsEslint.config(
   },
   // Non-shipped files (build scripts, tests, config) run in Node 20+ and should use modern APIs.
   {
-    files: ['src/build-scripts/**/*.ts', 'tests/**/*.ts', 'eslint.config.ts', 'eslint/**/*.ts'],
+    files: [
+      'src/build-scripts/**/*.ts',
+      'tests/**/*.ts',
+      'eslint.config.ts',
+      'eslint/**/*.ts',
+      'benchmarks/**/*.ts',
+    ],
     rules: {
       // Disable all es-x restrictions since these files are not shipped to consumers.
       ...Object.fromEntries(
-        Object.keys(esXPlugin.configs['flat/restrict-to-es5'].rules).map((rule) => [rule, 'off'])
+        Object.keys(esXPlugin.configs['flat/restrict-to-es5'].rules ?? {}).map((rule) => [
+          rule,
+          'off',
+        ])
       ),
       // Re-enable modern unicorn rules that are disabled for backward compatibility in shipped code.
       ...setUnicornRules(UNICORN_MODERN_API_RULES, 'error'),
@@ -196,6 +205,11 @@ export default tsEslint.config(
   {
     files: TYPESCRIPT_FILES.map((pattern) => `src/build-scripts/${pattern}`),
     languageOptions: { parserOptions: { project: ['src/build-scripts/tsconfig.json'] } },
+  },
+  // Benchmark TypeScript files.
+  {
+    files: TYPESCRIPT_FILES.map((pattern) => `benchmarks/${pattern}`),
+    languageOptions: { parserOptions: { project: ['benchmarks/tsconfig.json'] } },
   },
   // JSON files.
   { files: ['*.json'], ignores: ['**/package.json'], languageOptions: { parser: jsoncParser } },
