@@ -1,5 +1,22 @@
 # Changelog
 
+# [4.0.0](https://github.com/properties-file/properties-file/compare/3.7.0...4.0.0) (2026-03-22)
+
+- feat!: add bundler integrations for Rollup/Vite, esbuild, and Bun ([bcae0c1](https://github.com/properties-file/properties-file/commit/bcae0c1003837d84a29fa463c62ba2a23db142f7)), closes [#200](https://github.com/properties-file/properties-file/issues/200)
+
+### Bug Fixes
+
+- use OS temp directory for benchmark comparison to avoid self-copy ([3189c20](https://github.com/properties-file/properties-file/commit/3189c2034ee01740858262688a635c20eeee39ee))
+
+### Features
+
+- add Bun loader ([2453af2](https://github.com/properties-file/properties-file/commit/2453af24257e6e534faf6492fa9a45984c25badb))
+
+### BREAKING CHANGES
+
+- The Webpack loader export path changed from
+  `properties-file/webpack-loader` to `properties-file/bundler/webpack`.
+
 # [3.7.0](https://github.com/properties-file/properties-file/compare/3.6.5...3.7.0) (2026-03-15)
 
 ### Features
