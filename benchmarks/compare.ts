@@ -1,5 +1,6 @@
 import { exec, execSync } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { BenchmarkResult } from './run'
 
@@ -8,7 +9,7 @@ const THRESHOLD_PERCENT = 20
 
 const rootDirectory = path.resolve(import.meta.dirname, '..')
 const resultsDirectory = path.resolve(import.meta.dirname, '.results')
-const temporaryDirectory = path.resolve(resultsDirectory, '.tmp')
+const temporaryDirectory = path.resolve(tmpdir(), 'properties-file-benchmark')
 const baselineTemporaryDirectory = path.resolve(temporaryDirectory, 'baseline')
 const currentTemporaryDirectory = path.resolve(temporaryDirectory, 'current')
 const baselinePath = path.resolve(resultsDirectory, 'baseline', 'results.json')
