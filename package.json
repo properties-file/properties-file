@@ -1,7 +1,7 @@
 {
   "name": "properties-file",
   "version": "3.7.0",
-  "description": ".properties file parser, editor, formatter and Webpack loader.",
+  "description": ".properties file parser, editor, formatter and bundler integrations.",
   "keywords": [
     ".properties",
     "properties",
@@ -13,8 +13,10 @@
     "Java",
     "intl",
     "i18n",
-    "properties Webpack loader",
     "Webpack loader",
+    "Rollup plugin",
+    "Vite plugin",
+    "esbuild plugin",
     "Bun plugin",
     "internationalization"
   ],
@@ -37,14 +39,44 @@
         "default": "./dist/cjs/index.js"
       }
     },
-    "./bun-plugin": {
+    "./bundler/bun": {
       "import": {
-        "types": "./dist/esm/loader/bun.d.ts",
-        "default": "./dist/esm/loader/bun.js"
+        "types": "./dist/esm/bundler/bun.d.ts",
+        "default": "./dist/esm/bundler/bun.js"
       },
       "require": {
-        "types": "./dist/cjs/loader/bun.d.ts",
-        "default": "./dist/cjs/loader/bun.js"
+        "types": "./dist/cjs/bundler/bun.d.ts",
+        "default": "./dist/cjs/bundler/bun.js"
+      }
+    },
+    "./bundler/esbuild": {
+      "import": {
+        "types": "./dist/esm/bundler/esbuild.d.ts",
+        "default": "./dist/esm/bundler/esbuild.js"
+      },
+      "require": {
+        "types": "./dist/cjs/bundler/esbuild.d.ts",
+        "default": "./dist/cjs/bundler/esbuild.js"
+      }
+    },
+    "./bundler/rollup": {
+      "import": {
+        "types": "./dist/esm/bundler/rollup.d.ts",
+        "default": "./dist/esm/bundler/rollup.js"
+      },
+      "require": {
+        "types": "./dist/cjs/bundler/rollup.d.ts",
+        "default": "./dist/cjs/bundler/rollup.js"
+      }
+    },
+    "./bundler/webpack": {
+      "import": {
+        "types": "./dist/esm/bundler/webpack.d.ts",
+        "default": "./dist/esm/bundler/webpack.js"
+      },
+      "require": {
+        "types": "./dist/cjs/bundler/webpack.d.ts",
+        "default": "./dist/cjs/bundler/webpack.js"
       }
     },
     "./editor": {
@@ -75,16 +107,6 @@
       "require": {
         "types": "./dist/cjs/unescape/index.d.ts",
         "default": "./dist/cjs/unescape/index.js"
-      }
-    },
-    "./webpack-loader": {
-      "import": {
-        "types": "./dist/esm/loader/webpack.d.ts",
-        "default": "./dist/esm/loader/webpack.js"
-      },
-      "require": {
-        "types": "./dist/cjs/loader/webpack.d.ts",
-        "default": "./dist/cjs/loader/webpack.js"
       }
     }
   },
@@ -117,6 +139,7 @@
     "check-node-version": "4.2.1",
     "depcheck": "1.4.7",
     "dotenv-cli": "11.0.0",
+    "esbuild": "0.27.4",
     "eslint": "10.1.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-import-resolver-typescript": "4.4.4",
@@ -136,6 +159,7 @@
     "prettier": "3.8.1",
     "prettier-plugin-organize-imports": "4.3.0",
     "release-it": "19.2.4",
+    "rollup": "4.60.0",
     "terser": "5.46.1",
     "tinybench": "6.0.0",
     "ts-jest": "29.4.6",

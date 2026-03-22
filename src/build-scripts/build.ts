@@ -65,18 +65,15 @@ for (const modulePath of declarationDirectoryPaths) {
 
 /**
  * Since the most common use case to support to require the file type declaration is by configuring
- * a loader, we need to also add the reference in all available loaders.
- *
- * @see https://github.com/microsoft/TypeScript/issues/49124
- * @see https://stackoverflow.com/questions/72187763/how-to-include-a-global-file-type-declaration-in-a-typescript-node-js-package
+ * a bundler plugin, we need to also add the reference in all available bundler integrations.
  */
 
 for (const modulePath of declarationDirectoryPaths) {
-  const fileLoaderDirectoryPath = `${modulePath}/loader`
-  for (const fileLoaderFilePath of readdirSync(fileLoaderDirectoryPath)) {
-    if (fileLoaderFilePath.endsWith('d.ts')) {
+  const bundlerDirectoryPath = `${modulePath}/bundler`
+  for (const bundlerFilePath of readdirSync(bundlerDirectoryPath)) {
+    if (bundlerFilePath.endsWith('d.ts')) {
       appendFileTypeDeclaration(
-        `./${fileLoaderDirectoryPath}/${fileLoaderFilePath}`,
+        `./${bundlerDirectoryPath}/${bundlerFilePath}`,
         `../${declarationFilename}.d.ts`
       )
     }

@@ -6,7 +6,7 @@
 [![Package Size](https://deno.bundlejs.com/badge?q=properties-file@latest&treeshake=[*])](https://bundlejs.com/?q=properties-file@latest&treeshake=[*])
 ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)
 
-`.properties` file parser, editor, formatter and Webpack loader.
+`.properties` file parser, editor, formatter and bundler integrations.
 
 ## Installation 💻
 
@@ -27,7 +27,7 @@ npm install properties-file
   - A `Properties` class provides insights into parsing data.
   - A `PropertiesEditor` class enables the addition, edition, and removal of entries.
   - `escapeKey` and `escapeValue` allow the conversion of any content to a `.properties` compatible format.
-  - The library also includes a Webpack and Bun loader to import `.properties` files directly into your application.
+  - Bundler integrations for Webpack, Rollup/Vite, esbuild, and Bun to import `.properties` files directly. See [BUNDLER.md](./BUNDLER.md).
 - [Tiny](https://bundlejs.com/?q=properties-file%40latest&treeshake=%5B*%5D) with 0 dependencies.
 - 100% test coverage based on the output from a Java implementation.
 - Active maintenance (many popular `.properties` packages have been inactive for years).
@@ -189,58 +189,11 @@ console.log(properties.format())
 
 For convenience, we also added an `upsert` method that allows updating a key if it exists or adding it at the end, when it doesn't. Make sure to check in your IDE for all available methods and options in our TSDoc.
 
-### Webpack/Bun File Loader
+### Bundler Integrations
 
-If you would like to import `.properties` directly using `import`, this package comes with its own Webpack and Bun file loader located under `properties-file/webpack-loader` and `properties-file/bun-plugin` respectively. Here is an example of how to configure it for webpack:
+If you would like to import `.properties` directly using `import`, this package provides integrations for all major bundlers: **Webpack/Rspack**, **Rollup/Vite/Rolldown**, **esbuild**, and **Bun**.
 
-```js
-// webpack.config.js
-module.exports = {
-  module: {
-    rules: [
-      {
-        test: /\.properties$/i,
-        use: [
-          {
-            loader: 'properties-file/webpack-loader',
-          },
-        ],
-      },
-    ],
-  },
-}
-```
-
-And here is how to configure it for bun:
-
-```js
-// index.ts (optional)
-
-import propertiesLoader from 'properties-file/bun-plugin'
-
-await Bun.plugin(propertiesLoader)
-
-// build.ts
-
-import propertiesLoader from 'properties-file/bun-plugin'
-
-await Bun.build({
-  plugins: [propertiesLoader],
-})
-```
-
-As soon as you configure Webpack or Bun, the `.properties` type should be available in your IDE when using `import`. If you ever need to add it manually, you can add a `*.properties` type declaration file at the root of your application, like this:
-
-```ts
-declare module '*.properties' {
-  /** A key/value object representing the content of a `.properties` file. */
-  const properties: {
-    /** The value of a `.properties` file key. */
-    [key: string]: string
-  }
-  export { properties }
-}
-```
+See [BUNDLER.md](./BUNDLER.md) for setup instructions and examples.
 
 By adding these configurations you should now be able to import directly `.properties` files just like this:
 
