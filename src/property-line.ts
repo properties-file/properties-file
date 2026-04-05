@@ -1,6 +1,5 @@
 const CH_TAB = 9 // \t
 const CH_LF = 10 // \n
-const CH_VT = 11 // \v
 const CH_FF = 12 // \f
 const CH_CR = 13 // \r
 const CH_SPACE = 32 // ' '
@@ -39,7 +38,6 @@ export class PropertyLine {
         charCode !== CH_SPACE &&
         charCode !== CH_TAB &&
         charCode !== CH_LF &&
-        charCode !== CH_VT &&
         charCode !== CH_FF &&
         charCode !== CH_CR
       ) {

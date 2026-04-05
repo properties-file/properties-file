@@ -129,6 +129,11 @@ describe('The `Property` class', () => {
     expect(property.key).toBe('keyonly')
     expect(property.value).toBe('')
   })
+
+  it('does not strip vertical tab as leading whitespace (not whitespace per Java spec)', () => {
+    const propertyLine = new PropertyLine('\x0Bhello = world', false)
+    expect(propertyLine.content).toBe('\x0Bhello = world')
+  })
 })
 
 describe('The `getFirstEolCharacter()` API', () => {

@@ -210,6 +210,24 @@ const restore = (name: string): void => {
     )
   }
 
+  // Abort if the working tree has uncommitted changes to src/ or dist/.
+  try {
+    const status = execSync('git status --porcelain -- src/ dist/', {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    }).trim()
+    if (status) {
+      throw new CliError(
+        `Working tree has uncommitted changes in src/ or dist/. Commit or stash them before restoring.\n\n${status}`
+      )
+    }
+  } catch (error) {
+    if (error instanceof CliError) {
+      throw error
+    }
+    // Not a git repo or git not available — skip the check.
+  }
+
   const metadata: SnapshotMetadata = existsSync(metadataPath)
     ? readMetadata(metadataPath)
     : { name, date: 'unknown', commit: 'unknown', branch: 'unknown', description: '' }
