@@ -22,6 +22,12 @@ export const escapeValue = (unescapedValue: string, escapeUnicode = false): stri
   return escapeContent(unescapedValue, false, escapeUnicode)
 }
 
+/** Pre-compiled regex for escaping without unicode expansion. */
+const REGEX_ESCAPE_NO_UNICODE = /[\s!#:=\\]/g
+
+/** Pre-compiled regex for escaping with unicode expansion. */
+const REGEX_ESCAPE_UNICODE = /[\s!#:=\\\u0000-\u001F\u007F-\uFFFF]/g
+
 /**
  * Escape the content from either key or value of a property.
  *
@@ -35,48 +41,48 @@ const escapeContent = (
   unescapedContent: string,
   escapeSpace: boolean,
   escapeUnicode: boolean
-): string =>
-  unescapedContent.replace(
-    new RegExp(`[\\s!#:=\\\\${escapeUnicode ? '\u0000-\u001F\u007F-\uFFFF' : ''}]`, 'g'),
-    (character, position) => {
-      switch (character) {
-        case ' ': {
-          // Spaces.
-          return escapeSpace || position === 0 ? '\\ ' : ' '
-        }
-        case '\\': {
-          // Backslash.
-          return '\\\\'
-        }
-        case '\f': {
-          // Formfeed.
-          return '\\f'
-        }
-        case '\n': {
-          // Newline.
-          return '\\n'
-        }
-        case '\r': {
-          // Carriage return.
-          return '\\r'
-        }
-        case '\t': {
-          // Tab.
-          return '\\t'
-        }
-        case '=':
-        case ':':
-        case '#':
-        case '!': {
-          // =, :, # and !.
-          return `\\${character}`
-        }
-        default: {
-          // Any character that is not in the range of ASCII printable characters.
-          // istanbul ignore next -- guaranteed non-empty by regex match
-          const hex = (character.charCodeAt(0) ?? 0).toString(16)
-          return '\\u' + ('0000' + hex).slice(-4)
-        }
+): string => {
+  const regex = escapeUnicode ? REGEX_ESCAPE_UNICODE : REGEX_ESCAPE_NO_UNICODE
+  regex.lastIndex = 0
+  return unescapedContent.replace(regex, (character, position) => {
+    switch (character) {
+      case ' ': {
+        // Spaces.
+        return escapeSpace || position === 0 ? '\\ ' : ' '
+      }
+      case '\\': {
+        // Backslash.
+        return '\\\\'
+      }
+      case '\f': {
+        // Formfeed.
+        return '\\f'
+      }
+      case '\n': {
+        // Newline.
+        return '\\n'
+      }
+      case '\r': {
+        // Carriage return.
+        return '\\r'
+      }
+      case '\t': {
+        // Tab.
+        return '\\t'
+      }
+      case '=':
+      case ':':
+      case '#':
+      case '!': {
+        // =, :, # and !.
+        return `\\${character}`
+      }
+      default: {
+        // Any character that is not in the range of ASCII printable characters.
+        // istanbul ignore next -- guaranteed non-empty by regex match
+        const hex = (character.charCodeAt(0) ?? 0).toString(16)
+        return '\\u' + ('0000' + hex).slice(-4)
       }
     }
-  )
+  })
+}

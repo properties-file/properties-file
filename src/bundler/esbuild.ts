@@ -1,6 +1,8 @@
-import type { Plugin } from 'esbuild'
 import { readFileSync } from 'node:fs'
+
 import { getProperties } from '..'
+
+import type { Plugin } from 'esbuild'
 
 /**
  * esbuild plugin for `.properties` files.

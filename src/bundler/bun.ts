@@ -1,6 +1,8 @@
-import type { BunPlugin } from 'bun'
 import { readFileSync } from 'node:fs'
+
 import { getProperties } from '..'
+
+import type { BunPlugin } from 'bun'
 
 /**
  * Bun plugin for `.properties` files. Works with both `Bun.plugin` (runtime) and `Bun.build`

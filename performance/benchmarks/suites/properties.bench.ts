@@ -1,6 +1,7 @@
 import { Bench } from 'tinybench'
-import { getProperties, Properties } from '../src'
-import { payloads } from './payloads'
+
+import { getProperties, Properties } from '../../../src'
+import { payloads } from '../payloads'
 
 /**
  * Benchmark the `Properties` constructor and `getProperties` across all payload types.

@@ -1,21 +1,12 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import type { Bench } from 'tinybench'
-import { runEscapeUnescapeBenchmarks } from './escape-unescape.bench'
-import { runEditorBenchmarks } from './properties-editor.bench'
-import { runPropertiesBenchmarks } from './properties.bench'
 
-/** A single benchmark measurement produced by `run.ts`. */
-export type BenchmarkResult = {
-  /** The benchmark name (e.g. "Properties constructor (Pure key/value)"). */
-  name: string
-  /** Operations per second (higher is better). */
-  opsPerSecond: number
-  /** Median latency in nanoseconds (lower is better). */
-  medianNs: number
-  /** Relative margin of error as a percentage (e.g. 1.23 means ±1.23%). */
-  marginOfError: number
-}
+import { runEscapeUnescapeBenchmarks } from './suites/escape-unescape.bench'
+import { runEditorBenchmarks } from './suites/properties-editor.bench'
+import { runPropertiesBenchmarks } from './suites/properties.bench'
+
+import type { BenchmarkResult } from '../shared/compare-utilities'
+import type { Bench } from 'tinybench'
 
 /**
  * Extract results from a completed tinybench run.
@@ -67,7 +58,7 @@ const printTable = (results: BenchmarkResult[]): void => {
  * Run all benchmark suites, print results, and write them to a JSON file.
  *
  * An optional output path can be passed as the first CLI argument; otherwise
- * results are written to `benchmarks/.results/results.json`.
+ * results are written to `performance/benchmarks/.results/results.json`.
  */
 const main = async (): Promise<void> => {
   const outputPath = process.argv[2]

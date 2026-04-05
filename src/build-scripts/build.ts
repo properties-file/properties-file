@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { EOL } from 'node:os'
 import path from 'node:path'
+
 import { minify_sync as minify } from 'terser'
 
 /** Matches ESM/CJS build files (`.js` and `.d.ts`). */

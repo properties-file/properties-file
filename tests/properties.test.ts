@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+
 import { BOM, getFirstEolCharacter, Properties } from '../src/properties'
 import { Property } from '../src/property'
 import { PropertyLine } from '../src/property-line'
@@ -80,6 +81,26 @@ city2=B\u00FCckeburg`)
   it('`.format()` method works as expected with a BOM character', () => {
     expect(propertiesWithBom.format()).toEqual(propertiesContentWithBom)
   })
+
+  it('handles bare CR line endings (Java spec compliance)', () => {
+    const properties_ = new Properties('hello = world\rfoo = bar')
+    expect(properties_.toObject()).toEqual({ hello: 'world', foo: 'bar' })
+  })
+
+  it('handles mixed CR, LF, and CRLF line endings', () => {
+    const properties_ = new Properties('a = 1\rb = 2\nc = 3\r\nd = 4')
+    expect(properties_.toObject()).toEqual({ a: '1', b: '2', c: '3', d: '4' })
+  })
+
+  it('handles bare CR blank lines', () => {
+    const properties_ = new Properties('\rhello = world')
+    expect(properties_.toObject()).toEqual({ hello: 'world' })
+  })
+
+  it('handles bare CR comments', () => {
+    const properties_ = new Properties('# comment\rhello = world')
+    expect(properties_.toObject()).toEqual({ hello: 'world' })
+  })
 })
 
 describe('The `Property` class', () => {
@@ -101,6 +122,13 @@ describe('The `Property` class', () => {
     expect(property.newlinePositions.length).toBe(0)
     expect(property.endingLineNumber).toBe(1)
   })
+
+  it('handles key with trailing whitespace only (whitespace separator, no value)', () => {
+    const property = new Property(new PropertyLine('keyonly   ', false), 1)
+    property.setKeyAndValue()
+    expect(property.key).toBe('keyonly')
+    expect(property.value).toBe('')
+  })
 })
 
 describe('The `getFirstEolCharacter()` API', () => {
@@ -108,5 +136,7 @@ describe('The `getFirstEolCharacter()` API', () => {
     expect(getFirstEolCharacter('')).toEqual(undefined)
     expect(getFirstEolCharacter('hi\nhello\r\nworld')).toEqual('\n')
     expect(getFirstEolCharacter('hi\r\nhello\nworld')).toEqual('\r\n')
+    expect(getFirstEolCharacter('hi\rhello\nworld')).toEqual('\r')
+    expect(getFirstEolCharacter('no newlines')).toEqual(undefined)
   })
 })

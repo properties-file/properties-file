@@ -1,0 +1,66 @@
+name: Performance
+
+on:
+  pull_request:
+    branches: ['main']
+
+jobs:
+  benchmark:
+    name: Performance comparison
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: latest
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Build
+        run: >-
+          rm -Rf ./dist &&
+          tsc -p tsconfig.cjs.json &&
+          tsc -p tsconfig.esm.json &&
+          echo '{ "type": "commonjs" }' > dist/cjs/package.json
+
+      - name: Run benchmark comparison
+        run: npx tsx performance/benchmarks/compare.ts
+
+      - name: Run size comparison
+        run: npx tsx performance/size/measure.ts compare
+
+      - name: Combine reports
+        run: >-
+          cat performance/benchmarks/.results/comparison.md > performance/benchmarks/.results/pr-comment.md &&
+          echo -e "\n\n---\n" >> performance/benchmarks/.results/pr-comment.md &&
+          cat performance/size/.results/size-comparison.md >> performance/benchmarks/.results/pr-comment.md
+
+      - name: Post results to PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          EXISTING=$(gh pr view ${{ github.event.pull_request.number }}
+          --repo ${{ github.repository }}
+          --json comments
+          --jq '.comments[] | select(.body | startswith("# Benchmark Comparison")) | .id'
+          | head -1) &&
+          if [ -n "$EXISTING" ]; then
+            gh api repos/${{ github.repository }}/issues/comments/$EXISTING
+            --method PATCH
+            -f body=@performance/benchmarks/.results/pr-comment.md;
+          else
+            gh pr comment ${{ github.event.pull_request.number }}
+            --repo ${{ github.repository }}
+            --body-file performance/benchmarks/.results/pr-comment.md;
+          fi

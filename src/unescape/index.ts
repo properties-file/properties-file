@@ -1,21 +1,47 @@
-/**
- * Matches malformed Unicode escape sequences: a `\u` not followed by 4 hex digits.
- * Java's `.properties` parser treats `\u12345` as `\u1234` + literal `5`, so only a
- * missing 4th hex digit is invalid.
- */
-const REGEX_INVALID_UNICODE_ESCAPE = /\\u(?![0-9a-fA-F]{4})/
+// ---------------------------------------------------------------------------
+// Character codes
+// ---------------------------------------------------------------------------
+
+const CH_BACKSLASH = 92 // \\
+const CH_LOWER_F = 102 // f
+const CH_LOWER_N = 110 // n
+const CH_LOWER_R = 114 // r
+const CH_LOWER_T = 116 // t
+const CH_LOWER_U = 117 // u
 
 /**
- * Captures supported escape sequences: standard (`\\f`, `\\n`, `\\r`, `\\t`), Unicode (`\\uXXXX`),
- * and any other character following a backslash.
+ * Check whether a character code is a hexadecimal digit (0-9, A-F, a-f).
+ *
+ * @param charCode - A UTF-16 character code.
+ * @returns `true` when the code represents a hex digit.
  */
-const REGEX_ESCAPE = /\\(?:([fnrt])|u([0-9a-fA-F]{4})|(.))/g
+const isHexDigit = (charCode: number): boolean =>
+  (charCode >= 48 && charCode <= 57) || // 0-9
+  (charCode >= 65 && charCode <= 70) || // A-F
+  (charCode >= 97 && charCode <= 102) // a-f
 
-/** Maps single-letter escape codes to their actual characters. */
-const ESCAPE_MAP = { f: '\f', n: '\n', r: '\r', t: '\t' } as const
+/**
+ * Convert a hex-digit character code to its numeric value (0-15).
+ *
+ * @param charCode - A UTF-16 character code known to be a valid hex digit.
+ * @returns The numeric value of the hex digit.
+ */
+const hexValue = (charCode: number): number => {
+  if (charCode >= 48 && charCode <= 57) {
+    return charCode - 48 // 0-9
+  }
+  if (charCode >= 65 && charCode <= 70) {
+    return charCode - 55 // A-F
+  }
+  return charCode - 87 // a-f
+}
 
 /**
  * Tries to unescape the content from either key or value of a property.
+ *
+ * Uses a single-pass, segment-based approach with `charCodeAt()` instead of
+ * regex. Scans for backslashes, flushes literal text in bulk via `slice()`,
+ * and only builds new characters for actual escape sequences.
  *
  * @param content - The content to unescape.
  *
@@ -24,39 +50,95 @@ const ESCAPE_MAP = { f: '\f', n: '\n', r: '\r', t: '\t' } as const
  * @throws Error if malformed escaped unicode characters are present.
  */
 export const unescapeContent = (content: string): string => {
-  // Performance optimization: avoid regex if no escape characters are present.
+  // Fast path: no backslashes means nothing to unescape.
   if (content.indexOf('\\') === -1) {
     return content
   }
 
-  // Validate all \u sequences first. Note: Java has a bug where it attempts to read
-  // 4 characters after \u without validating they exist in the input buffer, potentially
-  // reading garbage memory. Our implementation properly validates before processing.
-  const malformedUnicodeMatch = content.match(REGEX_INVALID_UNICODE_ESCAPE)
-  if (malformedUnicodeMatch) {
-    // istanbul ignore next -- .index is always defined when match succeeds
-    const startIndex = malformedUnicodeMatch.index ?? 0
-    const errorContext = content.slice(startIndex, startIndex + 6)
-    throw new Error(`malformed escaped unicode characters '${errorContext}'`)
+  const length = content.length
+  let unescaped = ''
+  let segmentStart = 0
+  let cursor = 0
+
+  while (cursor < length) {
+    if (content.charCodeAt(cursor) !== CH_BACKSLASH) {
+      cursor++
+      continue
+    }
+
+    // Flush the literal segment preceding this backslash.
+    if (cursor > segmentStart) {
+      unescaped += content.slice(segmentStart, cursor)
+    }
+
+    cursor++ // Advance past the backslash.
+
+    // Trailing backslash with nothing after it — keep it as a literal character.
+    if (cursor >= length) {
+      unescaped += '\\'
+      segmentStart = cursor
+      break
+    }
+
+    const escapedCharCode = content.charCodeAt(cursor)
+
+    switch (escapedCharCode) {
+      case CH_LOWER_N: {
+        unescaped += '\n'
+        cursor++
+        break
+      }
+      case CH_LOWER_T: {
+        unescaped += '\t'
+        cursor++
+        break
+      }
+      case CH_LOWER_R: {
+        unescaped += '\r'
+        cursor++
+        break
+      }
+      case CH_LOWER_F: {
+        unescaped += '\f'
+        cursor++
+        break
+      }
+      case CH_LOWER_U: {
+        // \uXXXX — require exactly 4 hex digits after the 'u'.
+        if (
+          cursor + 4 >= length ||
+          !isHexDigit(content.charCodeAt(cursor + 1)) ||
+          !isHexDigit(content.charCodeAt(cursor + 2)) ||
+          !isHexDigit(content.charCodeAt(cursor + 3)) ||
+          !isHexDigit(content.charCodeAt(cursor + 4))
+        ) {
+          const errorContext = content.slice(cursor - 1, cursor + 5)
+          throw new Error(`malformed escaped unicode characters '${errorContext}'`)
+        }
+        const codePoint =
+          (hexValue(content.charCodeAt(cursor + 1)) << 12) |
+          (hexValue(content.charCodeAt(cursor + 2)) << 8) |
+          (hexValue(content.charCodeAt(cursor + 3)) << 4) |
+          hexValue(content.charCodeAt(cursor + 4))
+        unescaped += String.fromCharCode(codePoint)
+        cursor += 5
+        break
+      }
+      default: {
+        // Any other character after backslash is taken literally (Java behaviour).
+        unescaped += content.charAt(cursor)
+        cursor++
+        break
+      }
+    }
+
+    segmentStart = cursor
   }
 
-  // Process all valid escape sequences.
-  return content.replace(
-    REGEX_ESCAPE,
-    (_match: string, regularEscape?: string, unicodeHex?: string, otherChar?: string): string => {
-      if (regularEscape) {
-        // Handle standard escape sequences.
-        return ESCAPE_MAP[regularEscape as keyof typeof ESCAPE_MAP]
-      }
+  // Flush the remaining literal segment.
+  if (segmentStart < length) {
+    unescaped += content.slice(segmentStart, length)
+  }
 
-      if (unicodeHex) {
-        // Handle valid \uXXXX sequences.
-        return String.fromCharCode(parseInt(unicodeHex, 16))
-      }
-
-      // Handle any other character after \ (taken literally per Java behavior).
-      // istanbul ignore next -- capture group (.) always matches a character
-      return otherChar ?? ''
-    }
-  )
+  return unescaped
 }

@@ -1,6 +1,7 @@
-import { KeyValuePairObject } from '.'
 import { Property } from './property'
 import { PropertyLine } from './property-line'
+
+import { KeyValuePairObject } from '.'
 
 /**
  * Byte-order mark.
@@ -8,8 +9,8 @@ import { PropertyLine } from './property-line'
 export const BOM = '\uFEFF'
 export const BOM_CODE_POINT = BOM.charCodeAt(0)
 
-/** Matches a newline, optionally preceded by a carriage return. */
-export const REGEX_NEWLINE = /\r?\n/
+/** Matches a line terminator: CRLF, bare CR, or bare LF (per the Java spec). */
+export const REGEX_NEWLINE = /\r\n|\r|\n/
 
 /** The default end of line character. */
 export const DEFAULT_END_OF_LINE_CHARACTER = '\n'
@@ -22,8 +23,16 @@ export const DEFAULT_END_OF_LINE_CHARACTER = '\n'
  * @returns The multiline content's first end of line (EOL) character.
  */
 export const getFirstEolCharacter = (content: string): string | undefined => {
-  const newlineIndex = content.indexOf('\n')
-  return newlineIndex === -1 ? undefined : `${content[newlineIndex - 1] === '\r' ? '\r' : ''}\n`
+  for (let index = 0; index < content.length; index++) {
+    const ch = content[index]
+    if (ch === '\r') {
+      return content[index + 1] === '\n' ? '\r\n' : '\r'
+    }
+    if (ch === '\n') {
+      return '\n'
+    }
+  }
+  return undefined
 }
 
 /**
@@ -40,6 +49,8 @@ export class Properties {
   public collection: Property[] = []
   /** Object associating keys with their starting line numbers. */
   public keyLineNumbers: KeyLineNumbers = {}
+  /** Map from key to collection index for O(1) duplicate lookup. */
+  private keyIndexMap: { [key: string]: number } = {}
 
   /**
    * Create `Properties` object.
@@ -58,9 +69,10 @@ export class Properties {
    * Parse the `.properties` content line by line.
    */
   protected parseLines(): void {
-    /** reset existing object properties to their initial values. */
+    /** Reset existing object properties to their initial values. */
     this.collection = []
     this.keyLineNumbers = {}
+    this.keyIndexMap = {}
 
     /** Line number while parsing properties file content. */
     let lineNumber = 0
@@ -115,16 +127,17 @@ export class Properties {
       property.hasKeyCollisions = true
       property.keyCollisionLines = this.keyLineNumbers[property.key]
 
-      // Remove the collision from the collection (we only keep latest value).
-      this.collection = this.collection.filter(
-        (existingPropertyObject) => existingPropertyObject.key !== property.key
-      )
-    } else {
-      // Initialize the key line numbers.
-      this.keyLineNumbers[property.key] = [property.startingLineNumber]
+      // Replace the existing entry in the collection using the index map (O(1)).
+      const existingIndex = this.keyIndexMap[property.key]
+      this.collection[existingIndex] = property
+      return
     }
 
-    // Add the property to the collection.
+    // Initialize the key line numbers.
+    this.keyLineNumbers[property.key] = [property.startingLineNumber]
+
+    // Add the property to the collection and record its index.
+    this.keyIndexMap[property.key] = this.collection.length
     this.collection.push(property)
   }
 

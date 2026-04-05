@@ -1,17 +1,15 @@
 import { PropertyLine } from './property-line'
 import { unescapeContent } from './unescape'
 
-/** Matches trailing backslashes. */
-const REGEX_TRAILING_BACKSLASHES = /(\\+)$/
-
-/** Matches leading whitespace characters (excluding non-breaking spaces). */
-const REGEX_LEADING_WHITESPACE = /^([\t\n\v\f\r ]+)/
-
-/** Matches separator characters (tab, formfeed, space, colon, equals). */
-const REGEX_SEPARATOR = /[\t\f :=]/g
-
-/** Matches a colon or equals sign. */
-const REGEX_COLON_OR_EQUALS = /[:=]/
+const CH_TAB = 9 // \t
+const CH_LF = 10 // \n
+const CH_VT = 11 // \v
+const CH_FF = 12 // \f
+const CH_CR = 13 // \r
+const CH_SPACE = 32 // ' '
+const CH_COLON = 58 // :
+const CH_EQUALS = 61 // =
+const CH_BACKSLASH = 92 // \\
 
 /**
  * Object representing a property (key/value).
@@ -142,6 +140,23 @@ export class Property {
   }
 
   /**
+   * Check whether a character code is whitespace (tab, LF, VT, FF, CR, space).
+   *
+   * @param charCode - A UTF-16 character code.
+   * @returns `true` when the code represents a whitespace character.
+   */
+  private static isWhitespace(charCode: number): boolean {
+    return (
+      charCode === CH_SPACE ||
+      charCode === CH_TAB ||
+      charCode === CH_LF ||
+      charCode === CH_VT ||
+      charCode === CH_FF ||
+      charCode === CH_CR
+    )
+  }
+
+  /**
    * Find the character separating the key from the value.
    */
   private findSeparator(): void {
@@ -150,55 +165,68 @@ export class Property {
       return
     }
 
-    // Only match separators to avoid iterating all characters.
-    REGEX_SEPARATOR.lastIndex = 0
-    let match: RegExpExecArray | null
-    while ((match = REGEX_SEPARATOR.exec(this.linesContent)) !== null) {
-      const position = match.index
+    const content = this.linesContent
+    const contentLength = content.length
+    let hasPrecedingBackslash = false
 
-      // Check if the separator might be escaped.
-      const prefix = this.linesContent.slice(0, position)
-      const backslashMatch = prefix.match(REGEX_TRAILING_BACKSLASHES)
+    // Scan for the first unescaped separator character.
+    for (let index = 0; index < contentLength; index++) {
+      const charCode = content.charCodeAt(index)
 
-      if (backslashMatch) {
-        const separatorIsEscaped = backslashMatch[1].length % 2 === 1
-        if (separatorIsEscaped) {
-          // If the separator is escaped, check the next character.
-          continue
+      if (charCode === CH_BACKSLASH) {
+        hasPrecedingBackslash = !hasPrecedingBackslash
+        continue
+      }
+
+      if (hasPrecedingBackslash) {
+        hasPrecedingBackslash = false
+        continue
+      }
+
+      // Check if this is a separator character (whitespace, =, :).
+      const isSeparator =
+        charCode === CH_EQUALS ||
+        charCode === CH_COLON ||
+        charCode === CH_SPACE ||
+        charCode === CH_TAB ||
+        charCode === CH_FF
+
+      if (!isSeparator) {
+        continue
+      }
+
+      this.separatorPosition = index
+
+      // Advance past leading whitespace in the separator.
+      let separatorEnd = index
+      while (
+        separatorEnd < contentLength &&
+        Property.isWhitespace(content.charCodeAt(separatorEnd))
+      ) {
+        separatorEnd++
+      }
+
+      // Check if there is an equal or colon character after whitespace.
+      if (separatorEnd < contentLength) {
+        const nextCharCode = content.charCodeAt(separatorEnd)
+        if (nextCharCode === CH_EQUALS || nextCharCode === CH_COLON) {
+          separatorEnd++
+          // Skip trailing whitespace after = or :.
+          while (
+            separatorEnd < contentLength &&
+            Property.isWhitespace(content.charCodeAt(separatorEnd))
+          ) {
+            separatorEnd++
+          }
         }
       }
 
-      let separator = ''
-      this.separatorPosition = position
-
-      // Check if the separator starts with a whitespace.
-      let nextContent = this.linesContent.slice(position)
-      // All white-space characters, excluding non-breaking spaces.
-      const leadingWhitespace = nextContent.match(REGEX_LEADING_WHITESPACE)?.[0] ?? ''
-
-      // If there is a whitespace, move to the next character.
-      if (leadingWhitespace.length > 0) {
-        separator += leadingWhitespace
-        nextContent = nextContent.slice(leadingWhitespace.length)
-      }
-
-      // Check if there is an equal or colon character.
-      if (REGEX_COLON_OR_EQUALS.test(nextContent[0])) {
-        separator += nextContent[0]
-        nextContent = nextContent.slice(1)
-        // If an equal or colon character was found, try to get trailing whitespace.
-        separator += nextContent.match(REGEX_LEADING_WHITESPACE)?.[0] ?? ''
-      }
-
-      this.separatorLength = separator.length
-      this.valuePosition = this.separatorPosition + this.separatorLength
-      this.separator = this.linesContent.slice(
-        this.separatorPosition,
-        this.separatorPosition + this.separatorLength
-      )
+      this.separatorLength = separatorEnd - index
+      this.valuePosition = separatorEnd
+      this.separator = content.slice(index, separatorEnd)
 
       // If the line starts with a separator, the property has no key.
-      if (!position) {
+      if (!index) {
         this.hasNoKey = true
       }
 

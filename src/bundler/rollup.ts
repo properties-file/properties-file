@@ -1,5 +1,6 @@
-import type { Plugin } from 'rollup'
 import { getProperties } from '..'
+
+import type { Plugin } from 'rollup'
 
 /** The file extension matched by this plugin. */
 const PROPERTIES_EXTENSION = '.properties'

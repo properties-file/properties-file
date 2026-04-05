@@ -1,6 +1,7 @@
 import { Bench } from 'tinybench'
-import { escapeKey, escapeValue } from '../src/escape'
-import { unescapeContent } from '../src/unescape'
+
+import { escapeKey, escapeValue } from '../../../src/escape'
+import { unescapeContent } from '../../../src/unescape'
 
 /** Plain ASCII string with no special characters. */
 const PLAIN_ASCII = 'This is a simple plain ASCII string with no special characters at all'

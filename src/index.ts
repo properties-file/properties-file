@@ -1,4 +1,4 @@
-import { Properties } from './properties'
+import { parseProperties } from './parse-properties'
 export { Properties } from './properties'
 
 /**
@@ -16,4 +16,4 @@ export type KeyValuePairObject = {
  * @returns A key/value object representing the content of a `.properties` file.
  */
 export const getProperties = (content: string | Buffer): KeyValuePairObject =>
-  new Properties(content).toObject()
+  parseProperties(content)

@@ -1,5 +1,19 @@
 {
   "preset": "ts-jest",
+  "transform": {
+    "^.+\\.tsx?$": [
+      "ts-jest",
+      {
+        "tsconfig": "tests/jest.json"
+      }
+    ]
+  },
+  "collectCoverageFrom": [
+    "src/**/*.ts",
+    "!src/**/*.d.ts",
+    "!src/bundler/**",
+    "!src/build-scripts/**"
+  ],
   "coverageThreshold": {
     "global": {
       "branches": 100,

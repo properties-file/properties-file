@@ -1,6 +1,7 @@
 import { Bench } from 'tinybench'
-import { PropertiesEditor } from '../src/editor'
-import { generateMixed } from './payloads'
+
+import { PropertiesEditor } from '../../../src/editor'
+import { generateMixed } from '../payloads'
 
 /**
  * Benchmark `PropertiesEditor` operations (insert, update, upsert, delete)

@@ -3,8 +3,8 @@ import { escapeKey, escapeValue } from '../escape'
 import { Properties, REGEX_NEWLINE } from '../properties'
 import { Property } from '../property'
 
-/** Matches a newline, optionally preceded by a carriage return (global). */
-const REGEX_NEWLINE_GLOBAL = /\r?\n/g
+/** Matches a line terminator: CRLF, bare CR, or bare LF (global). */
+const REGEX_NEWLINE_GLOBAL = /\r\n|\r|\n/g
 
 /** Matches a newline character. */
 const REGEX_LF = /\n/

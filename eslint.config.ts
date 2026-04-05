@@ -1,3 +1,4 @@
+import { defineConfig } from 'eslint/config'
 import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescript'
 import esXPlugin from 'eslint-plugin-es-x'
 import { flatConfigs as importXPluginFlatConfigs } from 'eslint-plugin-import-x'
@@ -8,7 +9,7 @@ import prettierRecommendedConfig from 'eslint-plugin-prettier/recommended'
 import tsdocPlugin from 'eslint-plugin-tsdoc'
 import unicornPlugin from 'eslint-plugin-unicorn'
 import * as jsoncParser from 'jsonc-eslint-parser'
-import tsEslint, { configs as tsEslintConfigs } from 'typescript-eslint'
+import { configs as tsEslintConfigs } from 'typescript-eslint'
 
 const TYPESCRIPT_FILES = ['**/*.ts', '**/*.mts', '**/*.cts']
 
@@ -26,6 +27,7 @@ const UNICORN_MODERN_API_RULES = [
   'unicorn/prefer-at', // ES2022 - Array/String.prototype.at
   'unicorn/prefer-top-level-await', // ES2022 - top-level await (also incompatible with CJS)
   'unicorn/no-array-reverse', // ES2023 - Array.prototype.toReversed
+  'unicorn/no-array-sort', // ES2023 - Array.prototype.toSorted
   'unicorn/no-negated-condition', // Style - disabled to allow `indexOf() !== -1` patterns
 ]
 
@@ -61,7 +63,7 @@ const ES_X_SYNTAX_RULES_HANDLED_BY_TYPESCRIPT = Object.fromEntries(
     .map((rule) => [rule, 'off'] as const)
 )
 
-export default tsEslint.config(
+export default defineConfig(
   // Files to ignore (replaces `.eslintignore`).
   {
     // ESLint ignores `node_modules` and dot-files by default.
@@ -73,6 +75,10 @@ export default tsEslint.config(
       'coverage/',
       // Asset (static) files.
       'assets/',
+      // Performance results and snapshots (may contain copies of src/dist).
+      'performance/benchmarks/.results/',
+      'performance/size/.results/',
+      'performance/snapshots/.snapshots/',
     ],
   },
   // Prettier recommended configs.
@@ -106,6 +112,39 @@ export default tsEslint.config(
     rules: {
       // Disable es-x syntax rules that TypeScript transpiles (keep only runtime API rules).
       ...ES_X_SYNTAX_RULES_HANDLED_BY_TYPESCRIPT,
+      // Sort import declarations by group (builtin → external → internal → parent → sibling → index).
+      // @see https://github.com/un-ts/eslint-plugin-import-x/blob/master/docs/rules/order.md
+      'import-x/order': [
+        'error',
+        {
+          groups: [
+            'builtin',
+            'external',
+            'internal',
+            'parent',
+            'sibling',
+            'index',
+            'object',
+            'type',
+          ],
+          'newlines-between': 'always',
+          alphabetize: { order: 'asc', caseInsensitive: true },
+        },
+      ],
+      // Sort named specifiers within a single import statement (e.g., { b, a } → { a, b }).
+      // Declaration sorting is handled by import-x/order above, so it is disabled here.
+      // @see https://eslint.org/docs/latest/rules/sort-imports
+      'sort-imports': [
+        'error',
+        {
+          ignoreCase: true,
+          ignoreDeclarationSort: true,
+          ignoreMemberSort: false,
+        },
+      ],
+      // Flag usage of APIs marked with the `@deprecated` JSDoc tag.
+      // @see https://typescript-eslint.io/rules/no-deprecated/
+      '@typescript-eslint/no-deprecated': 'error',
       // Make sure there is always a space before comments.
       // @see https://eslint.org/docs/latest/rules/spaced-comment
       'spaced-comment': ['error'],
@@ -187,7 +226,7 @@ export default tsEslint.config(
       'tests/**/*.ts',
       'eslint.config.ts',
       'eslint/**/*.ts',
-      'benchmarks/**/*.ts',
+      'performance/**/*.ts',
     ],
     rules: {
       // Disable all es-x restrictions since these files are not shipped to consumers.
@@ -206,10 +245,10 @@ export default tsEslint.config(
     files: TYPESCRIPT_FILES.map((pattern) => `src/build-scripts/${pattern}`),
     languageOptions: { parserOptions: { project: ['src/build-scripts/tsconfig.json'] } },
   },
-  // Benchmark TypeScript files.
+  // Performance TypeScript files.
   {
-    files: TYPESCRIPT_FILES.map((pattern) => `benchmarks/${pattern}`),
-    languageOptions: { parserOptions: { project: ['benchmarks/tsconfig.json'] } },
+    files: TYPESCRIPT_FILES.map((pattern) => `performance/${pattern}`),
+    languageOptions: { parserOptions: { project: ['performance/tsconfig.json'] } },
   },
   // JSON files.
   { files: ['*.json'], ignores: ['**/package.json'], languageOptions: { parser: jsoncParser } },

@@ -118,9 +118,9 @@
   ],
   "scripts": {
     "add-file-type-declaration": "node ./dist/esm/add-import-type.js && find ./dist -name 'add-import-type.*' -type f -delete",
-    "benchmark": "npx tsx benchmarks/run.ts",
-    "benchmark-compare": "npx tsx benchmarks/compare.ts",
-    "build": "npm run check-nvm-node-version && npm run prettier-write && npm run eslint-fix && rm -Rf ./dist && tsc -p tsconfig.cjs.json && tsc -p tsconfig.esm.json && echo '{ \"type\": \"commonjs\" }' > dist/cjs/package.json && tsc -p src/build-scripts/tsconfig.json && node dist/build-scripts/build.js && npm run test",
+    "benchmark": "npx tsx performance/benchmarks/run.ts",
+    "benchmark-compare": "npx tsx performance/benchmarks/compare.ts",
+    "build": "npm run check-nvm-node-version && npm run prettier-write && npm run eslint-fix && rm -Rf ./dist && tsc -p tsconfig.cjs.json && tsc -p tsconfig.esm.json && echo '{ \"type\": \"commonjs\" }' > dist/cjs/package.json && tsc -p src/build-scripts/tsconfig.json && node dist/build-scripts/build.js && npm run test && npm run size",
     "check-nvm-node-version": "check-node-version --node $(node -p \"'>='+require('fs').readFileSync('.nvmrc','utf-8').trim()\")",
     "depcheck": "depcheck",
     "eslint-fix": "eslint --fix",
@@ -129,6 +129,9 @@
     "prepare": "husky",
     "prettier-write": "prettier --write .",
     "release": "dotenv -- release-it --only-version",
+    "size": "npx tsx performance/size/measure.ts",
+    "size-compare": "npx tsx performance/size/measure.ts compare",
+    "snapshot": "npx tsx performance/snapshots/manage.ts",
     "test": "jest --coverage"
   },
   "devDependencies": {
@@ -157,7 +160,6 @@
     "jsonc-eslint-parser": "3.1.0",
     "npm-check-updates": "19.6.5",
     "prettier": "3.8.1",
-    "prettier-plugin-organize-imports": "4.3.0",
     "release-it": "19.2.4",
     "rollup": "4.60.0",
     "terser": "5.46.1",

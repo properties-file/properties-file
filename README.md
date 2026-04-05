@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/npm/l/make-coverage-badge.svg?color=brightgreen)](https://opensource.org/licenses/MIT)
 [![Download Stats](https://img.shields.io/npm/dw/properties-file.svg?color=brightgreen)](https://www.npmjs.com/package/properties-file)
 ![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen.svg)
-[![Package Size](https://deno.bundlejs.com/badge?q=properties-file@latest&treeshake=[*])](https://bundlejs.com/?q=properties-file@latest&treeshake=[*])
+![Package Size](https://img.shields.io/badge/minified%20%2B%20gzip-1.0%20kB-brightgreen)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)
 
 `.properties` file parser, editor, formatter and bundler integrations.
@@ -28,7 +28,7 @@ npm install properties-file
   - A `PropertiesEditor` class enables the addition, edition, and removal of entries.
   - `escapeKey` and `escapeValue` allow the conversion of any content to a `.properties` compatible format.
   - Bundler integrations for Webpack, Rollup/Vite, esbuild, and Bun to import `.properties` files directly. See [BUNDLER.md](./BUNDLER.md).
-- [Tiny](https://bundlejs.com/?q=properties-file%40latest&treeshake=%5B*%5D) with 0 dependencies.
+- Tiny with 0 dependencies.
 - 100% test coverage based on the output from a Java implementation.
 - Active maintenance (many popular `.properties` packages have been inactive for years).
 
@@ -242,6 +242,10 @@ Basically, our goal was to offer parity with the Java implementation, which is t
    3. Unescape the keys and values.
 
 Just like Java, if a Unicode-escaped character (`\u`) is malformed, an error will be thrown. However, we do not recommend using Unicode-escaped characters, but rather using UTF-8 encoding that supports more characters.
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for project principles, architecture, code style, and development commands.
 
 ## Additional references
 

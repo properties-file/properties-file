@@ -1,4 +1,5 @@
 import { escapeKey, escapeValue } from '../src/escape/index'
+import { unescapeContent } from '../src/unescape/index'
 
 describe('The property unicode key escaping', () => {
   it.each([
@@ -85,5 +86,27 @@ describe('The property ISO-8859-1 compatible encoding value escaping', () => {
   ])('should escape value "%s" as "%s"', (key: string, expected: string) => {
     const result = escapeValue(key, true)
     expect(result).toEqual(expected)
+  })
+})
+
+describe('The unescapeContent function', () => {
+  it('preserves a trailing backslash as a literal character', () => {
+    expect(unescapeContent('abc\\')).toBe('abc\\')
+  })
+
+  it('preserves a lone backslash', () => {
+    expect(unescapeContent('\\')).toBe('\\')
+  })
+
+  it('handles escaped backslash followed by trailing backslash', () => {
+    expect(unescapeContent('a\\\\\\')).toBe('a\\\\')
+  })
+
+  it('returns empty string unchanged', () => {
+    expect(unescapeContent('')).toBe('')
+  })
+
+  it('returns string without backslashes unchanged', () => {
+    expect(unescapeContent('hello world')).toBe('hello world')
   })
 })

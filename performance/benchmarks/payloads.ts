@@ -94,7 +94,7 @@ export const generateMultilineValues = (): string => {
  */
 export const generateMixed = (): string => {
   const testFile = readFileSync(
-    path.resolve(import.meta.dirname, '..', 'assets', 'tests', 'test-all.properties'),
+    path.resolve(import.meta.dirname, '..', '..', 'assets', 'tests', 'test-all.properties'),
     'utf8'
   )
   const repetitions = Math.ceil(ENTRY_COUNT / testFile.split('\n').length)

@@ -1,11 +1,12 @@
-/** Matches leading whitespace characters. */
-const REGEX_LEADING_WHITESPACE = /^\s+/
-
-/** Matches a comment line starting with `!` or `#`. */
-const REGEX_COMMENT = /^[!#]/
-
-/** Matches trailing backslashes. */
-const REGEX_TRAILING_BACKSLASHES = /(\\+)$/
+const CH_TAB = 9 // \t
+const CH_LF = 10 // \n
+const CH_VT = 11 // \v
+const CH_FF = 12 // \f
+const CH_CR = 13 // \r
+const CH_SPACE = 32 // ' '
+const CH_BANG = 33 // !
+const CH_HASH = 35 // #
+const CH_BACKSLASH = 92 // \\
 
 /**
  * Object representing a line from the content of .properties file.
@@ -29,7 +30,24 @@ export class PropertyLine {
    * @param isMultiline - Is the line spreading on multiple lines?
    */
   constructor(line: string, isMultiline: boolean) {
-    this.content = line.replace(REGEX_LEADING_WHITESPACE, '')
+    // Strip leading whitespace using charCodeAt instead of regex.
+    let start = 0
+    const length = line.length
+    while (start < length) {
+      const charCode = line.charCodeAt(start)
+      if (
+        charCode !== CH_SPACE &&
+        charCode !== CH_TAB &&
+        charCode !== CH_LF &&
+        charCode !== CH_VT &&
+        charCode !== CH_FF &&
+        charCode !== CH_CR
+      ) {
+        break
+      }
+      start++
+    }
+    this.content = start > 0 ? line.slice(start) : line
     this.isMultiline = isMultiline
 
     if (this.content.length === 0) {
@@ -38,19 +56,24 @@ export class PropertyLine {
     } else {
       if (!this.isMultiline) {
         // Line is a comment.
-        this.isComment = REGEX_COMMENT.test(this.content)
+        const firstCharCode = this.content.charCodeAt(0)
+        this.isComment = firstCharCode === CH_BANG || firstCharCode === CH_HASH
       }
       if (!this.isComment) {
-        // Otherwise, check if the line is continuing on the next line.
-        const backslashMatch = this.content.match(REGEX_TRAILING_BACKSLASHES)
-
-        if (backslashMatch) {
-          // If the number of backslashes is odd, the line is continuing, otherwise it doesn't.
-          this.isContinuing = backslashMatch[1].length % 2 === 1
-          if (this.isContinuing) {
-            // Remove the trailing slash so that we can concatenate the line with the next one.
-            this.content = this.content.slice(0, -1)
+        // Count trailing backslashes to determine if line continues.
+        let trailingBackslashCount = 0
+        for (let index = this.content.length - 1; index >= 0; index--) {
+          if (this.content.charCodeAt(index) === CH_BACKSLASH) {
+            trailingBackslashCount++
+          } else {
+            break
           }
+        }
+
+        if (trailingBackslashCount > 0 && trailingBackslashCount % 2 === 1) {
+          this.isContinuing = true
+          // Remove the trailing slash so that we can concatenate the line with the next one.
+          this.content = this.content.slice(0, -1)
         }
       }
     }
