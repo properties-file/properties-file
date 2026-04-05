@@ -131,8 +131,8 @@ describe('The `Property` class', () => {
   })
 
   it('does not strip vertical tab as leading whitespace (not whitespace per Java spec)', () => {
-    const propertyLine = new PropertyLine('\x0Bhello = world', false)
-    expect(propertyLine.content).toBe('\x0Bhello = world')
+    const propertyLine = new PropertyLine('\u000Bhello = world', false)
+    expect(propertyLine.content).toBe('\u000Bhello = world')
   })
 })
 

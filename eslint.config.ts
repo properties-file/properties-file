@@ -269,7 +269,7 @@ export default defineConfig(
     plugins: jestPlugin.configs['flat/recommended'].plugins,
     languageOptions: {
       ...jestPlugin.configs['flat/recommended'].languageOptions,
-      parserOptions: { project: ['tests/jest.json'] },
+      parserOptions: { project: ['tests/tsconfig.json'] },
     },
     rules: jestPlugin.configs['flat/recommended'].rules,
   },
