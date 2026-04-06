@@ -2,8 +2,8 @@
 
 [![License](https://img.shields.io/npm/l/make-coverage-badge.svg?color=brightgreen)](https://opensource.org/licenses/MIT)
 [![Download Stats](https://img.shields.io/npm/dw/properties-file.svg?color=brightgreen)](https://www.npmjs.com/package/properties-file)
-![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen.svg)
-![Package Size](https://img.shields.io/badge/minified%20%2B%20gzip-1.0%20kB-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)
+![Package Size](https://img.shields.io/badge/min%2Bgzip-1.1%20kB-brightgreen)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)
 
 `.properties` file parser, editor, formatter and bundler integrations.
@@ -28,7 +28,7 @@ npm install properties-file
   - A `PropertiesEditor` class enables the addition, edition, and removal of entries.
   - `escapeKey` and `escapeValue` allow the conversion of any content to a `.properties` compatible format.
   - Bundler integrations for Webpack, Rollup/Vite, esbuild, and Bun to import `.properties` files directly. See [BUNDLER.md](./BUNDLER.md).
-- Tiny with 0 dependencies.
+- Tiny with 0 dependencies — `getProperties` is only 1.1 kB min+gzip.
 - 100% test coverage based on the output from a Java implementation.
 - Active maintenance (many popular `.properties` packages have been inactive for years).
 

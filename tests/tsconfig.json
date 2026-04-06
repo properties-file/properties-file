@@ -2,7 +2,9 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "lib": ["ESNext"],
-    "types": ["jest", "node"]
+    "types": ["jest", "node"],
+    "rootDir": ".."
   },
-  "include": ["**/*.ts", "../src/**/*.ts"]
+  "include": ["**/*.ts", "../src/**/*.ts"],
+  "exclude": ["../src/bundler/**", "../src/build-scripts/**"]
 }

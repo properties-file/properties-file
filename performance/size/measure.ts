@@ -252,7 +252,7 @@ const updateReadmeBadge = (results: SizeResult[]): void => {
   }
 
   const sizeLabel = formatBytes(getPropertiesResult.gzipped).replace(' ', '%20')
-  const newBadge = `![Package Size](https://img.shields.io/badge/minified%20%2B%20gzip-${sizeLabel}-brightgreen)`
+  const newBadge = `![Package Size](https://img.shields.io/badge/min%2Bgzip-${sizeLabel}-brightgreen)`
 
   const readme = readFileSync(readmePath, 'utf8')
   const badgePattern = /\[!\[Package Size\]\(.*?\)\]\(.*?\)|!\[Package Size\]\(.*?\)/
@@ -261,10 +261,14 @@ const updateReadmeBadge = (results: SizeResult[]): void => {
     return
   }
 
-  const updatedReadme = readme.replace(badgePattern, newBadge)
+  const sizeText = formatBytes(getPropertiesResult.gzipped)
+  const inlinePattern = /`getProperties` is only [\d.]+ [kB]+B min\+gzip/
+  const updatedReadme = readme
+    .replace(badgePattern, newBadge)
+    .replace(inlinePattern, `\`getProperties\` is only ${sizeText} min+gzip`)
   if (updatedReadme !== readme) {
     writeFileSync(readmePath, updatedReadme)
-    console.log(`README.md badge updated: ${sizeLabel}`)
+    console.log(`README.md updated: ${sizeText}`)
   }
 }
 

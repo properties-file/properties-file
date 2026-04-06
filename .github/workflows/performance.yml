@@ -30,9 +30,8 @@ jobs:
       - name: Build
         run: >-
           rm -Rf ./dist &&
-          tsc -p tsconfig.cjs.json &&
-          tsc -p tsconfig.esm.json &&
-          echo '{ "type": "commonjs" }' > dist/cjs/package.json
+          tsc &&
+          npx tsx src/build-scripts/build.ts
 
       - name: Run benchmark comparison
         run: npx tsx performance/benchmarks/compare.ts

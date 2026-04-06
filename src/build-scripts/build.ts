@@ -1,7 +1,17 @@
-import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { EOL } from 'node:os'
 import path from 'node:path'
 
+import { transformSync } from '@swc/core'
 import { minify_sync as minify } from 'terser'
 
 /** Matches ESM/CJS build files (`.js` and `.d.ts`). */
@@ -41,43 +51,20 @@ const appendFileTypeDeclaration = (
   )
 }
 
-// Since the package supports both CommonJS and ECMAScript modules, we need to add the type reference to both.
-const declarationDirectoryPaths = ['dist/cjs', 'dist/esm']
+// Copy the .properties file type declaration (not a module, so TSC doesn't emit it).
+// Only needed in dist/esm — CJS gets it automatically when we copy ESM → CJS later.
+const declarationSource = './src/properties-file.d.ts'
+const declarationTarget = 'dist/esm/properties-file.d.ts'
+console.log(`   🧬 Copying ${declarationSource} to ${declarationTarget}`)
+writeFileSync(declarationTarget, readFileSync(declarationSource, 'utf8'))
 
-/**
- * Since the type file to open `.properties` files is not a module and cannot be copied, we need to
- * copy it explicitly after the build.
- */
-const declarationFilename = 'properties-file'
-const declarationFileContent = readFileSync(`./src/${declarationFilename}.d.ts`, 'utf8')
-for (const modulePath of declarationDirectoryPaths) {
-  console.log(
-    `   🧬 Copying ./src/${declarationFilename}.d.ts to ${modulePath}/${declarationFilename}.d.ts`
-  )
-  writeFileSync(`${modulePath}/${declarationFilename}.d.ts`, declarationFileContent)
-}
+// Reference the declaration in the main index types.
+appendFileTypeDeclaration('dist/esm/index.d.ts', './properties-file.d.ts')
 
-/**
- * Now that the declaration file is copied, we can reference it in the main package's module types.
- */
-for (const modulePath of declarationDirectoryPaths) {
-  appendFileTypeDeclaration(`${modulePath}/index.d.ts`, `./${declarationFilename}.d.ts`)
-}
-
-/**
- * Since the most common use case to support to require the file type declaration is by configuring
- * a bundler plugin, we need to also add the reference in all available bundler integrations.
- */
-
-for (const modulePath of declarationDirectoryPaths) {
-  const bundlerDirectoryPath = `${modulePath}/bundler`
-  for (const bundlerFilePath of readdirSync(bundlerDirectoryPath)) {
-    if (bundlerFilePath.endsWith('d.ts')) {
-      appendFileTypeDeclaration(
-        `./${bundlerDirectoryPath}/${bundlerFilePath}`,
-        `../${declarationFilename}.d.ts`
-      )
-    }
+// Reference the declaration in all bundler integration types.
+for (const bundlerFile of readdirSync('dist/esm/bundler')) {
+  if (bundlerFile.endsWith('d.ts')) {
+    appendFileTypeDeclaration(`./dist/esm/bundler/${bundlerFile}`, '../properties-file.d.ts')
   }
 }
 
@@ -106,6 +93,12 @@ const getFilePaths = (directoryPath: string, filePattern: RegExp): string[] =>
     }
     return files
   }, [])
+
+/**
+ * +-----------------------------------------------------------------+
+ * |                     Add ESM file extensions                     |
+ * +-----------------------------------------------------------------+
+ */
 
 console.log(`${EOL}🏃 Running build step: add ESM file extensions.${EOL}`)
 
@@ -143,6 +136,48 @@ for (const filePath of getFilePaths('dist/esm', REGEX_ESM_BUILD_FILES)) {
 
   writeFileSync(filePath, newFileContent)
 }
+
+/**
+ * +------------------------------------------------------------------+
+ * |                   Downlevel ES2015 to ES5 (SWC)                  |
+ * +------------------------------------------------------------------+
+ */
+
+console.log(`${EOL}🏃 Running build step: downlevel ESM ES2015 → ES5 via SWC.${EOL}`)
+
+for (const filePath of getFilePaths('dist/esm', REGEX_JS_FILES)) {
+  const result = transformSync(readFileSync(filePath, 'utf8'), {
+    jsc: { target: 'es5', parser: { syntax: 'ecmascript' } },
+    module: { type: 'es6' },
+  })
+  console.log(`   ⬇️  Downleveling: ${filePath}`)
+  writeFileSync(filePath, result.code)
+}
+
+/**
+ * +------------------------------------------------------------------+
+ * |                  Generate CJS build from ESM (SWC)               |
+ * +------------------------------------------------------------------+
+ */
+
+console.log(`${EOL}🏃 Running build step: generate CJS from ESM via SWC.${EOL}`)
+
+// Copy the entire ESM output (JS + declarations) to dist/cjs.
+mkdirSync('dist/cjs', { recursive: true })
+cpSync('dist/esm', 'dist/cjs', { recursive: true })
+
+// Convert ESM JavaScript to CommonJS via SWC.
+for (const filePath of getFilePaths('dist/cjs', REGEX_JS_FILES)) {
+  const result = transformSync(readFileSync(filePath, 'utf8'), {
+    jsc: { parser: { syntax: 'ecmascript' } },
+    module: { type: 'commonjs' },
+  })
+  console.log(`   🔄 Converting to CJS: ${filePath}`)
+  writeFileSync(filePath, result.code)
+}
+
+// Mark the CJS directory so Node.js treats .js files as CommonJS.
+writeFileSync('dist/cjs/package.json', '{ "type": "commonjs" }')
 
 /**
  * +----------------------------------------------------------------+
