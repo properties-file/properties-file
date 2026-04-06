@@ -5,6 +5,5 @@
     "types": ["jest", "node"],
     "rootDir": ".."
   },
-  "include": ["**/*.ts", "../src/**/*.ts"],
-  "exclude": ["../src/bundler/**", "../src/build-scripts/**"]
+  "include": ["**/*.ts", "../src/**/*.ts"]
 }

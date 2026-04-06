@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { gzipSync } from 'node:zlib'
 
@@ -301,83 +301,61 @@ switch (command) {
     break
   }
   case 'compare': {
-    // Get the latest release tag.
-    const tags = execSync('git tag --sort=-version:refname', {
-      cwd: rootDirectory,
+    // Get the latest published version from npm.
+    const version = execSync('npm view properties-file version', {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
-    })
-    const tag = tags.split('\n').find((tagName) => /^v?\d+\.\d+\.\d+$/.test(tagName))
+    }).trim()
 
-    if (!tag) {
-      throw new Error('No release tag found.')
-    }
-
-    console.log(`Comparing bundle sizes against ${tag}...\n`)
+    console.log(`Comparing bundle sizes against v${version} (latest on npm)...\n`)
 
     // Measure current.
     console.log('Measuring current sizes...')
     const current = measureAll()
     printTable(current, 'Current:')
 
-    // Build baseline: extract tagged source and compile with a temporary tsconfig
-    // that points at the extracted source and outputs to a temporary dist directory.
-    console.log('\nBuilding baseline from release tag...')
-    const temporaryDirectory = path.resolve(resultsDirectory, 'size-baseline')
-    const temporarySourceDirectory = path.resolve(temporaryDirectory, 'src')
-    const temporaryDistributionDirectory = path.resolve(temporaryDirectory, 'dist', 'esm')
-    execSync(`rm -rf "${temporaryDirectory}" && mkdir -p "${temporaryDirectory}"`, {
-      stdio: 'pipe',
-    })
-    execSync(`git archive ${tag} -- src/ | tar -x -C "${temporaryDirectory}"`, {
-      cwd: rootDirectory,
-      stdio: 'pipe',
-    })
-    // Create a minimal tsconfig that compiles the extracted source to ESM.
-    const baselineTsconfig = {
-      compilerOptions: {
-        target: 'es5',
-        module: 'ESNext',
-        moduleResolution: 'node',
-        declaration: false,
-        strict: true,
-        downlevelIteration: true,
-        outDir: temporaryDistributionDirectory,
-        rootDir: temporarySourceDirectory,
-      },
-      include: [`${temporarySourceDirectory}/**/*.ts`],
-      exclude: [`${temporarySourceDirectory}/build-scripts/**`],
-    }
-    const baselineTsconfigPath = path.resolve(temporaryDirectory, 'tsconfig.json')
-    writeFileSync(baselineTsconfigPath, JSON.stringify(baselineTsconfig))
-    execSync(`npx tsc -p "${baselineTsconfigPath}"`, {
-      cwd: rootDirectory,
-      stdio: 'pipe',
-    })
+    // Download the published baseline package from npm (cached locally).
+    const cacheDirectory = path.resolve(resultsDirectory, 'npm-cache', version)
+    const baselineEsmDirectory = path.resolve(cacheDirectory, 'dist', 'esm')
 
-    // Measure baseline using the compiled output in the temp directory.
+    if (existsSync(baselineEsmDirectory)) {
+      console.log(`\nUsing cached baseline (${version})...`)
+    } else {
+      console.log(`\nDownloading baseline ${version} from npm...`)
+      mkdirSync(cacheDirectory, { recursive: true })
+      execSync(`npm pack properties-file@${version} --pack-destination "${cacheDirectory}"`, {
+        cwd: rootDirectory,
+        stdio: 'pipe',
+      })
+      execSync(`tar -xzf "${cacheDirectory}"/*.tgz -C "${cacheDirectory}" --strip-components=1`, {
+        stdio: 'pipe',
+      })
+      // Remove the tarball after extraction.
+      for (const file of readdirSync(cacheDirectory)) {
+        if (file.endsWith('.tgz')) {
+          rmSync(path.resolve(cacheDirectory, file))
+        }
+      }
+    }
     const baselineEntryPoints = ENTRY_POINTS.map((entryPoint) => ({
       ...entryPoint,
-      code: entryPoint.code.replaceAll('./dist/esm/', `${temporaryDistributionDirectory}/`),
+      code: entryPoint.code.replaceAll('./dist/esm/', `${baselineEsmDirectory}/`),
     }))
     const baseline: SizeResult[] = []
     for (const entryPoint of baselineEntryPoints) {
       baseline.push(measure(entryPoint))
     }
-    printTable(baseline, `Baseline (${tag}):`)
+    printTable(baseline, `Baseline (v${version}):`)
 
     // Compare.
     printComparison(current, baseline)
 
     // Write Markdown report.
     const sizeReportPath = path.resolve(resultsDirectory, 'size-comparison.md')
-    writeFileSync(sizeReportPath, buildSizeMarkdownReport(tag, current, baseline))
-
-    // Cleanup.
-    execSync(`rm -rf "${temporaryDirectory}"`, { stdio: 'pipe' })
+    writeFileSync(sizeReportPath, buildSizeMarkdownReport(`v${version}`, current, baseline))
 
     // Save results.
-    writeFileSync(sizeResultsPath, JSON.stringify({ tag, current, baseline }, null, 2))
+    writeFileSync(sizeResultsPath, JSON.stringify({ version, current, baseline }, null, 2))
     console.log(`\nReport saved to ${sizeReportPath}`)
     console.log(`Results saved to ${sizeResultsPath}`)
     break
