@@ -48,18 +48,18 @@ jobs:
       - name: Post results to PR
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          EXISTING=$(gh pr view ${{ github.event.pull_request.number }}
-          --repo ${{ github.repository }}
-          --json comments
-          --jq '.comments[] | select(.body | startswith("# Benchmark Comparison")) | .id'
-          | head -1) &&
+        run: |
+          EXISTING=$(gh pr view ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} \
+            --json comments \
+            --jq '.comments[] | select(.body | startswith("# Benchmark Comparison")) | .id' \
+            | head -1)
           if [ -n "$EXISTING" ]; then
-            gh api repos/${{ github.repository }}/issues/comments/$EXISTING
-            --method PATCH
-            -f body=@performance/benchmarks/.results/pr-comment.md;
+            gh api "repos/${{ github.repository }}/issues/comments/$EXISTING" \
+              --method PATCH \
+              -f body=@performance/benchmarks/.results/pr-comment.md
           else
-            gh pr comment ${{ github.event.pull_request.number }}
-            --repo ${{ github.repository }}
-            --body-file performance/benchmarks/.results/pr-comment.md;
+            gh pr comment "${{ github.event.pull_request.number }}" \
+              --repo "${{ github.repository }}" \
+              --body-file performance/benchmarks/.results/pr-comment.md
           fi

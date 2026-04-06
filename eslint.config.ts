@@ -1,1 +1,1 @@
-export { default } from './eslint/eslint.config.js'
+export { default } from './eslint/eslint.config'
