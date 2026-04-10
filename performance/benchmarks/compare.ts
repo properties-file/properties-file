@@ -1,318 +1,308 @@
-import { exec, execSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import {
   averageBenchmarkResults,
   buildComparison,
   buildMarkdownReport,
-  parseBenchmarkResults,
+  hasRegressions,
   printComparison,
-} from '../shared/compare-utilities'
+  resolveBaseline,
+} from '../utilities'
+
+import { runEscapeUnescapeBenchmarks } from './suites/escape-unescape.bench'
+import { runEditorBenchmarks } from './suites/properties-editor.bench'
+import { runPropertiesBenchmarks } from './suites/properties.bench'
+
+import type { BenchmarkResult } from '../utilities'
+import type { EscapeModule, UnescapeModule } from './suites/escape-unescape.bench'
+import type { PropertiesEditorModule } from './suites/properties-editor.bench'
+import type { PropertiesModule } from './suites/properties.bench'
+import type { Bench } from 'tinybench'
+
+// ─── Paths ─────────────────────────────────────────────────────────────────
 
 const rootDirectory = path.resolve(import.meta.dirname, '..', '..')
+const currentDistributionEsmDirectory = path.resolve(rootDirectory, 'dist', 'esm')
 const resultsDirectory = path.resolve(import.meta.dirname, '.results')
-const snapshotsDirectory = path.resolve(import.meta.dirname, '..', 'snapshots', '.snapshots')
-const temporaryDirectory = path.resolve(tmpdir(), 'properties-file-benchmark')
-const baselineTemporaryDirectory = path.resolve(temporaryDirectory, 'baseline')
-const currentTemporaryDirectory = path.resolve(temporaryDirectory, 'current')
-const baselinePath = path.resolve(resultsDirectory, 'baseline', 'results.json')
-const currentPath = path.resolve(resultsDirectory, 'current', 'results.json')
-const reportPath = path.resolve(resultsDirectory, 'comparison.md')
 
-/** Directories copied into each isolated benchmark environment. */
-const PROJECT_DIRECTORIES = ['src', 'performance', 'node_modules', 'assets']
+// ─── Module Loading ────────────────────────────────────────────────────────
 
-// ─── Shell helpers ───────────────────────────────────────────────────────────
+/** All modules required to run every benchmark suite against a single build. */
+type BenchmarkModules = {
+  properties: PropertiesModule
+  editor: PropertiesEditorModule
+  escape: EscapeModule
+  unescape: UnescapeModule
+}
 
 /**
- * Execute a shell command synchronously and return its trimmed stdout.
+ * Dynamically import all benchmark-relevant modules from a `dist/esm/` directory.
  *
- * @param command - The shell command to execute.
- * @param cwd - Working directory (defaults to the project root).
+ * Each import uses a cache-busting query parameter so that Node.js loads distinct
+ * module instances for the current and baseline builds, even when called in
+ * the same process.
  *
- * @returns The trimmed stdout output.
+ * @param distEsmDirectory - Absolute path to a `dist/esm/` directory.
+ * @param cacheBustSuffix - A unique suffix appended as a query parameter to prevent module caching.
+ *
+ * @returns All modules needed by the benchmark suites.
  */
-const execCommand = (command: string, cwd = rootDirectory): string =>
-  execSync(command, { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim()
+const loadModules = async (
+  distributionEsmDirectory: string,
+  cacheBustSuffix: string
+): Promise<BenchmarkModules> => {
+  const indexPath = path.resolve(distributionEsmDirectory, 'index.js')
+  const editorPath = path.resolve(distributionEsmDirectory, 'editor', 'index.js')
+  const escapePath = path.resolve(distributionEsmDirectory, 'escape', 'index.js')
+  const unescapePath = path.resolve(distributionEsmDirectory, 'unescape', 'index.js')
+
+  for (const filePath of [indexPath, editorPath, escapePath, unescapePath]) {
+    if (!existsSync(filePath)) {
+      throw new Error(
+        `Required module not found: ${filePath}\n` +
+          `Ensure the build has been compiled. Run \`npm run build\` first.`
+      )
+    }
+  }
+
+  const [indexModule, editorModule, escapeModule, unescapeModule] = await Promise.all([
+    import(`${indexPath}?v=${cacheBustSuffix}`) as Promise<PropertiesModule>,
+    import(`${editorPath}?v=${cacheBustSuffix}`) as Promise<PropertiesEditorModule>,
+    import(`${escapePath}?v=${cacheBustSuffix}`) as Promise<EscapeModule>,
+    import(`${unescapePath}?v=${cacheBustSuffix}`) as Promise<UnescapeModule>,
+  ])
+
+  return {
+    properties: indexModule,
+    editor: editorModule,
+    escape: escapeModule,
+    unescape: unescapeModule,
+  }
+}
+
+// ─── Benchmark Execution ───────────────────────────────────────────────────
 
 /**
- * Run benchmarks in an isolated project copy.
+ * Extract results from a completed tinybench run.
  *
- * @param directory - The isolated project directory.
- * @param outputPath - Where to write the JSON results.
+ * @param bench - A tinybench `Bench` instance that has already been run.
  *
- * @returns A promise that resolves when the benchmark completes.
+ * @returns An array of benchmark results, one per task.
+ *
+ * @throws Error if any task did not complete successfully.
  */
-const runBenchIn = (directory: string, outputPath: string): Promise<void> =>
-  new Promise((resolve, reject) => {
-    const child = exec(
-      `npx tsx performance/benchmarks/run.ts "${outputPath}"`,
-      { cwd: directory },
-      (error) => {
-        if (error) {
-          reject(error)
-        } else {
-          resolve()
-        }
-      }
-    )
-    child.stdout?.pipe(process.stdout)
-    child.stderr?.pipe(process.stderr)
+const extractResults = (bench: Bench): BenchmarkResult[] =>
+  bench.tasks.map((task) => {
+    const { result } = task
+    if (result.state !== 'completed') {
+      throw new Error(`Benchmark "${task.name}" did not complete (state: ${result.state})`)
+    }
+    return {
+      name: task.name,
+      opsPerSecond: Math.round(result.throughput.mean),
+      medianNs: Math.round(result.latency.p50 * 1_000_000),
+      marginOfError: Number(result.latency.rme.toFixed(2)),
+    }
   })
 
-// ─── Git helpers ─────────────────────────────────────────────────────────────
-
 /**
- * Find the most recent semver release tag (e.g. `v3.7.0` or `3.7.0`).
+ * Print a human-readable table of benchmark results to stdout.
  *
- * @returns The tag name.
- *
- * @throws Error if no release tag is found.
+ * @param label - A label to display above the table (e.g. "Current" or "Baseline").
+ * @param results - The benchmark results to display.
  */
-const getLatestReleaseTag = (): string => {
-  const tags = execCommand('git tag --sort=-version:refname')
-  const releaseTag = tags.split('\n').find((tag) => /^v?\d+\.\d+\.\d+$/.test(tag))
-  if (!releaseTag) {
-    throw new Error('No release tag found')
-  }
-  return releaseTag
-}
+const printResultsTable = (label: string, results: BenchmarkResult[]): void => {
+  const nameWidth = Math.max(12, ...results.map((result) => result.name.length))
+  const header = `${'Benchmark'.padEnd(nameWidth)}  ${'ops/sec'.padStart(12)}  ${'median (ns)'.padStart(14)}  ${'\u00B1%'.padStart(8)}`
+  const separator = '-'.repeat(header.length)
 
-// ─── Environment setup ──────────────────────────────────────────────────────
+  console.log(`\n${label}:`)
+  console.log(separator)
+  console.log(header)
+  console.log(separator)
 
-/**
- * Create an isolated copy of the project for benchmarking.
- *
- * Only copies the directories needed to run benchmarks, plus `package.json`.
- *
- * @param targetDirectory - The directory to create the copy in.
- */
-const createIsolatedCopy = (targetDirectory: string): void => {
-  mkdirSync(targetDirectory, { recursive: true })
-  for (const directory of PROJECT_DIRECTORIES) {
-    execSync(
-      `cp -r "${path.resolve(rootDirectory, directory)}" "${path.resolve(targetDirectory, directory)}"`,
-      { stdio: 'pipe' }
-    )
-  }
-  execSync(
-    `cp "${path.resolve(rootDirectory, 'package.json')}" "${path.resolve(targetDirectory, 'package.json')}"`,
-    { stdio: 'pipe' }
-  )
-}
-
-/** Remove the temporary directory used during comparison. */
-const cleanup = (): void => {
-  rmSync(temporaryDirectory, { recursive: true, force: true })
-}
-
-// ─── Comparison modes ────────────────────────────────────────────────────────
-
-/**
- * Compare current benchmarks against the latest release tag.
- *
- * Creates two isolated project copies, replaces the baseline's `src/` with the
- * tagged version, runs both in parallel for fair comparison, then produces a
- * terminal table and a Markdown report.
- *
- * @param runs - Number of benchmark iterations to average (default 1).
- */
-const compareAgainstTag = async (runs: number): Promise<void> => {
-  mkdirSync(path.resolve(resultsDirectory, 'baseline'), { recursive: true })
-  mkdirSync(path.resolve(resultsDirectory, 'current'), { recursive: true })
-
-  const tag = getLatestReleaseTag()
-  console.log(`Comparing against latest release: ${tag}`)
-  if (runs > 1) {
-    console.log(`Averaging over ${runs} runs`)
-  }
-  console.log('')
-
-  const baselineRuns = []
-  const currentRuns = []
-
-  for (let run = 1; run <= runs; run++) {
-    if (runs > 1) {
-      console.log(`── Run ${run}/${runs} ──`)
-    }
-
-    // Clean up any leftover temp dirs from previous interrupted runs.
-    cleanup()
-
-    try {
-      console.log('Preparing isolated benchmark environments...')
-      createIsolatedCopy(currentTemporaryDirectory)
-      createIsolatedCopy(baselineTemporaryDirectory)
-
-      // Replace baseline's src/ with the release tag version.
-      rmSync(path.resolve(baselineTemporaryDirectory, 'src'), { recursive: true })
-      execCommand(`git archive ${tag} -- src/ | tar -x -C "${baselineTemporaryDirectory}"`)
-
-      // Run both benchmarks in parallel so they share the same system conditions.
-      console.log('Running benchmarks in parallel (current + baseline)...\n')
-      await Promise.all([
-        runBenchIn(currentTemporaryDirectory, currentPath),
-        runBenchIn(baselineTemporaryDirectory, baselinePath),
-      ])
-    } finally {
-      cleanup()
-    }
-
-    baselineRuns.push(parseBenchmarkResults(readFileSync(baselinePath, 'utf8')))
-    currentRuns.push(parseBenchmarkResults(readFileSync(currentPath, 'utf8')))
-  }
-
-  const baseline = averageBenchmarkResults(baselineRuns)
-  const current = averageBenchmarkResults(currentRuns)
-
-  const rows = buildComparison(baseline, current)
-  printComparison(rows)
-  writeFileSync(reportPath, buildMarkdownReport(tag, rows))
-
-  console.log(`\nReport saved to ${reportPath}`)
-  console.log(`JSON results: ${baselinePath}, ${currentPath}`)
-}
-
-/**
- * Compare current benchmarks against a saved snapshot.
- *
- * Creates two isolated project copies — one with current source and one with
- * the snapshot's saved source — and runs both in parallel so they share the
- * same system conditions, just like the tag comparison mode.
- *
- * @param name - The snapshot name to compare against.
- * @param runs - Number of benchmark iterations to average (default 1).
- */
-const compareAgainstSnapshot = async (name: string, runs: number): Promise<void> => {
-  const snapshotDirectory = path.resolve(snapshotsDirectory, name)
-  const snapshotSourceDirectory = path.resolve(snapshotDirectory, 'src')
-  const metadataPath = path.resolve(snapshotDirectory, 'metadata.json')
-
-  if (!existsSync(snapshotDirectory)) {
-    throw new Error(
-      `Snapshot "${name}" not found. Use 'npm run snapshot -- list' to see available snapshots.`
+  for (const result of results) {
+    console.log(
+      `${result.name.padEnd(nameWidth)}  ${result.opsPerSecond.toLocaleString().padStart(12)}  ${result.medianNs.toLocaleString().padStart(14)}  ${`\u00B1${result.marginOfError}%`.padStart(8)}`
     )
   }
 
-  if (!existsSync(snapshotSourceDirectory)) {
-    throw new Error(
-      `Snapshot "${name}" does not contain source code (older snapshot). Save a new one first.`
-    )
-  }
-
-  const metadata = existsSync(metadataPath)
-    ? (JSON.parse(readFileSync(metadataPath, 'utf8')) as {
-        date: string
-        commit: string
-        branch: string
-        description: string
-      })
-    : { date: 'unknown', commit: 'unknown', branch: 'unknown', description: '' }
-
-  console.log(`Comparing against snapshot: ${name}`)
-  console.log(`  Saved: ${metadata.date.slice(0, 19).replace('T', ' ')}`)
-  console.log(`  Commit: ${metadata.commit} (${metadata.branch})`)
-  if (metadata.description) {
-    console.log(`  Description: ${metadata.description}`)
-  }
-  if (runs > 1) {
-    console.log(`  Averaging over ${runs} runs`)
-  }
-  console.log('')
-
-  mkdirSync(path.resolve(resultsDirectory, 'baseline'), { recursive: true })
-  mkdirSync(path.resolve(resultsDirectory, 'current'), { recursive: true })
-
-  const baselineRuns = []
-  const currentRuns = []
-
-  for (let run = 1; run <= runs; run++) {
-    if (runs > 1) {
-      console.log(`── Run ${run}/${runs} ──`)
-    }
-
-    cleanup()
-
-    try {
-      console.log('Preparing isolated benchmark environments...')
-      createIsolatedCopy(currentTemporaryDirectory)
-      createIsolatedCopy(baselineTemporaryDirectory)
-
-      // Replace baseline's src/ with the snapshot's saved source.
-      rmSync(path.resolve(baselineTemporaryDirectory, 'src'), { recursive: true })
-      execSync(
-        `cp -r "${snapshotSourceDirectory}" "${path.resolve(baselineTemporaryDirectory, 'src')}"`,
-        { stdio: 'pipe' }
-      )
-
-      // Run both benchmarks in parallel so they share the same system conditions.
-      console.log('Running benchmarks in parallel (current + baseline)...\n')
-      await Promise.all([
-        runBenchIn(currentTemporaryDirectory, currentPath),
-        runBenchIn(baselineTemporaryDirectory, baselinePath),
-      ])
-    } finally {
-      cleanup()
-    }
-
-    baselineRuns.push(parseBenchmarkResults(readFileSync(baselinePath, 'utf8')))
-    currentRuns.push(parseBenchmarkResults(readFileSync(currentPath, 'utf8')))
-  }
-
-  const baseline = averageBenchmarkResults(baselineRuns)
-  const current = averageBenchmarkResults(currentRuns)
-
-  const rows = buildComparison(baseline, current)
-  printComparison(rows)
-
-  const label = `snapshot "${name}" (${metadata.commit} on ${metadata.branch})`
-  writeFileSync(reportPath, buildMarkdownReport(label, rows))
-
-  console.log(`\nReport saved to ${reportPath}`)
+  console.log(separator)
 }
 
-// ─── CLI ─────────────────────────────────────────────────────────────────────
+/**
+ * Run all benchmark suites against a set of dynamically loaded modules.
+ *
+ * Executes the Properties, PropertiesEditor, and escape/unescape suites sequentially
+ * and aggregates their results into a single flat array.
+ *
+ * @param modules - The dynamically imported modules to benchmark.
+ *
+ * @returns A flat array of all benchmark results across all suites.
+ */
+const runAllSuites = async (modules: BenchmarkModules): Promise<BenchmarkResult[]> => {
+  const propertiesBench = await runPropertiesBenchmarks(modules.properties)
+  const editorBench = await runEditorBenchmarks(modules.editor)
+  const escapeUnescapeBench = await runEscapeUnescapeBenchmarks(modules.escape, modules.unescape)
+
+  return [
+    ...extractResults(propertiesBench),
+    ...extractResults(editorBench),
+    ...extractResults(escapeUnescapeBench),
+  ]
+}
+
+// ─── CLI Parsing ───────────────────────────────────────────────────────────
 
 const USAGE = `Usage: npx tsx performance/benchmarks/compare.ts [options]
 
 Options:
-  --tag              Compare against the latest release tag (default)
+  --version <ver>    Compare against a specific published npm version
   --snapshot <name>  Compare against a saved snapshot
   --runs <n>         Run benchmarks n times and average results (default: 1)
+  --strict           Exit with code 1 if regressions exceed threshold
+
+If no --version or --snapshot is given, compares against the latest published version.
 
 Examples:
   npx tsx performance/benchmarks/compare.ts
-  npx tsx performance/benchmarks/compare.ts --tag
+  npx tsx performance/benchmarks/compare.ts --version 3.7.0
   npx tsx performance/benchmarks/compare.ts --snapshot before-optimization
   npx tsx performance/benchmarks/compare.ts --snapshot before-optimization --runs 3
-  npm run benchmark-compare
-  npm run benchmark-compare -- --snapshot before-optimization --runs 3`
+  npm run benchmark
+  npm run benchmark -- --version 3.7.0 --runs 5`
 
-const arguments_ = process.argv.slice(2)
-const snapshotIndex = arguments_.indexOf('--snapshot')
-const runsIndex = arguments_.indexOf('--runs')
-
-let runs = 1
-if (runsIndex !== -1) {
+/**
+ * Parse the `--runs` flag from CLI arguments.
+ *
+ * @param arguments_ - The CLI arguments to parse.
+ *
+ * @returns The number of runs requested (defaults to 1).
+ */
+const parseRunsFlag = (arguments_: string[]): number => {
+  const runsIndex = arguments_.indexOf('--runs')
+  if (runsIndex === -1) {
+    return 1
+  }
   const runsValue = Number(arguments_[runsIndex + 1])
   if (!Number.isInteger(runsValue) || runsValue < 1) {
     console.error(`\n  Invalid value for '--runs'. Must be a positive integer.\n\n${USAGE}\n`)
     // eslint-disable-next-line unicorn/no-process-exit
     process.exit(1)
   }
-  runs = runsValue
+  return runsValue
 }
 
-if (snapshotIndex === -1) {
-  void compareAgainstTag(runs)
-} else {
-  const snapshotName = arguments_[snapshotIndex + 1]
-  if (!snapshotName) {
-    console.error(`\n  Missing snapshot name for '--snapshot'.\n\n${USAGE}\n`)
+// ─── Main ──────────────────────────────────────────────────────────────────
+
+/**
+ * Run the benchmark comparison: current build vs resolved baseline.
+ *
+ * Steps:
+ * 1. Parse CLI arguments for `--version`, `--snapshot`, and `--runs`.
+ * 2. Resolve the baseline `dist/esm/` path via `resolveBaseline()`.
+ * 3. Validate the current `dist/esm/` exists.
+ * 4. Dynamically import modules from both `dist/esm/` paths.
+ * 5. Run benchmark suites in parallel (current vs baseline) for each run.
+ * 6. Average results across runs if `--runs` \> 1.
+ * 7. Print results tables and comparison, save outputs to `.results/`.
+ * 8. Exit with code 1 if regressions are detected.
+ */
+const main = async (): Promise<void> => {
+  const arguments_ = process.argv.slice(2)
+
+  if (arguments_.includes('--help') || arguments_.includes('-h')) {
+    console.log(USAGE)
+    return
+  }
+
+  // Validate the current build exists.
+  if (!existsSync(currentDistributionEsmDirectory)) {
+    console.error(
+      'Error: ./dist/esm/ not found. Run `npm run build` first to compile the current code.'
+    )
     // eslint-disable-next-line unicorn/no-process-exit
     process.exit(1)
   }
-  void compareAgainstSnapshot(snapshotName, runs)
+
+  const runs = parseRunsFlag(arguments_)
+  const baseline = resolveBaseline(arguments_)
+
+  console.log(`Comparing current build against baseline: ${baseline.label}`)
+  if (runs > 1) {
+    console.log(`Averaging over ${runs} runs`)
+  }
+  console.log('')
+
+  // Load modules from both dist/esm/ directories.
+  // Use a shared timestamp to cache-bust, with unique suffixes for current vs baseline.
+  const timestamp = Date.now()
+
+  const baselineRunResults: BenchmarkResult[][] = []
+  const currentRunResults: BenchmarkResult[][] = []
+
+  for (let run = 1; run <= runs; run++) {
+    if (runs > 1) {
+      console.log(`\n── Run ${run}/${runs} ──`)
+    }
+
+    // Each run gets unique cache-bust suffixes so Node.js reloads modules fresh.
+    const runSuffix = `${timestamp}-run${run}`
+    const currentModules = await loadModules(
+      currentDistributionEsmDirectory,
+      `current-${runSuffix}`
+    )
+    const baselineModules = await loadModules(
+      baseline.distributionDirectory,
+      `baseline-${runSuffix}`
+    )
+
+    // Run both suites in parallel so they share the same system conditions.
+    console.log('Running benchmarks in parallel (current + baseline)...')
+    const [currentResults, baselineResults] = await Promise.all([
+      runAllSuites(currentModules),
+      runAllSuites(baselineModules),
+    ])
+
+    currentRunResults.push(currentResults)
+    baselineRunResults.push(baselineResults)
+  }
+
+  // Average results across all runs.
+  const averagedCurrentResults = averageBenchmarkResults(currentRunResults)
+  const averagedBaselineResults = averageBenchmarkResults(baselineRunResults)
+
+  // Print individual results tables.
+  printResultsTable(`Baseline (${baseline.label})`, averagedBaselineResults)
+  printResultsTable('Current', averagedCurrentResults)
+
+  // Build and print comparison.
+  const comparisonRows = buildComparison(averagedBaselineResults, averagedCurrentResults)
+  printComparison(comparisonRows)
+
+  // Save all results to .results/.
+  mkdirSync(resultsDirectory, { recursive: true })
+
+  const currentJsonPath = path.resolve(resultsDirectory, 'current.json')
+  const baselineJsonPath = path.resolve(resultsDirectory, 'baseline.json')
+  const comparisonJsonPath = path.resolve(resultsDirectory, 'comparison.json')
+  const comparisonMarkdownPath = path.resolve(resultsDirectory, 'comparison.md')
+
+  writeFileSync(currentJsonPath, JSON.stringify(averagedCurrentResults, null, 2))
+  writeFileSync(baselineJsonPath, JSON.stringify(averagedBaselineResults, null, 2))
+  writeFileSync(comparisonJsonPath, JSON.stringify(comparisonRows, null, 2))
+  writeFileSync(comparisonMarkdownPath, buildMarkdownReport(baseline.label, comparisonRows))
+
+  console.log(`\nResults saved to ${resultsDirectory}/`)
+  console.log(`  current.json, baseline.json, comparison.json, comparison.md`)
+
+  // In strict mode, exit with failure code if regressions detected.
+  // Strict mode is used by the pre-release gate; normal runs only report regressions.
+  const isStrictMode = arguments_.includes('--strict')
+  if (isStrictMode && hasRegressions(comparisonRows)) {
+    throw new Error('Performance regressions detected. See comparison above.')
+  }
 }
+
+void main()

@@ -80,10 +80,8 @@ export default defineConfig(
       'coverage/',
       // Asset (static) files.
       'assets/',
-      // Performance results and snapshots (may contain copies of src/dist).
-      'performance/benchmarks/.results/',
-      'performance/size/.results/',
-      'performance/snapshots/.snapshots/',
+      // Performance generated files (results, caches, snapshots).
+      'performance/**/.*/',
       // Type declarations don't need linting.
       '**/*.d.ts',
     ],

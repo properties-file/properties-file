@@ -16,10 +16,8 @@ node_modules
 # Distribution (compiled code)
 /dist
 
-# Performance results and snapshots (generated files, not checked in)
-/performance/benchmarks/.results
-/performance/size/.results
-/performance/snapshots/.snapshots
+# Performance generated files (results, caches, snapshots)
+/performance/**/.*
 
 # Secrets
 .env

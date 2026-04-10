@@ -117,19 +117,18 @@
     "dist"
   ],
   "scripts": {
-    "benchmark": "npx tsx performance/benchmarks/run.ts",
-    "benchmark-compare": "npx tsx performance/benchmarks/compare.ts",
+    "benchmark": "npx tsx performance/benchmarks/compare.ts",
     "build": "npm run check-nvm-node-version && npm run prettier-write && npm run eslint-fix && rm -Rf ./dist && tsc && npx tsx src/build-scripts/build.ts && npm run test && npm run size",
     "check-nvm-node-version": "check-node-version --node $(node -p \"'>='+require('fs').readFileSync('.nvmrc','utf-8').trim()\")",
     "depcheck": "depcheck",
     "eslint-fix": "eslint --fix",
     "ncu": "npm-check-updates",
     "ncu-update": "npm-check-updates -u",
+    "performance-clean": "rm -rf performance/published-packages/.cache performance/benchmarks/.results performance/size/.results",
     "prepare": "husky",
     "prettier-write": "prettier --write .",
     "release": "dotenv -- release-it --only-version",
-    "size": "npx tsx performance/size/measure.ts",
-    "size-compare": "npx tsx performance/size/measure.ts compare",
+    "size": "npx tsx performance/size/compare.ts",
     "snapshot": "npx tsx performance/snapshots/manage.ts",
     "test": "jest --coverage"
   },

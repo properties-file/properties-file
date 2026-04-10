@@ -40,9 +40,9 @@ is a release blocker — `npm test` enforces this via Jest's coverage thresholds
 ### Performance accountability
 
 Changes must not introduce measurable performance regressions. The benchmark suite
-(`performance/`) provides baseline measurements. Run `npm run benchmark-compare` to compare
-against the latest release tag. Performance-sensitive changes must include benchmark comparison
-results in the PR.
+(`performance/`) provides baseline measurements. Run `npm run benchmark` to compare
+against the latest published version. Performance-sensitive changes must include benchmark
+comparison results in the PR.
 
 ## Code Style
 
@@ -89,15 +89,13 @@ These are shipped but exempt from ES5 restrictions since they run in bundler con
 ```bash
 npm test                  # Run tests with coverage (must be 100%)
 npm run build             # Full build: lint, compile, test, measure size
-npm run benchmark         # Run performance benchmarks
-npm run benchmark-compare # Compare benchmarks against latest release
-npm run size              # Measure tree-shaken bundle sizes
-npm run size-compare      # Compare bundle sizes against latest release
+npm run benchmark         # Compare benchmarks against latest published version
+npm run size              # Compare bundle sizes against latest published version
 ```
 
 ## Pull Request Checklist
 
 - [ ] `npm run build` passes (includes linting, tests, 100% coverage, and size measurement)
-- [ ] Performance-sensitive changes include `npm run benchmark-compare` results
+- [ ] Performance-sensitive changes include `npm run benchmark` results
 - [ ] Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
       (drives automated changelog via `release-it`)

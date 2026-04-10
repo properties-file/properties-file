@@ -3,17 +3,13 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import path from 'node:path'
 
 const rootDirectory = path.resolve(import.meta.dirname, '..', '..')
-const benchmarkResultsPath = path.resolve(
-  import.meta.dirname,
-  '..',
-  'benchmarks',
-  '.results',
-  'results.json'
-)
 const snapshotsDirectory = path.resolve(import.meta.dirname, '.snapshots')
 
 /** Project directories saved alongside each snapshot for quick restore. */
 const SNAPSHOT_DIRECTORIES = ['src', 'dist']
+
+/** Individual project files saved alongside each snapshot for reproducibility. */
+const SNAPSHOT_FILES = ['package.json', 'package-lock.json', 'tsconfig.json']
 
 /** Metadata stored alongside each snapshot. */
 type SnapshotMetadata = {
@@ -79,11 +75,10 @@ const readMetadata = (metadataPath: string): SnapshotMetadata =>
 // ─── Commands ────────────────────────────────────────────────────────────────
 
 /**
- * Save current benchmark results and project code as a named snapshot.
+ * Save current project code as a named snapshot.
  *
- * Reads the latest benchmark results from `benchmarks/.results/results.json`
- * (run `npm run benchmark` first) and copies `src/` and `dist/` for quick
- * restore.
+ * Copies `src/`, `dist/`, `package.json`, `package-lock.json`, and `tsconfig.json`
+ * for quick restore. Requires `dist/` to exist (run `npm run build` first).
  *
  * @param name - The snapshot name.
  * @param description - A description of what this snapshot represents.
@@ -95,21 +90,26 @@ const save = (name: string, description: string): void => {
     throw new CliError(`Snapshot "${name}" already exists. Use 'delete' first to overwrite.`)
   }
 
-  if (!existsSync(benchmarkResultsPath)) {
-    throw new CliError('No benchmark results found. Run `npm run benchmark` first.')
+  const distributionDirectory = path.resolve(rootDirectory, 'dist')
+  if (!existsSync(distributionDirectory)) {
+    throw new CliError('No dist/ directory found. Run `npm run build` before saving a snapshot.')
   }
 
   mkdirSync(directory, { recursive: true })
-
-  // Copy results.
-  const results = readFileSync(benchmarkResultsPath, 'utf8')
-  writeFileSync(path.resolve(directory, 'results.json'), results)
 
   // Copy src/ and dist/ for quick restore.
   for (const directoryName of SNAPSHOT_DIRECTORIES) {
     const source = path.resolve(rootDirectory, directoryName)
     if (existsSync(source)) {
       execSync(`cp -r "${source}" "${path.resolve(directory, directoryName)}"`, { stdio: 'pipe' })
+    }
+  }
+
+  // Copy individual config files for reproducibility.
+  for (const fileName of SNAPSHOT_FILES) {
+    const source = path.resolve(rootDirectory, fileName)
+    if (existsSync(source)) {
+      execSync(`cp "${source}" "${path.resolve(directory, fileName)}"`, { stdio: 'pipe' })
     }
   }
 
@@ -186,11 +186,11 @@ const deleteSnapshot = (name: string): void => {
 }
 
 /**
- * Restore a snapshot's source and compiled code into the project.
+ * Restore a snapshot's source, compiled code, and config files into the project.
  *
- * Replaces the project's `src/` and `dist/` with the copies saved in the
- * snapshot, allowing instant benchmarking of a previous approach without
- * rebuilding.
+ * Replaces the project's `src/` and `dist/` directories and restores
+ * `package.json`, `package-lock.json`, and `tsconfig.json` from the snapshot,
+ * allowing instant benchmarking of a previous approach without rebuilding.
  *
  * @param name - The snapshot name to restore.
  */
@@ -242,13 +242,24 @@ const restore = (name: string): void => {
     }
   }
 
+  // Restore individual config files from the snapshot.
+  for (const fileName of SNAPSHOT_FILES) {
+    const snapshotCopy = path.resolve(directory, fileName)
+    const projectCopy = path.resolve(rootDirectory, fileName)
+    if (existsSync(snapshotCopy)) {
+      execSync(`cp "${snapshotCopy}" "${projectCopy}"`, { stdio: 'pipe' })
+    }
+  }
+
   console.log(`Snapshot "${name}" restored.`)
   console.log(`  Original commit: ${metadata.commit} (${metadata.branch})`)
   console.log(`  Saved on: ${metadata.date.slice(0, 19).replace('T', ' ')}`)
   if (metadata.description) {
     console.log(`  Description: ${metadata.description}`)
   }
-  console.log(`\nBoth src/ and dist/ have been replaced. Run benchmarks to compare.`)
+  console.log(
+    `\nBoth src/ and dist/ have been replaced along with config files. Run benchmarks to compare.`
+  )
 }
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
@@ -256,9 +267,9 @@ const restore = (name: string): void => {
 const USAGE = `Usage: npx tsx performance/snapshots/manage.ts <command> [options]
 
 Commands:
-  save <name> <description>   Save current benchmark results + src/ + dist/ as a named snapshot
+  save <name> <description>   Save current src/ + dist/ + config as a named snapshot
   list                        List all saved snapshots
-  restore <name>              Restore a snapshot's src/ and dist/ into the project
+  restore <name>              Restore a snapshot's src/, dist/, and config into the project
   delete <name>               Delete a saved snapshot
 
 Examples:

@@ -37,13 +37,13 @@ jobs:
         run: npx tsx performance/benchmarks/compare.ts
 
       - name: Run size comparison
-        run: npx tsx performance/size/measure.ts compare
+        run: npx tsx performance/size/compare.ts
 
       - name: Combine reports
         run: >-
           cat performance/benchmarks/.results/comparison.md > performance/benchmarks/.results/pr-comment.md &&
           echo -e "\n\n---\n" >> performance/benchmarks/.results/pr-comment.md &&
-          cat performance/size/.results/size-comparison.md >> performance/benchmarks/.results/pr-comment.md
+          cat performance/size/.results/comparison.md >> performance/benchmarks/.results/pr-comment.md
 
       - name: Post results to PR
         env:
