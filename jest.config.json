@@ -14,6 +14,7 @@
     "!src/bundler/**",
     "!src/build-scripts/**"
   ],
+  "modulePathIgnorePatterns": ["<rootDir>/performance/"],
   "coverageThreshold": {
     "global": {
       "branches": 100,
