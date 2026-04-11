@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.0.3](https://github.com/properties-file/properties-file/compare/v5.0.2...v5.0.3) (2026-04-11)
+
+### Bug Fixes
+
+- correct benchmark to compare equivalent outputs across all packages ([7c272b9](https://github.com/properties-file/properties-file/commit/7c272b9b3b705128e2ee1d79254405ef97ab7478))
+
 ## [5.0.2](https://github.com/properties-file/properties-file/compare/5.0.1...5.0.2) (2026-04-11)
 
 ### Features
