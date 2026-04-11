@@ -1,6 +1,6 @@
 {
   "name": "properties-file",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "description": ".properties file parser, editor, formatter and bundler integrations.",
   "keywords": [
     ".properties",
