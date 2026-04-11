@@ -32,7 +32,14 @@ function check(name, actual, expected) {
     pass++
   } else {
     fail++
-    console.log('  FAIL: ' + name + ' — expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(actual))
+    console.log(
+      '  FAIL: ' +
+        name +
+        ' — expected ' +
+        JSON.stringify(expected) +
+        ', got ' +
+        JSON.stringify(actual)
+    )
   }
 }
 
