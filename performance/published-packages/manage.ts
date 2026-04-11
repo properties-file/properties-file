@@ -25,6 +25,10 @@ const getPackageName = (): string => {
 export const getLatestPublishedVersion = (): string => {
   const packageName = getPackageName()
   try {
+    // Use `npm view` to get the latest version from the registry.
+    // During a release, npm may return the just-published version that hasn't
+    // fully propagated yet. In that case, the download will fail and we fall
+    // back to the previous version in `getPublishedPackageDirectory`.
     return execSync(`npm view ${packageName} version`, {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -66,22 +70,32 @@ export const getPublishedPackageDirectory = (version: string): string => {
   console.log(`Downloading ${packageName}@${version} from npm...`)
   mkdirSync(versionCacheDirectory, { recursive: true })
 
-  // Download the tarball from npm.
-  try {
-    execSync(`npm pack ${packageName}@${version} --pack-destination "${versionCacheDirectory}"`, {
-      cwd: rootDirectory,
-      stdio: 'pipe',
-    })
-  } catch (error) {
-    // Clean up the empty cache directory on failure.
-    rmSync(versionCacheDirectory, { recursive: true, force: true })
-    const message =
-      error instanceof Error ? error.message : 'Unknown error occurred while downloading.'
-    throw new Error(
-      `Failed to download ${packageName}@${version} from npm.\n` +
-        `Verify the version exists: npm view ${packageName} versions\n\n` +
-        `Details: ${message}`
-    )
+  // Download the tarball from npm. Retry once after a short delay to handle
+  // npm CDN propagation delays during releases.
+  const maxAttempts = 2
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      execSync(`npm pack ${packageName}@${version} --pack-destination "${versionCacheDirectory}"`, {
+        cwd: rootDirectory,
+        stdio: 'pipe',
+      })
+      break
+    } catch (error) {
+      if (attempt < maxAttempts) {
+        console.log(`Download failed, retrying in 10 seconds (npm CDN propagation delay)...`)
+        execSync('sleep 10')
+        continue
+      }
+      // Clean up the empty cache directory on final failure.
+      rmSync(versionCacheDirectory, { recursive: true, force: true })
+      const message =
+        error instanceof Error ? error.message : 'Unknown error occurred while downloading.'
+      throw new Error(
+        `Failed to download ${packageName}@${version} from npm.\n` +
+          `Verify the version exists: npm view ${packageName} versions\n\n` +
+          `Details: ${message}`
+      )
+    }
   }
 
   // Extract the tarball.
