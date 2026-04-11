@@ -1,31 +1,28 @@
 # Changelog
 
-# [5.0.0](https://github.com/properties-file/properties-file/compare/3.7.0...5.0.0) (2026-04-11)
-
-- feat!: add bundler integrations for Rollup/Vite, esbuild, and Bun ([bcae0c1](https://github.com/properties-file/properties-file/commit/bcae0c1003837d84a29fa463c62ba2a23db142f7)), closes [#200](https://github.com/properties-file/properties-file/issues/200)
-
-### Bug Fixes
-
-- align PropertyLine whitespace with Java spec and add snapshot safety guard ([ed4c2d9](https://github.com/properties-file/properties-file/commit/ed4c2d92158843596282e6b7d459b098003f2eda))
-- download baseline from npm instead of recompiling from git ([2434bce](https://github.com/properties-file/properties-file/commit/2434bce77d3a354dfd77c149fb6001c5b0a5f8d9))
-- exclude performance directory from Jest module resolution ([a9cf673](https://github.com/properties-file/properties-file/commit/a9cf673f32e6e655fb8cd91318e54519426c7774))
-- rename tests/jest.json to tests/tsconfig.json for IDE discovery ([1a81958](https://github.com/properties-file/properties-file/commit/1a819582ea8ad0aaa38ecae1d7cf9166411c800f))
-- replace custom BunPlugin type with import from @types/bun ([b7f4fb6](https://github.com/properties-file/properties-file/commit/b7f4fb66e0163cf0856ea5bab0e6859b178c13c5))
-- resolve Properties import path in benchmark comparison for v5 ([7e55a77](https://github.com/properties-file/properties-file/commit/7e55a77396fd5423262c46c44ea1aec4355c64ba))
-- resolve Properties import path in size comparison for v4 baseline ([fa81b4b](https://github.com/properties-file/properties-file/commit/fa81b4b33894d8aafec2754575ae3151714424df))
-- upgrade release-it to v20 prerelease to resolve undici security vulnerabilities ([40d8aa1](https://github.com/properties-file/properties-file/commit/40d8aa1f8555f8cf5086078564eb79d19c632a31)), closes [hi#severity](https://github.com/hi/issues/severity) [release-it/release-it#1285](https://github.com/release-it/release-it/issues/1285)
-- use gh pr comment --edit-last for CI performance reports ([e1bd9f7](https://github.com/properties-file/properties-file/commit/e1bd9f7bf1f3644484b737eb6d71464e0447e698))
-- use literal YAML block in performance workflow and clean up eslint re-export ([7f07bad](https://github.com/properties-file/properties-file/commit/7f07bad2b4eee2628bc622479bf96a49a4684c03))
-- use OS temp directory for benchmark comparison to avoid self-copy ([3189c20](https://github.com/properties-file/properties-file/commit/3189c2034ee01740858262688a635c20eeee39ee))
+# [5.0.0](https://github.com/properties-file/properties-file/compare/4.0.0...5.0.0) (2026-04-11)
 
 ### Features
 
-- add Bun loader ([2453af2](https://github.com/properties-file/properties-file/commit/2453af24257e6e534faf6492fa9a45984c25badb))
+- **3–7x faster** than all competing `.properties` packages, with `getProperties()` at just 1.1 kB min+gzip (smallest in ecosystem). See [comparison](./docs/COMPARISON.md).
+- **Lossless data model** — the `Properties` class now preserves every element in a `.properties` file (properties, comments, blank lines, leading whitespace, duplicate keys) as typed nodes. The original content can be reconstructed exactly via `format()`.
+- **Output normalization** — `format()` accepts options to standardize separators, remove comments/blank lines, deduplicate keys, collapse multiline values, wrap at character widths, and escape Unicode.
+- **Granular separator tracking** — each property stores `separatorLeading`, `separatorChar`, and `separatorTrailing` separately, enabling fine-grained formatting control.
+- **New editor methods** — `deleteAll()` removes all occurrences of a duplicate key, `insertBlankLine()` inserts blank lines, and `insertComment()` supports multi-line comments with embedded blank lines.
+- **Node.js 0.10+ compatibility** — compiled ES5 output verified on every Node.js version from 0.10 (2013) to latest via [Docker](./tests/node-compat/).
+- **`PropertiesNodeType` constants** — type-safe constants for node type discrimination (`PROPERTY`, `COMMENT`, `BLANK`).
 
 ### BREAKING CHANGES
 
-- The Webpack loader export path changed from
-  `properties-file/webpack-loader` to `properties-file/bundler/webpack`.
+- `Properties` class moved from `properties-file` to `properties-file/parser`.
+- `properties.collection` replaced by `properties.nodes` (ordered array of all elements).
+- `Property` class replaced by `PropertyNode` plain type.
+- `PropertyLine` class removed (logic absorbed into parser).
+- `getKeyCollisions()` returns `{ nodes: PropertyNode[] }` instead of `{ startingLineNumbers: number[] }`.
+- `PropertiesEditor.delete()` returns `PropertyNode | undefined` instead of `boolean`, and accepts `{ deleteLeadingNodes: false }` instead of a boolean second argument.
+- `PropertiesEditor.deleteAll()` returns `PropertyNode[]` instead of `number`.
+
+See the [migration guide](./docs/migration/v5.md) for step-by-step upgrade instructions.
 
 # [4.0.0](https://github.com/properties-file/properties-file/compare/3.7.0...4.0.0) (2026-03-22)
 
