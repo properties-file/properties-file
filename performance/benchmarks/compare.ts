@@ -53,10 +53,12 @@ const loadModules = async (
   cacheBustSuffix: string
 ): Promise<BenchmarkModules> => {
   const indexPath = path.resolve(distributionEsmDirectory, 'index.js')
+  const parserPath = path.resolve(distributionEsmDirectory, 'parser', 'index.js')
   const editorPath = path.resolve(distributionEsmDirectory, 'editor', 'index.js')
   const escapePath = path.resolve(distributionEsmDirectory, 'escape', 'index.js')
   const unescapePath = path.resolve(distributionEsmDirectory, 'unescape', 'index.js')
 
+  // index.js and editor are always required; parser may not exist in older baselines.
   for (const filePath of [indexPath, editorPath, escapePath, unescapePath]) {
     if (!existsSync(filePath)) {
       throw new Error(
@@ -73,8 +75,17 @@ const loadModules = async (
     import(`${unescapePath}?v=${cacheBustSuffix}`) as Promise<UnescapeModule>,
   ])
 
+  // In v5+, Properties lives in parser/index.js instead of index.js.
+  // Fall back to index.js for older baselines where Properties was in the main entry.
+  const parserModule = existsSync(parserPath)
+    ? ((await import(`${parserPath}?v=${cacheBustSuffix}`)) as PropertiesModule)
+    : undefined
+
   return {
-    properties: indexModule,
+    properties: {
+      getProperties: indexModule.getProperties,
+      Properties: parserModule?.Properties ?? indexModule.Properties,
+    },
     editor: editorModule,
     escape: escapeModule,
     unescape: unescapeModule,
