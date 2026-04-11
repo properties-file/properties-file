@@ -282,7 +282,11 @@ export default defineConfig(
       ...jestPlugin.configs['flat/recommended'].languageOptions,
       parserOptions: { project: ['tests/tsconfig.json'], tsconfigRootDir: ROOT_DIR },
     },
-    rules: jestPlugin.configs['flat/recommended'].rules,
+    rules: {
+      ...jestPlugin.configs['flat/recommended'].rules,
+      // Recognize custom assertion helpers prefixed with `expect` (e.g. expectRoundTrip).
+      'jest/expect-expect': ['warn', { assertFunctionNames: ['expect', 'expect*'] }],
+    },
   },
   // Rules applying to all files.
   {

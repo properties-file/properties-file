@@ -38,9 +38,9 @@ const ENTRY_POINTS: EntryPoint[] = [
   },
   {
     name: 'Properties',
-    importPath: 'index.js',
+    importPath: 'parser/index.js',
     code: (distributionEsmPath: string): string =>
-      `import { Properties } from "${distributionEsmPath}/index.js"; console.log(Properties);`,
+      `import { Properties } from "${distributionEsmPath}/parser/index.js"; console.log(Properties);`,
   },
   {
     name: 'PropertiesEditor',
@@ -59,7 +59,8 @@ const ENTRY_POINTS: EntryPoint[] = [
     importPath: 'index.js',
     code: (distributionEsmPath: string): string =>
       [
-        `import { getProperties, Properties } from "${distributionEsmPath}/index.js";`,
+        `import { getProperties } from "${distributionEsmPath}/index.js";`,
+        `import { Properties } from "${distributionEsmPath}/parser/index.js";`,
         `import { PropertiesEditor } from "${distributionEsmPath}/editor/index.js";`,
         `import { escapeKey, escapeValue } from "${distributionEsmPath}/escape/index.js";`,
         `import { unescapeContent } from "${distributionEsmPath}/unescape/index.js";`,
@@ -150,15 +151,23 @@ const bundle = (code: string): { bundled: string; minified: string } => {
  *
  * @returns The size measurement.
  */
-const measureEntryPoint = (entryPoint: EntryPoint, distributionEsmPath: string): SizeResult => {
+const measureEntryPoint = (
+  entryPoint: EntryPoint,
+  distributionEsmPath: string
+): SizeResult | null => {
   const code = entryPoint.code(distributionEsmPath)
-  const { bundled, minified } = bundle(code)
-  const gzipped = gzipSync(minified)
-  return {
-    name: entryPoint.name,
-    bundled: Buffer.byteLength(bundled),
-    minified: Buffer.byteLength(minified),
-    gzipped: gzipped.length,
+  try {
+    const { bundled, minified } = bundle(code)
+    const gzipped = gzipSync(minified)
+    return {
+      name: entryPoint.name,
+      bundled: Buffer.byteLength(bundled),
+      minified: Buffer.byteLength(minified),
+      gzipped: gzipped.length,
+    }
+  } catch {
+    // Entry point may not exist in this distribution (e.g. baseline vs current).
+    return null
   }
 }
 
@@ -170,7 +179,9 @@ const measureEntryPoint = (entryPoint: EntryPoint, distributionEsmPath: string):
  * @returns An array of size results, one per entry point.
  */
 const measureAll = (distributionEsmPath: string): SizeResult[] =>
-  ENTRY_POINTS.map((entryPoint) => measureEntryPoint(entryPoint, distributionEsmPath))
+  ENTRY_POINTS.map((entryPoint) => measureEntryPoint(entryPoint, distributionEsmPath)).filter(
+    (result): result is SizeResult => result !== null
+  )
 
 // ─── Output Formatting ─────────────────────────────────────────────────────
 

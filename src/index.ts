@@ -1,5 +1,4 @@
 import { parseProperties } from './parse-properties'
-export { Properties } from './properties'
 
 /**
  * A key-value pair object.

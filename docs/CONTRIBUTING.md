@@ -72,12 +72,12 @@ There are two parsing paths:
 - **`getProperties()`** — a fast, functional single-pass parser (`src/parse-properties.ts`) that
   returns a plain key-value object. This is the most common use case and is optimized for
   throughput. It has zero imports and is fully tree-shakeable.
-- **`Properties` class** — the original object-oriented parser (`src/properties.ts`) that
-  provides rich metadata (line numbers, key collisions, EOL detection). Used by
-  `PropertiesEditor` for editing operations. Not recommended for simple key-value extraction.
+- **`Properties` class** — a lossless object-oriented parser (`src/parser/`) that preserves
+  every element (properties, comments, blank lines) as typed nodes. Supports normalization
+  via `format()` options. Extended by `PropertiesEditor` (`src/editor/`) for editing operations.
 
 These two paths must remain independent — `parse-properties.ts` must not import from
-`properties.ts` or vice versa.
+`src/parser/` or vice versa.
 
 ### Bundler integrations
 

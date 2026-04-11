@@ -8,9 +8,9 @@
 
 `.properties` file parser, editor, formatter and bundler integrations.
 
-## Installation 💻
+## Installation
 
-> ⚠ In April 2023, we released version 3 of this package, which includes breaking changes. Please refer to the [upgrade guide](./V2-TO-V3-UPGRADE-GUIDE.md) before upgrading.
+> Doing a major version update? Check our [migration guides](./docs/migration/README.md).
 
 Add the package as a dependency:
 
@@ -18,21 +18,21 @@ Add the package as a dependency:
 npm install properties-file
 ```
 
-## What's in it for me? 🤔
+## What's in it for me?
 
 - A modern library written entirely in TypeScript that exactly reproduces the [Properties Java implementation](/assets/java-implementation.md).
 - Works for both Node.js applications and browsers that support at least [ES5](https://www.w3schools.com/js/js_es5.asp).
-- Flexible APIs:
-  - `getProperties` converts the content of `.properties` files to a key-value pair object.
-  - A `Properties` class provides insights into parsing data.
-  - A `PropertiesEditor` class enables the addition, edition, and removal of entries.
-  - `escapeKey` and `escapeValue` allow the conversion of any content to a `.properties` compatible format.
-  - Bundler integrations for Webpack, Rollup/Vite, esbuild, and Bun to import `.properties` files directly. See [BUNDLER.md](./BUNDLER.md).
-- Tiny with 0 dependencies — `getProperties` is only 1.1 kB min+gzip.
-- 100% test coverage based on the output from a Java implementation.
+- Flexible, tree-shakable APIs — import only what you need, and your bundler will exclude the rest:
+  - `getProperties` converts `.properties` content to a key-value pair object.
+  - `Properties` provides lossless parsing with a full data model — every element (properties, comments, blank lines, whitespace, duplicate keys) is preserved and can be round-tripped exactly or normalized via `format()` options.
+  - `PropertiesEditor` enables insertion, edition, and removal of entries while preserving formatting.
+  - `escapeKey` and `escapeValue` convert any content to `.properties` compatible format.
+  - Bundler integrations for Webpack, Rollup/Vite, esbuild, and Bun to import `.properties` files directly. See [BUNDLER.md](./docs/BUNDLER.md).
+- **Tiny with 0 dependencies** — `getProperties` is only 1.1 kB min+gzip.
+- **100% test coverage** based on the output from a Java implementation.
 - Active maintenance (many popular `.properties` packages have been inactive for years).
 
-## Usage 🎬
+## Usage
 
 We have put a lot of effort into incorporating [TSDoc](https://tsdoc.org/) into all our APIs. If you are unsure about how to use certain APIs provided in our examples, please check directly in your IDE.
 
@@ -53,103 +53,97 @@ Output:
 { hello: 'hello', world: 'world' }
 ```
 
-### `Properties` (using parsing metadata)
+### `Properties` (lossless parsing with full data model)
 
-The `Properties` object is what makes `getProperties` work under the hood, but when using it directly, you can access granular parsing metadata. Here is an example of how the object can be used to find key collisions:
+The `Properties` class parses a `.properties` file into a lossless data model where every element — properties, comments, blank lines — is preserved in order. This is useful when you need to inspect, analyze, or transform `.properties` files while retaining their exact structure.
 
 ```ts
-import { Properties } from 'properties-file'
+import { readFileSync } from 'node:fs'
+import { PropertiesNodeType, Properties } from 'properties-file/parser'
+
+const properties = new Properties(readFileSync('example.properties'))
+
+// Access all nodes in file order (properties, comments, blank lines).
+for (const node of properties.nodes) {
+  switch (node.type) {
+    case PropertiesNodeType.PROPERTY:
+      console.log(`${node.key} = ${node.value}`)
+      break
+    case PropertiesNodeType.COMMENT:
+      console.log(`Comment: ${node.delimiter}${node.body}`)
+      break
+    case PropertiesNodeType.BLANK:
+      console.log('(blank line)')
+      break
+  }
+}
+
+// Get a simple key-value object (last-wins for duplicate keys).
+console.log(properties.toObject())
+
+// Lossless round-trip: format() reproduces the exact original content.
+console.log(properties.format() === readFileSync('example.properties', 'utf8')) // true
+```
+
+#### Finding key collisions
+
+```ts
+import { Properties } from 'properties-file/parser'
 
 const properties = new Properties(
   'hello = hello1\nworld = world1\nworld = world2\nhello = hello2\nworld = world3'
 )
-console.log(properties.format())
 
-/**
- * Outputs:
- *
- * hello = hello1
- * world = world1
- * world = world2
- * hello = hello2
- * world = world3
- */
-
-properties.collection.forEach((property) => {
-  console.log(`${property.key} = ${property.value}`)
+const collisions = properties.getKeyCollisions()
+collisions.forEach((collision) => {
+  const lines = collision.nodes.map((node) => node.startingLineNumber)
+  console.log(`Key '${collision.key}' appears on lines ${lines.join(', ')}`)
 })
 
 /**
  * Outputs:
  *
- * hello = hello2
- * world = world3
- */
-
-const keyCollisions = properties.getKeyCollisions()
-
-keyCollisions.forEach((keyCollision) => {
-  console.warn(
-    `Found a key collision for key '${
-      keyCollision.key
-    }' on lines ${keyCollision.startingLineNumbers.join(
-      ', '
-    )} (will use the value at line ${keyCollision.getApplicableLineNumber()}).`
-  )
-})
-
-/**
- * Outputs:
- *
- * Found a key collision for key 'hello' on lines 1, 4 (will use the value at line 4).
- * Found a key collision for key 'world' on lines 2, 3, 5 (will use the value at line 5).
+ * Key 'hello' appears on lines 1, 4
+ * Key 'world' appears on lines 2, 3, 5
  */
 ```
 
-For purposes where you require more parsing metadata, such as building a syntax highlighter, it is recommended that you access the `Property` objects included in the `Properties.collection`. These objects provide comprehensive information about each key-value pair.
+#### Normalizing output
+
+Passing options to `format()` produces a normalized version of the file with granular control over formatting:
+
+```ts
+import { Properties } from 'properties-file/parser'
+
+const properties = new Properties('# comment\n\n    key : value\n    key : updated')
+
+console.log(
+  properties.format({
+    removeComments: true, // Strip all comments
+    removeBlankLines: true, // Strip all blank lines
+    removeLeadingWhitespace: true, // Strip indentation
+    deduplicateKeys: true, // Keep only last occurrence
+    separatorChar: '=', // Standardize separator
+    separatorLeading: ' ', // Space before =
+    separatorTrailing: ' ', // Space after =
+  })
+)
+
+/**
+ * Outputs:
+ *
+ * key = updated
+ */
+```
 
 ### `PropertiesEditor` (editing `.properties` content)
 
-In certain scenarios, it may be necessary to modify the content of the `.properties` key-value pair objects. This can be achieved easily using the `Properties` object, with the assistance of the `escapeKey` and `escapeValue` APIs, as demonstrated below:
-
-```ts
-import { Properties } from 'properties-file'
-import { escapeKey, escapeValue } from 'properties-file/escape'
-
-const properties = new Properties('hello = hello\n# This is a comment\nworld = world')
-const newProperties: string[] = []
-
-properties.collection.forEach((property) => {
-  const key = property.key === 'world' ? 'new world' : property.key
-  const value = property.value === 'world' ? 'new world' : property.value
-  newProperties.push(`${escapeKey(key)} = ${escapeValue(value)}`)
-})
-
-console.log(newProperties.join('\n'))
-
-/**
- * Outputs:
- *
- * hello = hello
- * new\ world = new world
- */
-```
-
-The limitation of this approach is that its output contains only valid keys, without any comments or whitespace. However, if you require a more advanced editor that preserves these original elements, then the `PropertiesEditor` object is exactly what you need.
+The `PropertiesEditor` extends `Properties` with methods to insert, update, delete, and upsert entries while preserving formatting.
 
 ```ts
 import { PropertiesEditor } from 'properties-file/editor'
 
 const properties = new PropertiesEditor('hello = hello\n# This is a comment\nworld = world')
-console.log(properties.format())
-
-/**
- * Outputs:
- *
- * hello = hello
- * # This is a comment
- * world = world
- */
 
 properties.insertComment('This is a multiline\ncomment before `newKey3`')
 properties.insert('newKey3', 'This is my third key')
@@ -161,7 +155,7 @@ properties.insert('newKey1', 'This is my first new key', {
   commentDelimiter: '!',
 })
 
-properties.insert('newKey2', 'こんにちは', {
+properties.insert('newKey2', 'hello', {
   referenceKey: 'newKey1',
   position: 'after',
   escapeUnicode: true,
@@ -180,20 +174,20 @@ console.log(properties.format())
  * world = new world
  * ! Below are the new keys being edited
  * newKey1 = This is my first new key
- * newKey2 = \u3053\u3093\u306b\u3061\u306f
+ * newKey2 = hello
  * # This is a multiline
  * # comment before `newKey3`
  * newKey3 = This is my third key
  */
 ```
 
-For convenience, we also added an `upsert` method that allows updating a key if it exists or adding it at the end, when it doesn't. Make sure to check in your IDE for all available methods and options in our TSDoc.
+The editor also provides `upsert` (update or insert) and `deleteAll` (remove all occurrences of a duplicate key). Check your IDE for all available methods and options via TSDoc.
 
 ### Bundler Integrations
 
 If you would like to import `.properties` directly using `import`, this package provides integrations for all major bundlers: **Webpack/Rspack**, **Rollup/Vite/Rolldown**, **esbuild**, and **Bun**.
 
-See [BUNDLER.md](./BUNDLER.md) for setup instructions and examples.
+See [BUNDLER.md](./docs/BUNDLER.md) for setup instructions and examples.
 
 By adding these configurations you should now be able to import directly `.properties` files just like this:
 
@@ -233,19 +227,17 @@ Having good JavaScript/TypeScript support for `.properties` files offers more in
 
 ### How does this package work?
 
-Basically, our goal was to offer parity with the Java implementation, which is the closest thing to a specification for `.properties` files. Here is the logic behind this package in a nutshell:
+Our goal is to offer parity with the Java implementation, which is the closest thing to a specification for `.properties` files. The package provides two parsing paths:
 
-1. The content is split by lines, creating an array of strings where each line is an element.
-2. All lines are parsed to create a collection of `Property` objects that:
-   1. Identify key-value pair lines from the other lines (e.g., comments, blank lines, etc.).
-   2. Merge back multiline key-value pairs on single lines by removing trailing backslashes.
-   3. Unescape the keys and values.
+1. **`getProperties`** — a fast, functional parser optimized for the common case of converting `.properties` content to a key-value object. Uses `charCodeAt`-based scanning with zero-copy optimizations.
 
-Just like Java, if a Unicode-escaped character (`\u`) is malformed, an error will be thrown. However, we do not recommend using Unicode-escaped characters, but rather using UTF-8 encoding that supports more characters.
+2. **`Properties`** — a lossless parser that produces an ordered array of typed nodes (`PropertyNode`, `CommentNode`, `BlankLineNode`). Every element in the file is preserved, enabling exact round-trip reconstruction via `format()` and flexible normalization by passing options to `format()`.
+
+Both parsers are fully compliant with the Java `Properties` specification and produce identical key-value output. Just like Java, if a Unicode-escaped character (`\u`) is malformed, an error will be thrown.
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for project principles, architecture, code style, and development commands.
+See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for project principles, architecture, code style, and development commands.
 
 ## Additional references
 

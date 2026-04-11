@@ -1,402 +1,501 @@
-import { KeyValuePairObject } from '..'
 import { escapeKey, escapeValue } from '../escape'
-import { Properties, REGEX_NEWLINE } from '../properties'
-import { Property } from '../property'
+import { Properties } from '../parser/properties'
 
-/** Matches a line terminator: CRLF, bare CR, or bare LF (global). */
-const REGEX_NEWLINE_GLOBAL = /\r\n|\r|\n/g
+import type { BlankLineNode, CommentNode, PropertiesNode, PropertyNode } from '../parser/nodes'
 
-/** Matches a newline character. */
-const REGEX_LF = /\n/
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
 /** The default separator between keys and values. */
-export const DEFAULT_SEPARATOR = '='
+const DEFAULT_SEPARATOR = '='
 
 /** The default character used as comment delimiter. */
-export const DEFAULT_COMMENT_DELIMITER = '#'
+const DEFAULT_COMMENT_DELIMITER = '#'
+
+/** Matches a line terminator: CRLF, bare CR, or bare LF. */
+const REGEX_NEWLINE = /\r\n|\r|\n/
+
+// ---------------------------------------------------------------------------
+// Editor option types
+// ---------------------------------------------------------------------------
 
 /** Characters that can be used as key-value pair separators. */
-export type KeyValuePairSeparator = ' ' | ':' | '='
+export type KeyValuePairSeparator = '=' | ':' | ' '
 
 /** Characters that can be used as comment delimiters. */
 export type CommentDelimiter = '#' | '!'
 
-/** Options on the `Properties.insert` method. */
+/** Options for {@link PropertiesEditor.insert}. */
 export type InsertOptions = {
-  /** The name of the key to insert before or after. If the key not found, the new property will not be inserted. */
+  /** Key to insert before or after. */
   referenceKey?: string
-  /** The position of the insertion related to the `referenceKey` (default is `after`) */
+  /** Position relative to the reference key. Default: `'after'`. */
   position?: 'before' | 'after'
-  /** Escape unicode characters into ISO-8859-1 compatible encoding? */
+  /** Escape non-ASCII characters as `\\uXXXX`. Default: `false`. */
   escapeUnicode?: boolean
-  /** The key/value separator character. */
+  /** Separator character to use. Default: `'='`. */
   separator?: KeyValuePairSeparator
-  /** A comment to insert before. */
+  /** Comment text to prepend (without delimiter). */
   comment?: string
-  /** The comment's delimiter. */
+  /** Comment delimiter. Default: `'#'`. */
   commentDelimiter?: CommentDelimiter
 }
 
-/** Options on the `Properties.insertComment` method. */
+/** Options for {@link PropertiesEditor.insertComment}. */
 export type InsertCommentOptions = {
-  /** The name of the key to insert before or after. If the key not found, the new property will not be inserted. */
+  /** Key to insert before or after. */
   referenceKey?: string
-  /** The position of the insertion related to the `referenceKey` (default is `after`) */
+  /** Position relative to the reference key. Default: `'after'`. */
   position?: 'before' | 'after'
-  /** The comment's delimiter. */
+  /** Comment delimiter. Default: `'#'`. */
   commentDelimiter?: CommentDelimiter
 }
 
-/** Options on the `Properties.update` method. */
+/** Options for {@link PropertiesEditor.insertBlankLine}. */
+export type InsertBlankLineOptions = {
+  /** Key to insert before or after. */
+  referenceKey?: string
+  /** Position relative to the reference key. Default: `'after'`. */
+  position?: 'before' | 'after'
+}
+
+/** Options for {@link PropertiesEditor.update}. */
 export type UpdateOptions = {
-  /** Optionally replace the existing value with a new value. */
+  /** New value. */
   newValue?: string
-  /** Optionally replace the existing key with a new key name. */
+  /** New key (rename). */
   newKey?: string
-  /** Escape unicode characters into ISO-8859-1 compatible encoding? */
+  /** Escape non-ASCII characters as `\\uXXXX`. Default: `false`. */
   escapeUnicode?: boolean
-  /** A key/value separator character. */
-  separator?: ' ' | ':' | '='
-  /** Optionally insert a new comment, or replace the existing one (including white-space characters). */
+  /** New separator character. */
+  separator?: KeyValuePairSeparator
+  /** New comment text (replaces all leading comment nodes). */
   newComment?: string
-  /** The comment's delimiter. */
+  /** Comment delimiter. Default: `'#'`. */
   commentDelimiter?: CommentDelimiter
 }
 
-/** Options on the `Properties.upsert` method. */
+/** Options for {@link PropertiesEditor.upsert}. */
 export type UpsertOptions = {
-  /** Escape unicode characters into ISO-8859-1 compatible encoding? */
+  /** Escape non-ASCII characters as `\\uXXXX`. Default: `false`. */
   escapeUnicode?: boolean
-  /** The key/value separator character. */
+  /** Separator character. Default: `'='`. */
   separator?: KeyValuePairSeparator
-  /** A comment to insert before. */
+  /** Comment text for new properties. */
   comment?: string
-  /** The comment's delimiter. */
+  /** Comment delimiter. Default: `'#'`. */
   commentDelimiter?: CommentDelimiter
+}
+
+/** Options for {@link PropertiesEditor.delete}. */
+export type DeleteOptions = {
+  /** If `true`, also delete preceding comment and blank line nodes. Default: `true`. */
+  deleteLeadingNodes?: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a {@link PropertyNode} from key, value, and formatting options.
+ *
+ * @param key - The unescaped key.
+ * @param value - The unescaped value.
+ * @param options - Formatting options.
+ * @param lineNumber - The 1-based starting line number.
+ *
+ * @returns A new PropertyNode.
+ */
+const buildPropertyNode = (
+  key: string,
+  value: string,
+  options: {
+    escapeUnicode?: boolean
+    separator?: KeyValuePairSeparator
+  },
+  lineNumber: number
+): PropertyNode => {
+  const escUnicode = options.escapeUnicode === true
+  const escapedKey = escapeKey(key, escUnicode)
+  const escapedValue = escapeValue(value, escUnicode)
+
+  const separatorChar =
+    options.separator === ' ' ? undefined : (options.separator ?? DEFAULT_SEPARATOR)
+  const separatorLeading = separatorChar ? ' ' : ' '
+  const separatorTrailing = separatorChar ? ' ' : ''
+
+  const separatorString = separatorChar
+    ? `${separatorLeading}${separatorChar}${separatorTrailing}`
+    : separatorLeading
+
+  const rawLine = `${escapedKey}${separatorString}${escapedValue}`
+  const rawLines = rawLine.split(REGEX_NEWLINE)
+
+  return {
+    type: 'property',
+    rawLines,
+    leadingWhitespace: '',
+    key,
+    escapedKey,
+    separatorLeading,
+    separatorChar,
+    separatorTrailing,
+    value,
+    escapedValue,
+    startingLineNumber: lineNumber,
+    endingLineNumber: lineNumber + rawLines.length - 1,
+  }
 }
 
 /**
- * A .properties file editor.
+ * Build comment and blank line nodes from a comment string.
+ *
+ * Empty lines within the comment text become {@link BlankLineNode}s,
+ * allowing natural grouping of multi-line comments with visual separation.
+ *
+ * @param comment - The comment text (may contain newlines for multi-line comments).
+ * @param delimiter - The comment delimiter character.
+ * @param startLineNumber - The 1-based starting line number.
+ *
+ * @returns An array of CommentNodes and BlankLineNodes.
+ */
+const buildCommentNodes = (
+  comment: string,
+  delimiter: CommentDelimiter,
+  startLineNumber: number
+): (CommentNode | BlankLineNode)[] => {
+  const lines = comment.split(REGEX_NEWLINE)
+  return lines.map((line, index): CommentNode | BlankLineNode => {
+    if (line === '') {
+      return {
+        type: 'blank',
+        rawLine: '',
+        lineNumber: startLineNumber + index,
+      }
+    }
+    return {
+      type: 'comment',
+      rawLine: `${delimiter} ${line}`,
+      leadingWhitespace: '',
+      delimiter,
+      body: ` ${line}`,
+      lineNumber: startLineNumber + index,
+    }
+  })
+}
+
+/**
+ * Recalculate line numbers on all nodes after a mutation.
+ *
+ * @param nodes - The nodes array to update.
+ */
+const recalculateLineNumbers = (nodes: PropertiesNode[]): void => {
+  let lineNumber = 1
+  for (const node of nodes) {
+    if (node.type === 'property') {
+      const lineCount = node.rawLines.length
+      ;(node as { startingLineNumber: number }).startingLineNumber = lineNumber
+      ;(node as { endingLineNumber: number }).endingLineNumber = lineNumber + lineCount - 1
+      lineNumber += lineCount
+    } else {
+      ;(node as { lineNumber: number }).lineNumber = lineNumber
+      lineNumber++
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PropertiesEditor
+// ---------------------------------------------------------------------------
+
+/**
+ * An editor for `.properties` files that extends the lossless {@link Properties}
+ * parser with insert, update, delete, and upsert operations.
  */
 export class PropertiesEditor extends Properties {
-  /** Is line parsing required to re-async the object's properties? */
-  private needsLineParsing = false
-
   /**
-   * Create `PropertiesEditor` object.
+   * Find the index of the last property node with the given key.
    *
-   * @param content - The content of a `.properties` file.
+   * @param key - The unescaped key to search for.
+   *
+   * @returns The index in `this.nodes`, or `-1` if not found.
    */
-  constructor(content: string) {
-    super(content)
-  }
-
-  /**
-   * Find the last occurrence of a property by key (iterates backward for performance).
-   *
-   * @param key - The property key to search for.
-   *
-   * @returns The last matching property, or undefined if not found.
-   */
-  private findLastPropertyByKey(key: string): Property | undefined {
-    for (let index = this.collection.length - 1; index >= 0; index--) {
-      const property = this.collection[index]
-      if (property.key === key) {
-        return property
+  private findLastPropertyIndex(key: string): number {
+    for (let index = this.nodes.length - 1; index >= 0; index--) {
+      const node = this.nodes[index]
+      if (node.type === 'property' && node.key === key) {
+        return index
       }
     }
-    return undefined
+    return -1
   }
 
   /**
-   * Parse the `.properties` content line by line only when needed.
-   */
-  private parseLinesIfNeeded(): void {
-    if (this.needsLineParsing) {
-      this.parseLines()
-      this.needsLineParsing = false
-    }
-  }
-
-  /**
-   * Insert a new property in the existing object (by default it will be at the end).
+   * Insert a new property.
    *
-   * @param key - A property key (unescaped).
-   * @param value - A property value (unescaped).
-   * @param options - Additional options.
-   *
-   * @returns True if the key was inserted, otherwise false.
+   * @param key - The unescaped key.
+   * @param value - The unescaped value.
+   * @param options - Insert options.
    */
-  public insert(key: string, value: string, options?: InsertOptions): boolean {
-    const escapeUnicode = options?.escapeUnicode || false
-    const separator = options?.separator
-      ? options.separator === ' '
-        ? ' '
-        : ` ${options.separator} `
-      : ` ${DEFAULT_SEPARATOR} `.replace('  ', ' ')
-    const referenceKey = options?.referenceKey
-    const position = options?.position || 'after'
+  insert(key: string, value: string, options?: InsertOptions): void {
+    const newNodes: PropertiesNode[] = []
 
-    if (referenceKey) {
-      this.parseLinesIfNeeded()
+    // Build comment nodes if requested.
+    if (options?.comment !== undefined) {
+      const delimiter = options.commentDelimiter ?? DEFAULT_COMMENT_DELIMITER
+      newNodes.push(...buildCommentNodes(options.comment, delimiter, 0))
     }
 
-    // Allow multiline keys.
-    const multilineKey = key
-      .split(REGEX_NEWLINE)
-      .map((key) => escapeKey(key, escapeUnicode))
-      .join('\\\n')
-
-    // Allow multiline values.
-    const multilineValue = value
-      .split(REGEX_NEWLINE)
-      .map((value) => escapeValue(value, escapeUnicode))
-      .join('\\\n')
-
-    // Allow multiline comments.
-    const commentPrefix = `${options?.commentDelimiter || DEFAULT_COMMENT_DELIMITER} `
-    const multilineComment =
-      options?.comment === undefined
-        ? ''
-        : `${`${commentPrefix}${options.comment}`.split(REGEX_NEWLINE).join(`\n${commentPrefix}`)}\n`
-
-    const newLines = `${multilineComment}${multilineKey}${separator}${multilineValue}`.split(
-      REGEX_LF
+    // Build property node.
+    newNodes.push(
+      buildPropertyNode(
+        key,
+        value,
+        {
+          escapeUnicode: options?.escapeUnicode,
+          separator: options?.separator,
+        },
+        0
+      )
     )
 
-    if (referenceKey === undefined) {
-      // Insert the new property at the end if the reference key was not defined.
-      this.lines.push(...newLines)
-      this.needsLineParsing = true
-      return true
-    } else {
-      // Find the last occurrence of the reference key.
-      const property = this.findLastPropertyByKey(referenceKey)
-
-      // Insert the new property when a reference key defined only when found.
-      if (property) {
-        const insertPosition =
-          position === 'after'
-            ? property.endingLineNumber
-            : (property.previousProperty?.endingLineNumber ?? 0)
-        this.lines = [
-          ...this.lines.slice(0, insertPosition),
-          ...newLines,
-          ...this.lines.slice(insertPosition),
-        ]
-        this.needsLineParsing = true
-        return true
+    // Determine insertion position.
+    if (options?.referenceKey) {
+      const referenceIndex = this.findLastPropertyIndex(options.referenceKey)
+      if (referenceIndex !== -1) {
+        const insertIndex = options.position === 'before' ? referenceIndex : referenceIndex + 1
+        this.nodes.splice(insertIndex, 0, ...newNodes)
+        recalculateLineNumbers(this.nodes)
+        return
       }
-      return false
     }
+
+    // Default: append at end.
+    this.nodes.push(...newNodes)
+    recalculateLineNumbers(this.nodes)
   }
 
   /**
-   * Insert a new comment in the existing object (by default it will be at the end).
+   * Insert a comment.
    *
-   * @param comment - The comment to add.
-   * @param options - Additional options.
-   *
-   * @returns True if the comment was inserted, otherwise false.
+   * @param comment - The comment text (may contain newlines).
+   * @param options - Insert comment options.
    */
-  public insertComment(comment: string, options?: InsertCommentOptions): boolean {
-    const referenceKey = options?.referenceKey
-    const position = options?.position || 'after'
+  insertComment(comment: string, options?: InsertCommentOptions): void {
+    const delimiter = options?.commentDelimiter ?? DEFAULT_COMMENT_DELIMITER
+    const newNodes = buildCommentNodes(comment, delimiter, 0)
 
-    if (referenceKey) {
-      this.parseLinesIfNeeded()
-    }
-
-    // Allow multiline comments.
-    const commentPrefix = `${options?.commentDelimiter || DEFAULT_COMMENT_DELIMITER} `
-    const newLines = `${commentPrefix}${comment}`
-      .replace(REGEX_NEWLINE_GLOBAL, `\n${commentPrefix}`)
-      .split(REGEX_LF)
-
-    if (referenceKey === undefined) {
-      // Insert the new comment at the end if the reference key was not defined.
-      this.lines.push(...newLines)
-      this.needsLineParsing = true
-      return true
-    } else {
-      // Find the last occurrence of the reference key.
-      const property = this.findLastPropertyByKey(referenceKey)
-
-      // Insert the new comment when a reference key defined only when found.
-      if (property) {
-        const insertPosition =
-          position === 'after'
-            ? property.endingLineNumber
-            : (property.previousProperty?.endingLineNumber ?? 0)
-        this.lines = [
-          ...this.lines.slice(0, insertPosition),
-          ...newLines,
-          ...this.lines.slice(insertPosition),
-        ]
-        this.needsLineParsing = true
-        return true
+    if (options?.referenceKey) {
+      const referenceIndex = this.findLastPropertyIndex(options.referenceKey)
+      if (referenceIndex !== -1) {
+        const insertIndex = options.position === 'before' ? referenceIndex : referenceIndex + 1
+        this.nodes.splice(insertIndex, 0, ...newNodes)
+        recalculateLineNumbers(this.nodes)
+        return
       }
-      return false
     }
+
+    this.nodes.push(...newNodes)
+    recalculateLineNumbers(this.nodes)
   }
 
   /**
-   * Delete the last occurrence of a given key from the existing object.
+   * Insert a blank line.
    *
-   * @param key - The name of the key to delete.
-   * @param deleteCommentsAndWhiteSpace - By default, comments and white-space characters before the key will be deleted.
-   *
-   * @returns True if the key was deleted, otherwise false.
+   * @param options - Insert blank line options.
    */
-  public delete(key: string, deleteCommentsAndWhiteSpace = true): boolean {
-    this.parseLinesIfNeeded()
-
-    // Find the last occurrence of the key.
-    const property = this.findLastPropertyByKey(key)
-
-    if (property) {
-      const startLine = deleteCommentsAndWhiteSpace
-        ? (property.previousProperty?.endingLineNumber ?? 0)
-        : property.startingLineNumber - 1
-      const endLine = property.endingLineNumber
-      this.lines = [...this.lines.slice(0, startLine), ...this.lines.slice(endLine)]
-      this.needsLineParsing = true
-      return true
+  insertBlankLine(options?: InsertBlankLineOptions): void {
+    const blankNode: BlankLineNode = {
+      type: 'blank',
+      rawLine: '',
+      lineNumber: 0,
     }
-    return false
+
+    if (options?.referenceKey) {
+      const referenceIndex = this.findLastPropertyIndex(options.referenceKey)
+      if (referenceIndex !== -1) {
+        const insertIndex = options.position === 'before' ? referenceIndex : referenceIndex + 1
+        this.nodes.splice(insertIndex, 0, blankNode)
+        recalculateLineNumbers(this.nodes)
+        return
+      }
+    }
+
+    this.nodes.push(blankNode)
+    recalculateLineNumbers(this.nodes)
   }
 
   /**
-   * Restore the original newline characters of a key.
+   * Update an existing property.
    *
-   * @param property - A property object.
+   * @param key - The unescaped key to update (uses last occurrence).
+   * @param options - Update options.
    *
-   * @returns The key with its original newlines characters restored.
+   * @returns `true` if the property was found and updated, `false` otherwise.
    */
-  private getKeyWithNewlines(property: Property): string {
-    return property.newlinePositions.length === 0
-      ? property.key
-      : [...property.key].reduce<string>(
-          (accumulator, character, index) =>
-            `${accumulator}${property.newlinePositions.indexOf(index) !== -1 ? '\n' : ''}${character}`,
-          ''
-        )
-  }
-
-  /**
-   * Restore the original newline characters of a value.
-   *
-   * @param property - A property object.
-   *
-   * @returns The value with its original newlines characters restored.
-   */
-  private getValueWithNewlines(property: Property): string {
-    return property.newlinePositions.length === 0 || property.valuePosition === undefined
-      ? property.value
-      : [...property.value].reduce<string>(
-          (accumulator, character, index) =>
-            `${accumulator}${
-              property.newlinePositions.indexOf(index + (property.valuePosition as number)) !== -1
-                ? '\n'
-                : ''
-            }${character}`,
-          ''
-        )
-  }
-
-  /**
-   * Update the last occurrence of a given key from the existing object.
-   *
-   * @param key - The name of the key to update.
-   * @param options - Additional options.
-   *
-   * @returns True if the key was updated, otherwise false.
-   */
-  public update(key: string, options?: UpdateOptions): boolean {
-    this.parseLinesIfNeeded()
-
-    // Find the last occurrence of the key to update.
-    const property = this.findLastPropertyByKey(key)
-
-    if (!property || !options) {
+  update(key: string, options: UpdateOptions): boolean {
+    const index = this.findLastPropertyIndex(key)
+    if (index === -1) {
       return false
     }
 
-    const escapeUnicode = options.escapeUnicode || false
-    const separator = options.separator
+    const existing = this.nodes[index] as PropertyNode
+
+    // Determine new key/value.
+    const newKey = options.newKey ?? existing.key
+    const newValue = options.newValue ?? existing.value
+    const escUnicode = options.escapeUnicode === true
+    const escapedKey = escUnicode
+      ? escapeKey(newKey, true)
+      : options.newKey !== undefined
+        ? escapeKey(newKey)
+        : existing.escapedKey
+    const escapedValue = escUnicode
+      ? escapeValue(newValue, true)
+      : options.newValue !== undefined
+        ? escapeValue(newValue)
+        : existing.escapedValue
+
+    // Determine separator.
+    const separatorChar = options.separator
       ? options.separator === ' '
+        ? undefined
+        : options.separator
+      : existing.separatorChar
+    const separatorLeading = options.separator
+      ? separatorChar
         ? ' '
-        : ` ${options.separator} `
-      : property.separator || ` ${DEFAULT_SEPARATOR} `.replace('  ', ' ')
+        : ' '
+      : existing.separatorLeading
+    const separatorTrailing = options.separator
+      ? separatorChar
+        ? ' '
+        : ''
+      : existing.separatorTrailing
 
-    // Allow multiline keys.
-    const multilineKey = (options.newKey ?? this.getKeyWithNewlines(property))
-      .split(REGEX_NEWLINE)
-      .map((key) => escapeKey(key, escapeUnicode))
-      .join('\\\n')
+    const separatorString = separatorChar
+      ? `${separatorLeading}${separatorChar}${separatorTrailing}`
+      : separatorLeading
 
-    // Allow multiline values.
-    const multilineValue = (options.newValue ?? this.getValueWithNewlines(property))
-      .split(REGEX_NEWLINE)
-      .map((value) => escapeValue(value, escapeUnicode))
-      .join('\\\n')
+    const rawLine = `${escapedKey}${separatorString}${escapedValue}`
+    const rawLines = rawLine.split(REGEX_NEWLINE)
 
-    // Allow multiline comments.
-    const commentPrefix = `${options.commentDelimiter || DEFAULT_COMMENT_DELIMITER} `
-    const multilineComment =
-      options.newComment === undefined
-        ? ''
-        : `${`${commentPrefix}${options.newComment}`.split(REGEX_NEWLINE).join(`\n${commentPrefix}`)}\n`
+    const updatedNode: PropertyNode = {
+      type: 'property',
+      rawLines,
+      leadingWhitespace: existing.leadingWhitespace,
+      key: newKey,
+      escapedKey,
+      separatorLeading,
+      separatorChar,
+      separatorTrailing,
+      value: newValue,
+      escapedValue,
+      startingLineNumber: existing.startingLineNumber,
+      endingLineNumber: existing.startingLineNumber + rawLines.length - 1,
+    }
 
-    const newLines = `${multilineComment}${multilineKey}${separator}${multilineValue}`.split(
-      REGEX_LF
-    )
+    // Handle comment replacement.
+    if (options.newComment !== undefined) {
+      // Remove leading comment/blank nodes.
+      let removeStart = index
+      for (let search = index - 1; search >= 0; search--) {
+        if (this.nodes[search].type === 'property') {
+          break
+        }
+        removeStart = search
+      }
 
-    // Replace the existing property with the new one.
-    this.lines = [
-      ...this.lines.slice(
-        0,
-        options.newComment === undefined
-          ? property.startingLineNumber - 1
-          : (property.previousProperty?.endingLineNumber ?? 0)
-      ),
-      ...newLines,
-      ...this.lines.slice(property.endingLineNumber),
-    ]
-    this.needsLineParsing = true
+      const delimiter = options.commentDelimiter ?? DEFAULT_COMMENT_DELIMITER
+      const commentNodes = buildCommentNodes(options.newComment, delimiter, 0)
+
+      this.nodes.splice(removeStart, index - removeStart + 1, ...commentNodes, updatedNode)
+    } else {
+      this.nodes[index] = updatedNode
+    }
+
+    recalculateLineNumbers(this.nodes)
     return true
   }
 
   /**
-   * Update a key if it exist, otherwise add it at the end.
+   * Update a property if it exists, or insert it if it doesn't.
    *
-   * @param key - A property key (unescaped).
-   * @param value - A property value (unescaped).
-   * @param options - Additional options.
-   *
-   * @returns True if the key was updated or inserted, otherwise false.
+   * @param key - The unescaped key.
+   * @param value - The unescaped value.
+   * @param options - Upsert options.
    */
-  public upsert(key: string, value: string, options?: UpsertOptions): boolean {
-    this.parseLinesIfNeeded()
-
-    return this.keyLineNumbers[key]
-      ? this.update(key, {
-          newValue: value,
-          newComment: options?.comment,
-          commentDelimiter: options?.commentDelimiter,
-          separator: options?.separator,
-          escapeUnicode: options?.escapeUnicode,
-        })
-      : this.insert(key, value, options)
+  upsert(key: string, value: string, options?: UpsertOptions): void {
+    const index = this.findLastPropertyIndex(key)
+    if (index !== -1) {
+      this.update(key, {
+        newValue: value,
+        escapeUnicode: options?.escapeUnicode,
+        separator: options?.separator,
+        newComment: options?.comment,
+        commentDelimiter: options?.commentDelimiter,
+      })
+    } else {
+      this.insert(key, value, options)
+    }
   }
 
   /**
-   * Get the key/value object representing the properties.
+   * Delete the last occurrence of a property (the effective value in last-wins semantics).
    *
-   * @returns A key/value object representing the properties.
+   * @param key - The unescaped key to delete.
+   * @param options - Delete options.
+   *
+   * @returns The deleted {@link PropertyNode}, or `undefined` if the key was not found.
    */
-  public toObject(): KeyValuePairObject {
-    this.parseLinesIfNeeded()
-    return super.toObject()
+  delete(key: string, options?: DeleteOptions): PropertyNode | undefined {
+    const index = this.findLastPropertyIndex(key)
+    if (index === -1) {
+      return undefined
+    }
+
+    const deleted = this.nodes[index] as PropertyNode
+    const deleteLeading = options?.deleteLeadingNodes !== false
+
+    if (deleteLeading) {
+      // Remove leading comment/blank nodes up to the previous property.
+      let removeStart = index
+      for (let search = index - 1; search >= 0; search--) {
+        if (this.nodes[search].type === 'property') {
+          break
+        }
+        removeStart = search
+      }
+      this.nodes.splice(removeStart, index - removeStart + 1)
+    } else {
+      this.nodes.splice(index, 1)
+    }
+
+    recalculateLineNumbers(this.nodes)
+    return deleted
+  }
+
+  /**
+   * Delete all occurrences of a key.
+   *
+   * @param key - The unescaped key to delete.
+   *
+   * @returns An array of the deleted {@link PropertyNode} instances.
+   */
+  deleteAll(key: string): PropertyNode[] {
+    const deleted: PropertyNode[] = []
+    for (let index = this.nodes.length - 1; index >= 0; index--) {
+      const node = this.nodes[index]
+      if (node.type === 'property' && node.key === key) {
+        this.nodes.splice(index, 1)
+        deleted.push(node)
+      }
+    }
+    if (deleted.length > 0) {
+      recalculateLineNumbers(this.nodes)
+    }
+    return deleted.reverse()
   }
 }

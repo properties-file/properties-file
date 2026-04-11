@@ -99,6 +99,16 @@
         "default": "./dist/cjs/escape/index.js"
       }
     },
+    "./parser": {
+      "import": {
+        "types": "./dist/esm/parser/index.d.ts",
+        "default": "./dist/esm/parser/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/parser/index.d.ts",
+        "default": "./dist/cjs/parser/index.js"
+      }
+    },
     "./unescape": {
       "import": {
         "types": "./dist/esm/unescape/index.d.ts",
