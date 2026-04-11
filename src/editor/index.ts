@@ -116,6 +116,14 @@ export type DeleteOptions = {
    * the previous property) are also removed.
    */
   deleteLeadingNodes?: boolean
+  /**
+   * Which occurrence of the key to delete when duplicates exist.
+   * - `'last'` (default) — deletes the last occurrence (the effective value in
+   *   Java's last-wins semantics).
+   * - `'first'` — deletes the first occurrence. Useful for cleaning up duplicate
+   *   keys while keeping the effective value.
+   */
+  occurrence?: 'first' | 'last'
 }
 
 // ---------------------------------------------------------------------------
@@ -239,6 +247,23 @@ const recalculateLineNumbers = (nodes: PropertiesNode[]): void => {
  * parser with insert, update, delete, and upsert operations.
  */
 export class PropertiesEditor extends Properties {
+  /**
+   * Find the index of the first property node with the given key.
+   *
+   * @param key - The unescaped key to search for.
+   *
+   * @returns The index in `this.nodes`, or `-1` if not found.
+   */
+  private findFirstPropertyIndex(key: string): number {
+    for (let index = 0; index < this.nodes.length; index++) {
+      const node = this.nodes[index]
+      if (node.type === 'property' && node.key === key) {
+        return index
+      }
+    }
+    return -1
+  }
+
   /**
    * Find the index of the last property node with the given key.
    *
@@ -467,7 +492,11 @@ export class PropertiesEditor extends Properties {
   }
 
   /**
-   * Delete the last occurrence of a property (the effective value in last-wins semantics).
+   * Delete an occurrence of a property.
+   *
+   * By default, deletes the last occurrence (the effective value in Java's last-wins
+   * semantics). Use `{ occurrence: 'first' }` to delete the first occurrence instead,
+   * which is useful for cleaning up duplicate keys while keeping the effective value.
    *
    * @param key - The unescaped key to delete.
    * @param options - Delete options.
@@ -475,7 +504,10 @@ export class PropertiesEditor extends Properties {
    * @returns The deleted {@link PropertyNode}, or `undefined` if the key was not found.
    */
   delete(key: string, options?: DeleteOptions): PropertyNode | undefined {
-    const index = this.findLastPropertyIndex(key)
+    const index =
+      options?.occurrence === 'first'
+        ? this.findFirstPropertyIndex(key)
+        : this.findLastPropertyIndex(key)
     if (index === -1) {
       return undefined
     }

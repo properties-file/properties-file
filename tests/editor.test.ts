@@ -245,6 +245,54 @@ describe('PropertiesEditor', () => {
     expect(editor.delete('missing')).toBeUndefined()
   })
 
+  it('delete with occurrence first removes the first occurrence', () => {
+    const editor = new PropertiesEditor('key = first\nkey = second\nkey = third')
+    const deleted = editor.delete('key', { occurrence: 'first' })
+    expect(deleted).toBeDefined()
+    expect(deleted!.value).toBe('first')
+    expect(editor.toObject()).toEqual({ key: 'third' })
+    expect(editor.getPropertyNodes('key')).toHaveLength(2)
+  })
+
+  it('delete with occurrence first removes leading comments', () => {
+    const editor = new PropertiesEditor('# about first\nkey = first\n# about second\nkey = second')
+    editor.delete('key', { occurrence: 'first' })
+    const result = editor.format()
+    expect(result).not.toContain('about first')
+    expect(result).not.toContain('key = first')
+    expect(result).toContain('# about second')
+    expect(result).toContain('key = second')
+  })
+
+  it('delete with occurrence first and deleteLeadingNodes false keeps comments', () => {
+    const editor = new PropertiesEditor('# about first\nkey = first\n# about second\nkey = second')
+    editor.delete('key', { occurrence: 'first', deleteLeadingNodes: false })
+    const result = editor.format()
+    expect(result).toContain('# about first')
+    expect(result).not.toContain('key = first')
+    expect(result).toContain('key = second')
+  })
+
+  it('delete with occurrence first returns undefined for missing key', () => {
+    const editor = new PropertiesEditor('a = 1')
+    expect(editor.delete('missing', { occurrence: 'first' })).toBeUndefined()
+  })
+
+  it('delete duplicates using getKeyCollisions and occurrence first', () => {
+    const editor = new PropertiesEditor(
+      '# first\nkey = first\n# second\nkey = second\n# third\nkey = third'
+    )
+    const collisions = editor.getKeyCollisions()
+    for (const collision of collisions) {
+      for (let index = 0; index < collision.nodes.length - 1; index++) {
+        editor.delete(collision.key, { occurrence: 'first' })
+      }
+    }
+    const result = editor.format()
+    expect(result).toBe('# third\nkey = third')
+    expect(editor.toObject()).toEqual({ key: 'third' })
+  })
+
   // ─── deleteAll ────────────────────────────────────────────────────
 
   it('deleteAll removes all occurrences and returns deleted nodes', () => {
