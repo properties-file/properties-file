@@ -70,19 +70,16 @@ We tested each library against 22 test cases that cover the [Java Properties spe
 
 ## Performance
 
-Benchmark parsing 10,000 key-value entries (593 KB of `.properties` content), 50 iterations, median time:
+Benchmark parsing 10,000 key-value entries to a key-value object, 200 iterations, median time:
 
-| Package                               |     Median |      Throughput |           Relative |
-| ------------------------------------- | ---------: | --------------: | -----------------: |
-| **properties-file** (`Properties`)    | **1.7 ms** | **580 ops/sec** | **1.0x (fastest)** |
-| **properties-file** (`getProperties`) | **3.0 ms** | **331 ops/sec** |           **1.8x** |
-| java-properties                       |     6.1 ms |     165 ops/sec |        3.6x slower |
-| properties-parser                     |    11.6 ms |      86 ops/sec |        6.8x slower |
-| properties                            |    11.7 ms |      86 ops/sec |        6.9x slower |
-
-> `properties-reader` was excluded from the benchmark because it requires file I/O and is not a Java-compliant parser.
-
-> `properties-file` offers two parsing paths: `getProperties()` for simple key-value extraction, and `Properties` for the full lossless data model. Both are significantly faster than alternatives.
+| Package                                         |     Median |      Throughput |           Relative |
+| ----------------------------------------------- | ---------: | --------------: | -----------------: |
+| **properties-file** (`getProperties`)           | **1.7 ms** | **580 ops/sec** | **1.0x (fastest)** |
+| **properties-file** (`Properties` + `toObject`) | **1.9 ms** | **520 ops/sec** |           **1.1x** |
+| properties-reader                               |     4.0 ms |     250 ops/sec |        2.4x slower |
+| java-properties                                 |     6.1 ms |     165 ops/sec |        3.6x slower |
+| properties-parser                               |    11.6 ms |      86 ops/sec |        6.8x slower |
+| properties                                      |    11.7 ms |      86 ops/sec |        6.9x slower |
 
 ## Feature Comparison
 

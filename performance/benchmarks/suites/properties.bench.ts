@@ -7,7 +7,7 @@ export type PropertiesModule = {
   /** Converts `.properties` content to a key-value pair object. */
   getProperties: (content: string | Buffer) => Record<string, string>
   /** The `Properties` class constructor. */
-  Properties: new (content: string) => unknown
+  Properties: new (content: string) => { toObject(): Record<string, string> }
 }
 
 /**
@@ -26,8 +26,8 @@ export const runPropertiesBenchmarks = async (modules: PropertiesModule): Promis
   for (const payload of payloads) {
     const content = payload.generate()
 
-    bench.add(`Properties constructor (${payload.name})`, () => {
-      new modules.Properties(content)
+    bench.add(`Properties.toObject() (${payload.name})`, () => {
+      new modules.Properties(content).toObject()
     })
 
     bench.add(`getProperties (${payload.name})`, () => {

@@ -235,6 +235,14 @@ describe.each(readers)('%s', (_name, read) => {
     expect(read('keyonly\\\n')).toEqual({ keyonly: '' })
   })
 
+  it('handles backslash appearing only in continuation line', () => {
+    expect(read('key = hello\\\n  \\tworld')).toEqual({ key: 'hello\tworld' })
+  })
+
+  it('handles multiline property with leading whitespace', () => {
+    expect(read('  key = val\\\n  ue')).toEqual({ key: 'value' })
+  })
+
   it('handles multi-line key-only with trailing whitespace (no value)', () => {
     expect(read('key  \\\n  ')).toEqual({ key: '' })
   })

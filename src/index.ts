@@ -3,9 +3,7 @@
 // ---------------------------------------------------------------------------
 
 const CH_TAB = 9 // \t
-const CH_LF = 10 // \n
 const CH_FF = 12 // \f
-const CH_CR = 13 // \r
 const CH_SPACE = 32 // ' '
 const CH_BANG = 33 // !
 const CH_HASH = 35 // #
@@ -84,45 +82,32 @@ const hexValue = (charCode: number): number => {
 }
 
 /**
- * Unescape a raw `.properties` key or value substring.
+ * Unescape a `.properties` string containing escape sequences.
  *
- * @param source - The full source string (or logical line).
- * @param start - Start index of the substring to unescape.
- * @param end - End index (exclusive) of the substring to unescape.
- * @param hasBackslash - Whether the substring contains any backslashes.
- * @param startLine - Line number of the property (used in error messages).
+ * @param content - The escaped string to process.
  *
  * @returns The unescaped string.
  *
  * @throws {@link Error} when a malformed `\\uXXXX` sequence is encountered.
  */
-const unescapeContent = (
-  source: string,
-  start: number,
-  end: number,
-  hasBackslash: boolean,
-  startLine: number
-): string => {
-  if (!hasBackslash) {
-    return source.slice(start, end)
-  }
-
+const unescapeContent = (content: string): string => {
+  const length = content.length
   let unescaped = ''
-  let segmentStart = start
-  let cursor = start
+  let segmentStart = 0
+  let cursor = 0
 
-  while (cursor < end) {
-    if (source.charCodeAt(cursor) !== CH_BACKSLASH) {
+  while (cursor < length) {
+    if (content.charCodeAt(cursor) !== CH_BACKSLASH) {
       cursor++
       continue
     }
 
     if (cursor > segmentStart) {
-      unescaped += source.slice(segmentStart, cursor)
+      unescaped += content.slice(segmentStart, cursor)
     }
 
     cursor++
-    const escapedCharCode = source.charCodeAt(cursor)
+    const escapedCharCode = content.charCodeAt(cursor)
 
     switch (escapedCharCode) {
       case CH_LOWER_N: {
@@ -147,28 +132,26 @@ const unescapeContent = (
       }
       case CH_LOWER_U: {
         if (
-          cursor + 4 >= end ||
-          !isHexDigit(source.charCodeAt(cursor + 1)) ||
-          !isHexDigit(source.charCodeAt(cursor + 2)) ||
-          !isHexDigit(source.charCodeAt(cursor + 3)) ||
-          !isHexDigit(source.charCodeAt(cursor + 4))
+          cursor + 4 >= length ||
+          !isHexDigit(content.charCodeAt(cursor + 1)) ||
+          !isHexDigit(content.charCodeAt(cursor + 2)) ||
+          !isHexDigit(content.charCodeAt(cursor + 3)) ||
+          !isHexDigit(content.charCodeAt(cursor + 4))
         ) {
-          const errorContext = source.slice(cursor - 1, cursor + 5)
-          throw new Error(
-            `malformed escaped unicode characters '${errorContext}' in property starting at line ${startLine}`
-          )
+          const errorContext = content.slice(cursor - 1, cursor + 5)
+          throw new Error(`malformed escaped unicode characters '${errorContext}'`)
         }
         const codePoint =
-          (hexValue(source.charCodeAt(cursor + 1)) << 12) |
-          (hexValue(source.charCodeAt(cursor + 2)) << 8) |
-          (hexValue(source.charCodeAt(cursor + 3)) << 4) |
-          hexValue(source.charCodeAt(cursor + 4))
+          (hexValue(content.charCodeAt(cursor + 1)) << 12) |
+          (hexValue(content.charCodeAt(cursor + 2)) << 8) |
+          (hexValue(content.charCodeAt(cursor + 3)) << 4) |
+          hexValue(content.charCodeAt(cursor + 4))
         unescaped += String.fromCharCode(codePoint)
         cursor += 5
         break
       }
       default: {
-        unescaped += source.charAt(cursor)
+        unescaped += content.charAt(cursor)
         cursor++
         break
       }
@@ -177,8 +160,8 @@ const unescapeContent = (
     segmentStart = cursor
   }
 
-  if (segmentStart < end) {
-    unescaped += source.slice(segmentStart, end)
+  if (segmentStart < length) {
+    unescaped += content.slice(segmentStart, length)
   }
 
   return unescaped
@@ -207,267 +190,139 @@ const unescapeContent = (
  */
 export const getProperties = (content: string | Buffer): KeyValuePairObject => {
   const source = typeof content === 'string' ? content : content.toString()
-  const sourceLength = source.length
   const result: KeyValuePairObject = {}
 
-  let position = 0
-  let lineNumber = 1
+  // Strip BOM and split into physical lines using V8's optimized native split.
+  const rawContent = source.length > 0 && source.charCodeAt(0) === CH_BOM ? source.slice(1) : source
+  const lines = rawContent.split(/\r\n|\r|\n/)
+  const lineCount = lines.length
+  let lineIndex = 0
 
-  if (sourceLength > 0 && source.charCodeAt(0) === CH_BOM) {
-    position = 1
-  }
+  while (lineIndex < lineCount) {
+    const line = lines[lineIndex]
+    const lineLength = line.length
 
-  while (position < sourceLength) {
-    position = skipWhitespace(source, position, sourceLength)
-    if (position >= sourceLength) {
-      break
-    }
+    // Skip leading whitespace.
+    const firstNonWs = skipWhitespace(line, 0, lineLength)
 
-    let charCode = source.charCodeAt(position)
-
-    if (charCode === CH_LF) {
-      position++
-      lineNumber++
-      continue
-    }
-    if (charCode === CH_CR) {
-      position++
-      if (position < sourceLength && source.charCodeAt(position) === CH_LF) {
-        position++
-      }
-      lineNumber++
+    // Blank line.
+    if (firstNonWs >= lineLength) {
+      lineIndex++
       continue
     }
 
-    if (charCode === CH_HASH || charCode === CH_BANG) {
-      while (position < sourceLength) {
-        charCode = source.charCodeAt(position)
-        if (charCode === CH_LF) {
-          position++
-          lineNumber++
-          break
-        }
-        if (charCode === CH_CR) {
-          position++
-          if (position < sourceLength && source.charCodeAt(position) === CH_LF) {
-            position++
-          }
-          lineNumber++
-          break
-        }
-        position++
-      }
+    const firstChar = line.charCodeAt(firstNonWs)
+
+    // Comment line.
+    if (firstChar === CH_HASH || firstChar === CH_BANG) {
+      lineIndex++
       continue
     }
 
-    const propertyStartLine = lineNumber
-    const firstLineStart = position
-    let trailingBackslashCount = 0
-    let lineHasBackslash = false
+    // ---- Property line ----
 
-    while (position < sourceLength) {
-      charCode = source.charCodeAt(position)
-      if (charCode === CH_LF || charCode === CH_CR) {
-        break
-      }
-      if (charCode === CH_BACKSLASH) {
-        trailingBackslashCount++
-        lineHasBackslash = true
-      } else {
-        trailingBackslashCount = 0
-      }
-      position++
+    // Count trailing backslashes to detect continuation.
+    let trailingBs = 0
+    for (let pos = lineLength - 1; pos >= 0 && line.charCodeAt(pos) === CH_BACKSLASH; pos--) {
+      trailingBs++
     }
+    let isContinuation = trailingBs % 2 === 1
 
-    const isContinuation = trailingBackslashCount % 2 === 1
+    // Build the logical line.
+    let logicalLine: string
+    let hasBackslash: boolean
 
     if (!isContinuation) {
-      const lineEnd = position
-
-      if (position < sourceLength) {
-        if (source.charCodeAt(position) === CH_CR) {
-          position++
-          if (position < sourceLength && source.charCodeAt(position) === CH_LF) {
-            position++
-          }
-        } else {
-          position++
-        }
-        lineNumber++
-      }
-
-      let keyEndPosition = firstLineStart
-      let hasPrecedingBackslash = false
-
-      while (keyEndPosition < lineEnd) {
-        charCode = source.charCodeAt(keyEndPosition)
-
-        if (charCode === CH_BACKSLASH) {
-          hasPrecedingBackslash = !hasPrecedingBackslash
-          keyEndPosition++
-          continue
-        }
-
-        if (
-          !hasPrecedingBackslash &&
-          (charCode === CH_EQUALS ||
-            charCode === CH_COLON ||
-            charCode === CH_SPACE ||
-            charCode === CH_TAB ||
-            charCode === CH_FF)
-        ) {
-          break
-        }
-
-        hasPrecedingBackslash = false
-        keyEndPosition++
-      }
-
-      let valueStartPosition = keyEndPosition
-
-      if (valueStartPosition < lineEnd) {
-        charCode = source.charCodeAt(valueStartPosition)
-
-        if (charCode === CH_SPACE || charCode === CH_TAB || charCode === CH_FF) {
-          valueStartPosition = skipWhitespace(source, valueStartPosition, lineEnd)
-          if (valueStartPosition < lineEnd) {
-            charCode = source.charCodeAt(valueStartPosition)
-          }
-        }
-
-        if (valueStartPosition < lineEnd && (charCode === CH_EQUALS || charCode === CH_COLON)) {
-          valueStartPosition++
-          valueStartPosition = skipWhitespace(source, valueStartPosition, lineEnd)
-        }
-      }
-
-      result[
-        unescapeContent(source, firstLineStart, keyEndPosition, lineHasBackslash, propertyStartLine)
-      ] = unescapeContent(source, valueStartPosition, lineEnd, lineHasBackslash, propertyStartLine)
+      // Single-line: use content after leading whitespace directly.
+      logicalLine = firstNonWs > 0 ? line.slice(firstNonWs) : line
+      hasBackslash = logicalLine.indexOf('\\') !== -1
     } else {
-      const segments: string[] = [source.slice(firstLineStart, position - 1)]
-      let logicalLineHasBackslash = lineHasBackslash
+      // Multi-line: collect continuation segments.
+      const firstSegment = (firstNonWs > 0 ? line.slice(firstNonWs) : line).slice(0, -1)
+      const segments: string[] = [firstSegment]
+      hasBackslash = firstSegment.indexOf('\\') !== -1
 
-      if (position < sourceLength) {
-        if (source.charCodeAt(position) === CH_CR) {
-          position++
-          if (position < sourceLength && source.charCodeAt(position) === CH_LF) {
-            position++
-          }
-        } else {
-          position++
-        }
-        lineNumber++
-      }
+      while (isContinuation && lineIndex + 1 < lineCount) {
+        lineIndex++
+        const nextLine = lines[lineIndex]
+        const nextLength = nextLine.length
 
-      position = skipWhitespace(source, position, sourceLength)
+        // Skip leading whitespace on continuation line.
+        const start = skipWhitespace(nextLine, 0, nextLength)
 
-      for (;;) {
-        const physicalLineStart = position
-        trailingBackslashCount = 0
-        let continuationHasBackslash = false
-
-        while (position < sourceLength) {
-          charCode = source.charCodeAt(position)
-          if (charCode === CH_LF || charCode === CH_CR) {
-            break
-          }
-          if (charCode === CH_BACKSLASH) {
-            trailingBackslashCount++
-            continuationHasBackslash = true
-          } else {
-            trailingBackslashCount = 0
-          }
-          position++
-        }
-
-        const nextContinuation = trailingBackslashCount % 2 === 1
-        const physicalLineEnd = nextContinuation ? position - 1 : position
-
-        segments.push(source.slice(physicalLineStart, physicalLineEnd))
-        if (continuationHasBackslash) {
-          logicalLineHasBackslash = true
-        }
-
-        if (position < sourceLength) {
-          if (source.charCodeAt(position) === CH_CR) {
-            position++
-            if (position < sourceLength && source.charCodeAt(position) === CH_LF) {
-              position++
-            }
-          } else {
-            position++
-          }
-          lineNumber++
-        }
-
-        if (!nextContinuation) {
-          break
-        }
-
-        position = skipWhitespace(source, position, sourceLength)
-      }
-
-      const logicalLine = segments.join('')
-      const logicalLineLength = logicalLine.length
-      let keyEndPosition = 0
-      let hasPrecedingBackslash = false
-
-      while (keyEndPosition < logicalLineLength) {
-        charCode = logicalLine.charCodeAt(keyEndPosition)
-
-        if (charCode === CH_BACKSLASH) {
-          hasPrecedingBackslash = !hasPrecedingBackslash
-          keyEndPosition++
-          continue
-        }
-
-        if (
-          !hasPrecedingBackslash &&
-          (charCode === CH_EQUALS ||
-            charCode === CH_COLON ||
-            charCode === CH_SPACE ||
-            charCode === CH_TAB ||
-            charCode === CH_FF)
+        // Check continuation on this line.
+        trailingBs = 0
+        for (
+          let pos = nextLength - 1;
+          pos >= start && nextLine.charCodeAt(pos) === CH_BACKSLASH;
+          pos--
         ) {
-          break
+          trailingBs++
         }
+        isContinuation = trailingBs % 2 === 1
 
-        hasPrecedingBackslash = false
-        keyEndPosition++
+        const segment = isContinuation
+          ? nextLine.slice(start, nextLength - 1)
+          : nextLine.slice(start)
+        if (!hasBackslash && segment.indexOf('\\') !== -1) {
+          hasBackslash = true
+        }
+        segments.push(segment)
       }
 
-      let valueStartPosition = keyEndPosition
-
-      if (valueStartPosition < logicalLineLength) {
-        charCode = logicalLine.charCodeAt(valueStartPosition)
-
-        if (charCode === CH_SPACE || charCode === CH_TAB || charCode === CH_FF) {
-          valueStartPosition = skipWhitespace(logicalLine, valueStartPosition, logicalLineLength)
-          if (valueStartPosition < logicalLineLength) {
-            charCode = logicalLine.charCodeAt(valueStartPosition)
-          }
-        }
-
-        if (
-          valueStartPosition < logicalLineLength &&
-          (charCode === CH_EQUALS || charCode === CH_COLON)
-        ) {
-          valueStartPosition++
-          valueStartPosition = skipWhitespace(logicalLine, valueStartPosition, logicalLineLength)
-        }
-      }
-
-      result[
-        unescapeContent(logicalLine, 0, keyEndPosition, logicalLineHasBackslash, propertyStartLine)
-      ] = unescapeContent(
-        logicalLine,
-        valueStartPosition,
-        logicalLineLength,
-        logicalLineHasBackslash,
-        propertyStartLine
-      )
+      logicalLine = segments.join('')
     }
+
+    // Find the key-value separator.
+    const logicalLength = logicalLine.length
+    let keyEnd = 0
+    let hasPrecedingBackslash = false
+
+    while (keyEnd < logicalLength) {
+      const charCode = logicalLine.charCodeAt(keyEnd)
+      if (charCode === CH_BACKSLASH) {
+        hasPrecedingBackslash = !hasPrecedingBackslash
+        keyEnd++
+        continue
+      }
+      if (
+        !hasPrecedingBackslash &&
+        (charCode === CH_EQUALS ||
+          charCode === CH_COLON ||
+          charCode === CH_SPACE ||
+          charCode === CH_TAB ||
+          charCode === CH_FF)
+      ) {
+        break
+      }
+      hasPrecedingBackslash = false
+      keyEnd++
+    }
+
+    // Determine where the value begins.
+    let valueStart = keyEnd
+    if (valueStart < logicalLength) {
+      let charCode = logicalLine.charCodeAt(valueStart)
+      if (charCode === CH_SPACE || charCode === CH_TAB || charCode === CH_FF) {
+        valueStart = skipWhitespace(logicalLine, valueStart, logicalLength)
+        if (valueStart < logicalLength) {
+          charCode = logicalLine.charCodeAt(valueStart)
+        }
+      }
+      if (valueStart < logicalLength && (charCode === CH_EQUALS || charCode === CH_COLON)) {
+        valueStart++
+        valueStart = skipWhitespace(logicalLine, valueStart, logicalLength)
+      }
+    }
+
+    // Unescape and store (last-wins for duplicate keys).
+    const escapedKey = logicalLine.slice(0, keyEnd)
+    const escapedValue = logicalLine.slice(valueStart)
+    result[hasBackslash ? unescapeContent(escapedKey) : escapedKey] = hasBackslash
+      ? unescapeContent(escapedValue)
+      : escapedValue
+
+    lineIndex++
   }
 
   return result
