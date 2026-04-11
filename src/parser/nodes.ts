@@ -111,30 +111,73 @@ export type KeyCollisions = {
 // Normalization options
 // ---------------------------------------------------------------------------
 
-/** Options for {@link Properties.format} when producing normalized output. */
+/**
+ * Options for {@link Properties.format} when producing normalized output.
+ *
+ * When no options are passed to `format()`, the output is a lossless reconstruction
+ * of the original content. Passing any option triggers normalization, rebuilding
+ * property lines from their parsed fields.
+ */
 export type NormalizeOptions = {
-  /** End-of-line character to use. Defaults to the detected EOL from the source. */
+  /** Override the end-of-line character. Defaults to the EOL detected from the source. */
   endOfLineCharacter?: '\n' | '\r\n'
-  /** If `true`, remove all comment lines. Default: `false`. */
+  /** If `true`, remove all comment lines from the output. Default: `false`. */
   removeComments?: boolean
-  /** If `true`, remove all blank lines. Default: `false`. */
+  /** If `true`, remove all blank lines from the output. Default: `false`. */
   removeBlankLines?: boolean
-  /** If `true`, remove leading whitespace from all lines. Default: `false`. */
+  /** If `true`, strip leading whitespace from all property and comment lines. Default: `false`. */
   removeLeadingWhitespace?: boolean
-  /** If `true`, keep only the last occurrence of each key. Default: `false`. */
+  /**
+   * If `true`, keep only the last occurrence of each duplicate key (Java's last-wins
+   * semantics). Earlier occurrences and their leading comment/blank line nodes are
+   * removed from the output. Set `deduplicateKeysKeepLeadingNodes` to `true` to
+   * preserve the leading nodes. Default: `false`.
+   */
   deduplicateKeys?: boolean
-  /** Standardize the separator character. Original separators are preserved if not set. */
+  /**
+   * When `deduplicateKeys` is `true`, controls whether comment and blank line nodes
+   * preceding removed duplicates are preserved (`true`) or also removed (`false`).
+   * Default: `false` (leading nodes are removed along with the duplicate).
+   */
+  deduplicateKeysKeepLeadingNodes?: boolean
+  /**
+   * Standardize the separator character across all properties. When set, every
+   * property is rewritten to use this separator. Original separators are preserved
+   * if not set. Use `' '` for whitespace-only separators (no `=` or `:`).
+   */
   separatorChar?: '=' | ':' | ' '
-  /** Whitespace to place before the separator character. */
+  /**
+   * Whitespace to place before the separator character (e.g. `' '` for `key = value`,
+   * `''` for `key=value`). When not set, each property's original leading whitespace
+   * is preserved.
+   */
   separatorLeading?: string
-  /** Whitespace to place after the separator character. */
+  /**
+   * Whitespace to place after the separator character (e.g. `' '` for `key = value`,
+   * `''` for `key=value`). When not set, each property's original trailing whitespace
+   * is preserved.
+   */
   separatorTrailing?: string
-  /** If `true`, escape all non-ASCII characters as `\\uXXXX` sequences. Default: `false`. */
+  /**
+   * If `true`, re-escape all non-ASCII characters as `\\uXXXX` sequences. Useful for
+   * producing ISO-8859-1 compatible output. Default: `false` (preserves original encoding).
+   */
   escapeUnicode?: boolean
-  /** If `true`, collapse multiline keys and values to single lines. Default: `false`. */
+  /**
+   * If `true`, collapse multiline keys and values (joined via `\\` line continuations)
+   * into single lines. Default: `false` (preserves original line structure).
+   */
   collapseMultiline?: boolean
-  /** Wrap keys at this character width using line continuations. `undefined` = no wrapping. */
+  /**
+   * Wrap keys at this character width using `\\` line continuations. Only applies to
+   * keys longer than the specified width. `\\uXXXX` sequences are never split across
+   * lines. `undefined` = no wrapping.
+   */
   wrapKeysAt?: number
-  /** Wrap values at this character width using line continuations. `undefined` = no wrapping. */
+  /**
+   * Wrap values at this character width using `\\` line continuations. Only applies to
+   * values longer than the specified width. `\\uXXXX` sequences are never split across
+   * lines. `undefined` = no wrapping.
+   */
   wrapValuesAt?: number
 }

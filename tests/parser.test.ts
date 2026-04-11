@@ -407,6 +407,34 @@ describe('format() with normalization options', () => {
     expect(result).toBe('# comment\nkey = second')
   })
 
+  it('deduplicateKeys stops removing leading nodes at previous property boundary', () => {
+    const result = new Properties('other = x\nkey = first\nkey = second').format({
+      deduplicateKeys: true,
+    })
+    expect(result).toBe('other = x\nkey = second')
+  })
+
+  it('deduplicateKeys removes leading comments of removed duplicates', () => {
+    const result = new Properties(
+      '# about first\nkey = first\n# about second\nkey = second'
+    ).format({ deduplicateKeys: true })
+    expect(result).toBe('# about second\nkey = second')
+  })
+
+  it('deduplicateKeys preserves leading nodes when deduplicateKeysKeepLeadingNodes is true', () => {
+    const result = new Properties(
+      '# about first\nkey = first\n# about second\nkey = second'
+    ).format({ deduplicateKeys: true, deduplicateKeysKeepLeadingNodes: true })
+    expect(result).toBe('# about first\n# about second\nkey = second')
+  })
+
+  it('deduplicateKeys removes leading blank lines of removed duplicates', () => {
+    const result = new Properties('\nkey = first\n\n# kept\nkey = second').format({
+      deduplicateKeys: true,
+    })
+    expect(result).toBe('\n# kept\nkey = second')
+  })
+
   it('separatorChar = standardizes all separators', () => {
     const result = new Properties('a : 1\nb 2').format({
       separatorChar: '=',

@@ -135,15 +135,34 @@ export const formatNormalized = (
     options.removeLeadingWhitespace === true
 
   // Pre-compute which node indices to keep when deduplicating.
-  let keepIndices: { [index: number]: boolean } | undefined
+  let skipIndices: { [index: number]: boolean } | undefined
   if (options.deduplicateKeys) {
+    // Walk backward to find the last occurrence of each key.
     const seen: { [key: string]: boolean } = {}
-    keepIndices = {}
+    const duplicateIndices: number[] = []
     for (let index = nodes.length - 1; index >= 0; index--) {
       const node = nodes[index]
-      if (node.type === 'property' && !seen[node.key]) {
-        seen[node.key] = true
-        keepIndices[index] = true
+      if (node.type === 'property') {
+        if (seen[node.key]) {
+          duplicateIndices.push(index)
+        } else {
+          seen[node.key] = true
+        }
+      }
+    }
+
+    // Mark duplicate properties for removal, and optionally their leading nodes.
+    skipIndices = {}
+    for (const duplicateIndex of duplicateIndices) {
+      skipIndices[duplicateIndex] = true
+      if (!options.deduplicateKeysKeepLeadingNodes) {
+        // Walk backward from the duplicate to also skip its leading comment/blank nodes.
+        for (let search = duplicateIndex - 1; search >= 0; search--) {
+          if (nodes[search].type === 'property') {
+            break
+          }
+          skipIndices[search] = true
+        }
       }
     }
   }
@@ -152,6 +171,11 @@ export const formatNormalized = (
 
   // eslint-disable-next-line unicorn/no-for-loop -- need index for keepIndices lookup, entries() is ES2015
   for (let nodeIndex = 0; nodeIndex < nodes.length; nodeIndex++) {
+    // Skip nodes marked for removal by deduplication (property + its leading comments/blanks).
+    if (skipIndices && skipIndices[nodeIndex]) {
+      continue
+    }
+
     const node = nodes[nodeIndex]
     switch (node.type) {
       case 'comment': {
@@ -169,9 +193,6 @@ export const formatNormalized = (
         break
       }
       case 'property': {
-        if (keepIndices && !keepIndices[nodeIndex]) {
-          continue
-        }
         if (needsPropertyRebuild) {
           parts.push(rebuildPropertyLine(node, options))
         } else {

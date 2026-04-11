@@ -28,33 +28,46 @@ export type CommentDelimiter = '#' | '!'
 
 /** Options for {@link PropertiesEditor.insert}. */
 export type InsertOptions = {
-  /** Key to insert before or after. */
+  /**
+   * Insert relative to this key (last occurrence). If the key is not found,
+   * the property is appended at the end.
+   */
   referenceKey?: string
   /** Position relative to the reference key. Default: `'after'`. */
   position?: 'before' | 'after'
-  /** Escape non-ASCII characters as `\\uXXXX`. Default: `false`. */
+  /** If `true`, escape non-ASCII characters as `\\uXXXX` sequences. Default: `false`. */
   escapeUnicode?: boolean
-  /** Separator character to use. Default: `'='`. */
+  /** Separator character to use between key and value. Default: `'='`. */
   separator?: KeyValuePairSeparator
-  /** Comment text to prepend (without delimiter). */
+  /**
+   * Comment text to prepend before the property. Supports multi-line: newlines
+   * in the string create separate comment nodes. Empty lines within the text
+   * become blank line nodes.
+   */
   comment?: string
-  /** Comment delimiter. Default: `'#'`. */
+  /** Delimiter character for the comment. Default: `'#'`. */
   commentDelimiter?: CommentDelimiter
 }
 
 /** Options for {@link PropertiesEditor.insertComment}. */
 export type InsertCommentOptions = {
-  /** Key to insert before or after. */
+  /**
+   * Insert relative to this key (last occurrence). If the key is not found,
+   * the comment is appended at the end.
+   */
   referenceKey?: string
   /** Position relative to the reference key. Default: `'after'`. */
   position?: 'before' | 'after'
-  /** Comment delimiter. Default: `'#'`. */
+  /** Delimiter character for the comment. Default: `'#'`. */
   commentDelimiter?: CommentDelimiter
 }
 
 /** Options for {@link PropertiesEditor.insertBlankLine}. */
 export type InsertBlankLineOptions = {
-  /** Key to insert before or after. */
+  /**
+   * Insert relative to this key (last occurrence). If the key is not found,
+   * the blank line is appended at the end.
+   */
   referenceKey?: string
   /** Position relative to the reference key. Default: `'after'`. */
   position?: 'before' | 'after'
@@ -62,35 +75,46 @@ export type InsertBlankLineOptions = {
 
 /** Options for {@link PropertiesEditor.update}. */
 export type UpdateOptions = {
-  /** New value. */
+  /** Replacement value. When not set, the original value is preserved. */
   newValue?: string
-  /** New key (rename). */
+  /** Replacement key (rename). When not set, the original key is preserved. */
   newKey?: string
-  /** Escape non-ASCII characters as `\\uXXXX`. Default: `false`. */
+  /** If `true`, escape non-ASCII characters as `\\uXXXX` sequences. Default: `false`. */
   escapeUnicode?: boolean
-  /** New separator character. */
+  /** New separator character. When not set, the original separator is preserved. */
   separator?: KeyValuePairSeparator
-  /** New comment text (replaces all leading comment nodes). */
+  /**
+   * Replacement comment text. When set, all comment and blank line nodes immediately
+   * preceding the property (up to the previous property) are removed and replaced
+   * with the new comment. Supports multi-line via newlines in the string.
+   */
   newComment?: string
-  /** Comment delimiter. Default: `'#'`. */
+  /** Delimiter character for the new comment. Default: `'#'`. */
   commentDelimiter?: CommentDelimiter
 }
 
 /** Options for {@link PropertiesEditor.upsert}. */
 export type UpsertOptions = {
-  /** Escape non-ASCII characters as `\\uXXXX`. Default: `false`. */
+  /** If `true`, escape non-ASCII characters as `\\uXXXX` sequences. Default: `false`. */
   escapeUnicode?: boolean
   /** Separator character. Default: `'='`. */
   separator?: KeyValuePairSeparator
-  /** Comment text for new properties. */
+  /**
+   * Comment text. When inserting a new property, this is prepended as a comment.
+   * When updating an existing property, this replaces the leading comment nodes.
+   */
   comment?: string
-  /** Comment delimiter. Default: `'#'`. */
+  /** Delimiter character for the comment. Default: `'#'`. */
   commentDelimiter?: CommentDelimiter
 }
 
 /** Options for {@link PropertiesEditor.delete}. */
 export type DeleteOptions = {
-  /** If `true`, also delete preceding comment and blank line nodes. Default: `true`. */
+  /**
+   * If `false`, only the property node itself is removed. If `true` (default),
+   * all comment and blank line nodes immediately preceding the property (up to
+   * the previous property) are also removed.
+   */
   deleteLeadingNodes?: boolean
 }
 
