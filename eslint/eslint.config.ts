@@ -84,6 +84,8 @@ export default defineConfig(
       'performance/**/.*/',
       // Type declarations don't need linting.
       '**/*.d.ts',
+      // Node.js 0.10 compatibility test (intentionally ES5, not linted).
+      'tests/node-compat/',
     ],
   },
   // Prettier recommended configs.

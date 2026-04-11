@@ -29,8 +29,9 @@ npm install properties-file
   - `escapeKey` and `escapeValue` convert any content to `.properties` compatible format.
   - Bundler integrations for Webpack, Rollup/Vite, esbuild, and Bun to import `.properties` files directly. See [BUNDLER.md](./docs/BUNDLER.md).
 - **Tiny with 0 dependencies** — `getProperties` is only 1.1 kB min+gzip.
+- **Runs everywhere** — compiled to ES5, works in any browser and on Node.js all the way back to v0.10 (2013). [Verified via Docker](./tests/node-compat/).
 - **100% test coverage** based on the output from a Java implementation.
-- Active maintenance (many popular `.properties` packages have been inactive for years).
+- Active maintenance (many popular `.properties` packages have been inactive for years). See our [detailed comparison](./docs/COMPARISON.md) with other packages.
 
 ## Usage
 
@@ -205,11 +206,11 @@ Output:
 
 ## Why another `.properties` file package?
 
-There are probably over 20 similar packages available, but:
+There are over 20 similar packages available, but most are abandoned, incomplete, or not compliant with the Java specification. See our [detailed comparison](./docs/COMPARISON.md) for benchmarks, compliance tests, and a feature matrix against the top 5 packages. The short version:
 
-- Many of the most popular packages have had no activity for over 5 years.
-- Most packages will not replicate the current Java implementation.
-- No package offers the same capabilities as this one.
+- **100% Java spec compliance** — the only package (alongside `properties-parser`) to pass all test cases.
+- **3–7x faster** than alternatives on a 10,000-entry file.
+- **Lossless data model** — no other package preserves comments, blank lines, whitespace, and duplicate keys for round-trip editing.
 
 Unfortunately, the `.properties` file specification is not well-documented. One reason for this is that it was originally used in Java to store configurations. Today, most applications handle this using JSON, YAML, or other modern formats because these formats are more flexible.
 

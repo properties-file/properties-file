@@ -140,7 +140,8 @@
     "release": "dotenv -- release-it --only-version",
     "size": "npx tsx performance/size/compare.ts",
     "snapshot": "npx tsx performance/snapshots/manage.ts",
-    "test": "jest --coverage"
+    "test": "jest --coverage",
+    "test-node-compat": "docker build --platform linux/amd64 -f tests/node-compat/Dockerfile ."
   },
   "devDependencies": {
     "@release-it/conventional-changelog": "10.0.6",
