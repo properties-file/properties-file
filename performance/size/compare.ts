@@ -29,6 +29,23 @@ type EntryPoint = {
  * Entry points to measure. Each represents a common import pattern that users
  * would use in their applications. esbuild tree-shakes away unused code.
  */
+/**
+ * Resolve the Properties import path for a given distribution.
+ *
+ * In v5+, Properties lives in `parser/index.js`. In v4 and earlier, it was
+ * in the main `index.js`.
+ *
+ * @param distributionEsmPath - Absolute path to the `dist/esm/` directory.
+ *
+ * @returns The resolved import path for the Properties class.
+ */
+const resolvePropertiesImport = (distributionEsmPath: string): string => {
+  const parserPath = path.resolve(distributionEsmPath, 'parser', 'index.js')
+  return existsSync(parserPath)
+    ? `${distributionEsmPath}/parser/index.js`
+    : `${distributionEsmPath}/index.js`
+}
+
 const ENTRY_POINTS: EntryPoint[] = [
   {
     name: 'getProperties',
@@ -38,9 +55,9 @@ const ENTRY_POINTS: EntryPoint[] = [
   },
   {
     name: 'Properties',
-    importPath: 'parser/index.js',
+    importPath: 'index.js',
     code: (distributionEsmPath: string): string =>
-      `import { Properties } from "${distributionEsmPath}/parser/index.js"; console.log(Properties);`,
+      `import { Properties } from "${resolvePropertiesImport(distributionEsmPath)}"; console.log(Properties);`,
   },
   {
     name: 'PropertiesEditor',
@@ -57,15 +74,17 @@ const ENTRY_POINTS: EntryPoint[] = [
   {
     name: 'All exports (*)',
     importPath: 'index.js',
-    code: (distributionEsmPath: string): string =>
-      [
+    code: (distributionEsmPath: string): string => {
+      const propertiesImport = resolvePropertiesImport(distributionEsmPath)
+      return [
         `import { getProperties } from "${distributionEsmPath}/index.js";`,
-        `import { Properties } from "${distributionEsmPath}/parser/index.js";`,
+        `import { Properties } from "${propertiesImport}";`,
         `import { PropertiesEditor } from "${distributionEsmPath}/editor/index.js";`,
         `import { escapeKey, escapeValue } from "${distributionEsmPath}/escape/index.js";`,
         `import { unescapeContent } from "${distributionEsmPath}/unescape/index.js";`,
         `console.log(getProperties, Properties, PropertiesEditor, escapeKey, escapeValue, unescapeContent);`,
-      ].join(' '),
+      ].join(' ')
+    },
   },
 ]
 
