@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.0.1](https://github.com/properties-file/properties-file/compare/5.0.0...5.0.1) (2026-04-11)
+
+### Bug Fixes
+
+- deduplicateKeys removes leading comment/blank nodes of removed duplicates ([6dc7b76](https://github.com/properties-file/properties-file/commit/6dc7b76a1cf748fb4d51cea1579bd9b2a63dbee8))
+
 # [5.0.0](https://github.com/properties-file/properties-file/compare/4.0.0...5.0.0) (2026-04-11)
 
 ### Features
