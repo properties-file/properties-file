@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.0.2](https://github.com/properties-file/properties-file/compare/5.0.1...5.0.2) (2026-04-11)
+
+### Features
+
+- New `occurrence` option on `delete()` — set `{ occurrence: 'first' }` to delete the first occurrence of a duplicate key instead of the last. Enables cleaning up duplicates while keeping the effective value.
+
 ## [5.0.1](https://github.com/properties-file/properties-file/compare/5.0.0...5.0.1) (2026-04-11)
 
 ### Features
