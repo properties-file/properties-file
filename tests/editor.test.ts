@@ -340,6 +340,14 @@ describe('PropertiesEditor', () => {
 
   // ─── Integration ──────────────────────────────────────────────────
 
+  it('insert preserves newlines in values through round-trip (issue #82)', () => {
+    const editor = new PropertiesEditor('')
+    const value = 'new\nline'
+    editor.insert('test', value)
+    const reparsed = new Properties(editor.format())
+    expect(reparsed.toObject().test).toBe(value)
+  })
+
   it('format() after editing produces valid properties content', () => {
     const editor = new PropertiesEditor('a = 1\nb = 2')
     editor.insert('c', '3')
