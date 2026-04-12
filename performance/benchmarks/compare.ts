@@ -152,16 +152,26 @@ const printResultsTable = (label: string, results: BenchmarkResult[]): void => {
  *
  * @returns A flat array of all benchmark results across all suites.
  */
-const runAllSuites = async (modules: BenchmarkModules): Promise<BenchmarkResult[]> => {
-  const propertiesBench = await runPropertiesBenchmarks(modules.properties)
-  const editorBench = await runEditorBenchmarks(modules.editor)
-  const escapeUnescapeBench = await runEscapeUnescapeBenchmarks(modules.escape, modules.unescape)
+const runAllSuites = async (
+  modules: BenchmarkModules,
+  suiteFilter?: string
+): Promise<BenchmarkResult[]> => {
+  const results: BenchmarkResult[] = []
 
-  return [
-    ...extractResults(propertiesBench),
-    ...extractResults(editorBench),
-    ...extractResults(escapeUnescapeBench),
-  ]
+  if (!suiteFilter || suiteFilter === 'properties') {
+    const propertiesBench = await runPropertiesBenchmarks(modules.properties)
+    results.push(...extractResults(propertiesBench))
+  }
+  if (!suiteFilter || suiteFilter === 'editor') {
+    const editorBench = await runEditorBenchmarks(modules.editor)
+    results.push(...extractResults(editorBench))
+  }
+  if (!suiteFilter || suiteFilter === 'escape') {
+    const escapeUnescapeBench = await runEscapeUnescapeBenchmarks(modules.escape, modules.unescape)
+    results.push(...extractResults(escapeUnescapeBench))
+  }
+
+  return results
 }
 
 // ─── CLI Parsing ───────────────────────────────────────────────────────────
@@ -172,6 +182,7 @@ Options:
   --version <ver>    Compare against a specific published npm version
   --snapshot <name>  Compare against a saved snapshot
   --runs <n>         Run benchmarks n times and average results (default: 1)
+  --suite <name>     Run only a specific suite: properties, editor, or escape
   --strict           Exit with code 1 if regressions exceed threshold
 
 If no --version or --snapshot is given, compares against the latest published version.
@@ -179,10 +190,10 @@ If no --version or --snapshot is given, compares against the latest published ve
 Examples:
   npx tsx performance/benchmarks/compare.ts
   npx tsx performance/benchmarks/compare.ts --version 3.7.0
-  npx tsx performance/benchmarks/compare.ts --snapshot before-optimization
-  npx tsx performance/benchmarks/compare.ts --snapshot before-optimization --runs 3
+  npx tsx performance/benchmarks/compare.ts --suite properties
+  npx tsx performance/benchmarks/compare.ts --suite properties --runs 3
   npm run benchmark
-  npm run benchmark -- --version 3.7.0 --runs 5`
+  npm run benchmark -- --suite properties --runs 5`
 
 /**
  * Parse the `--runs` flag from CLI arguments.
@@ -238,6 +249,9 @@ const main = async (): Promise<void> => {
   }
 
   const runs = parseRunsFlag(arguments_)
+  const suiteIndex = arguments_.indexOf('--suite')
+  const suiteFilter =
+    suiteIndex !== -1 && arguments_[suiteIndex + 1] ? arguments_[suiteIndex + 1] : undefined
   const baseline = resolveBaseline(arguments_)
 
   console.log(`Comparing current build against baseline: ${baseline.label}`)
@@ -272,8 +286,8 @@ const main = async (): Promise<void> => {
     // Run both suites in parallel so they share the same system conditions.
     console.log('Running benchmarks in parallel (current + baseline)...')
     const [currentResults, baselineResults] = await Promise.all([
-      runAllSuites(currentModules),
-      runAllSuites(baselineModules),
+      runAllSuites(currentModules, suiteFilter),
+      runAllSuites(baselineModules, suiteFilter),
     ])
 
     currentRunResults.push(currentResults)

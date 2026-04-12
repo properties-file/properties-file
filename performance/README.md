@@ -20,8 +20,12 @@ npm run size -- --snapshot my-snapshot
 npm run benchmark -- --version 3.7.0
 npm run size -- --version 3.7.0
 
+# Run only a specific suite (properties, editor, or escape)
+npm run benchmark -- --suite properties
+
 # Average benchmark results over multiple runs (reduces noise)
 npm run benchmark -- --runs 3
+npm run benchmark -- --suite properties --runs 3
 
 # Save a snapshot for later comparison
 npm run build
@@ -44,14 +48,15 @@ Compares runtime performance of the current compiled code (`dist/`) against a ba
 npm run benchmark                                    # vs latest published version
 npm run benchmark -- --version 3.7.0                 # vs specific published version
 npm run benchmark -- --snapshot before-optimization   # vs saved snapshot
+npm run benchmark -- --suite properties              # run only properties suite
 npm run benchmark -- --runs 3                        # average over multiple runs
-npm run benchmark -- --snapshot my-snapshot --runs 5  # snapshot + multiple runs
+npm run benchmark -- --suite properties --runs 5     # focused + averaged
 npm run benchmark -- --strict                        # exit code 1 on regressions
 ```
 
 Both current and baseline benchmarks run **in parallel** so they share the same system conditions (CPU load, thermal state), ensuring a fair comparison.
 
-The `--runs` option repeats the full parallel cycle N times and averages the results, reducing noise for detecting small changes.
+The `--suite` option runs only a specific benchmark suite: `properties`, `editor`, or `escape`. The `--runs` option repeats the full parallel cycle N times and averages the results, reducing noise for detecting small changes.
 
 Results are saved to `performance/benchmarks/.results/` as JSON and Markdown.
 
