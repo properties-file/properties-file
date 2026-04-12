@@ -29,7 +29,7 @@ npm install properties-file
   - `escapeKey` and `escapeValue` convert any content to `.properties` compatible format.
   - Bundler integrations for Webpack, Rollup/Vite, esbuild, and Bun to import `.properties` files directly. See [BUNDLER.md](./docs/BUNDLER.md).
 - **Tiny with 0 dependencies** — `getProperties` is only 970 B min+gzip.
-- **Runs everywhere** — compiled to ES5, works in any browser and on Node.js all the way back to v0.10 (2013). [Verified via Docker](./tests/node-compat/).
+- **Runs everywhere** — compiled to ES5, works in any browser and on Node.js all the way back to v0.4.0 (2011, the first stable release with ES5 support). [Verified via Docker](./tests/node-compat/).
 - **100% test coverage** based on the output from a Java implementation.
 - Active maintenance (many popular `.properties` packages have been inactive for years). See our [detailed comparison](./docs/COMPARISON.md) with other packages.
 

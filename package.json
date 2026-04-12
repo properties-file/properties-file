@@ -141,7 +141,7 @@
     "size": "npx tsx performance/size/compare.ts",
     "snapshot": "npx tsx performance/snapshots/manage.ts",
     "test": "jest --coverage",
-    "test-node-compat": "docker build --platform linux/amd64 -f tests/node-compat/Dockerfile ."
+    "test-node-compat": "docker build --platform linux/amd64 -f tests/node-compat/Dockerfile.node-0.4 ."
   },
   "devDependencies": {
     "@release-it/conventional-changelog": "10.0.6",
@@ -179,6 +179,6 @@
     "typescript-eslint": "8.58.1"
   },
   "engines": {
-    "node": "*"
+    "node": ">=0.4.0"
   }
 }

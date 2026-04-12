@@ -39,9 +39,9 @@ jobs:
         run: npm run build
 
   compat:
-    name: Node.js 0.10 compatibility
+    name: Node.js 0.4.0 compatibility
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     permissions:
       contents: read
     needs: build
@@ -50,7 +50,8 @@ jobs:
         uses: actions/checkout@v5
 
       # Node 20 is only used to compile TypeScript → CJS.
-      # The actual test runs inside a Docker container with Node 0.10.
+      # The actual test runs inside a Docker container with Node 0.4.0
+      # compiled from source (the first stable release with ES5 support).
       - name: Setup node (for compilation only)
         uses: actions/setup-node@v6
         with:
@@ -63,5 +64,5 @@ jobs:
       - name: Compile TypeScript to CJS
         run: rm -Rf ./dist && tsc && npx tsx src/build-scripts/build.ts
 
-      - name: Run tests on Node.js 0.10 (via Docker)
-        run: npm run test-node-compat
+      - name: Run tests on Node.js 0.4.0 (compiled from source via Docker)
+        run: docker build --platform linux/amd64 -f tests/node-compat/Dockerfile.node-0.4 .

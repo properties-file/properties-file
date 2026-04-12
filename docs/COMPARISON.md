@@ -10,7 +10,7 @@ There are many `.properties` file packages on npm. This document compares the mo
 | -------------------------------------------------------------------- | ---------------: | :----------- | :-------------- | :--------- | :---- | :--------- | :------------- | :--------- |
 | [properties-reader](https://www.npmjs.com/package/properties-reader) |        3,063,130 | Jan 2026     | Basic (45%)     | Yes (v3+)  | 2     | 7.2 kB     | No             | >=18       |
 | [java-properties](https://www.npmjs.com/package/java-properties)     |        2,790,666 | Jul 2019     | Partial (64%)   | Yes        | 0     | 1.3 kB     | No             | >=0.6      |
-| **[properties-file](https://www.npmjs.com/package/properties-file)** |      **718,105** | **Mar 2026** | **Full (100%)** | **Yes**    | **0** | **1.1 kB** | **Yes (ES5+)** | **>=0.10** |
+| **[properties-file](https://www.npmjs.com/package/properties-file)** |      **718,105** | **Mar 2026** | **Full (100%)** | **Yes**    | **0** | **970 B**  | **Yes (ES5+)** | **>=0.4**  |
 | [properties](https://www.npmjs.com/package/properties)               |          677,733 | Feb 2014     | Mostly (91%)    | No         | 0     | 3.6 kB     | Partial        | >=0.10     |
 | [properties-parser](https://www.npmjs.com/package/properties-parser) |          110,318 | May 2023     | Full (100%)     | No         | 0     | 2.1 kB     | No             | >=0.3      |
 
@@ -120,7 +120,7 @@ Benchmark parsing 10,000 key-value entries to a key-value object, 200 iterations
 | Tree-shakable                                   |       Yes       |        N/A        |       N/A       |    N/A     |        N/A        |
 | Zero dependencies                               |       Yes       |      No (2)       |       Yes       |    Yes     |        Yes        |
 | Browser support                                 |   Yes (ES5+)    |        No         |       No        |  Partial   |        No         |
-| Node.js minimum                                 |     >=0.10      |       >=18        |      >=0.6      |   >=0.10   |       >=0.3       |
+| Node.js minimum                                 |     >=0.4       |       >=18        |      >=0.6      |   >=0.10   |       >=0.3       |
 | **Quality**                                     |                 |                   |                 |            |                   |
 | Test coverage                                   |      100%       |      Unknown      |     Unknown     |  Unknown   |      Unknown      |
 | Active maintenance                              |   Yes (2026)    |    Yes (2026)     |    No (2019)    | No (2014)  |  Minimal (2023)   |
