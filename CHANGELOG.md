@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.0.4](https://github.com/properties-file/properties-file/compare/v5.0.3...v5.0.4) (2026-04-12)
+
+### Features
+
+- `getProperties` bundle reduced to 970 B min+gzip (sub-1 kB).
+- Verified compatibility back to Node.js 0.4.0 (2011) — the first stable release with ES5 support.
+
 ## [5.0.3](https://github.com/properties-file/properties-file/compare/v5.0.2...v5.0.3) (2026-04-11)
 
 ### Features
