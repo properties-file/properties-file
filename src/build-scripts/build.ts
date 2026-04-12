@@ -113,12 +113,11 @@ console.log(`${EOL}🏃 Running build step: bundle getProperties entry with esbu
   const indexPath = path.resolve('dist/esm/index.js')
   const sourcePath = path.resolve('src/index.ts')
   const { execSync } = await import('node:child_process')
-  const bundled = execSync(
-    `npx esbuild ${sourcePath} --bundle --format=esm --platform=neutral --target=es2015 --minify --outfile=/dev/stdout`,
-    { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+  execSync(
+    `npx esbuild ${sourcePath} --bundle --format=esm --platform=neutral --target=es2015 --minify --outfile=${indexPath}`,
+    { stdio: 'pipe' }
   )
-  writeFileSync(indexPath, bundled)
-  console.log(`   📦 Bundled dist/esm/index.js (${bundled.length} bytes)`)
+  console.log(`   📦 Bundled dist/esm/index.js (${readFileSync(indexPath, 'utf8').length} bytes)`)
 }
 
 /**

@@ -1,2 +1,5 @@
 # Auto detects "text" content and normalize end of line sequences to `LF` in Git, and use OS-specific ones locally.
 * text=auto
+
+# Exclude Dockerfile from GitHub language statistics.
+Dockerfile linguist-vendored
