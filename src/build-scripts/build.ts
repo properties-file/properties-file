@@ -96,26 +96,29 @@ const getFilePaths = (directoryPath: string, filePattern: RegExp): string[] =>
 
 /**
  * +-----------------------------------------------------------------+
- * |              Inline imports for getProperties entry             |
+ * |         Bundle getProperties entry with esbuild                 |
  * +-----------------------------------------------------------------+
  *
- * The main entry (dist/esm/index.js) imports from ../unescape to avoid
- * code duplication in source. This step uses esbuild to bundle it into
- * a self-contained file, eliminating the import so that tree-shaking
- * produces the smallest possible output for getProperties consumers.
+ * The main entry (src/index.ts) imports unescapeContent and character
+ * constants from shared modules. This step uses esbuild to bundle it
+ * from TypeScript source into a single self-contained file with
+ * optimal minification. The existing SWC + terser pipeline then
+ * processes this output for ES5 downleveling and final minification,
+ * benefiting both ESM and CJS builds.
  */
 
-console.log(`${EOL}🏃 Running build step: inline imports for getProperties entry.${EOL}`)
+console.log(`${EOL}🏃 Running build step: bundle getProperties entry with esbuild.${EOL}`)
 
 {
   const indexPath = path.resolve('dist/esm/index.js')
+  const sourcePath = path.resolve('src/index.ts')
   const { execSync } = await import('node:child_process')
   const bundled = execSync(
-    `npx esbuild ${indexPath} --bundle --format=esm --platform=neutral --target=esnext --outfile=/dev/stdout`,
+    `npx esbuild ${sourcePath} --bundle --format=esm --platform=neutral --target=es2015 --minify --outfile=/dev/stdout`,
     { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
   )
   writeFileSync(indexPath, bundled)
-  console.log(`   📦 Bundled dist/esm/index.js (inlined unescape dependency)`)
+  console.log(`   📦 Bundled dist/esm/index.js (${bundled.length} bytes)`)
 }
 
 /**

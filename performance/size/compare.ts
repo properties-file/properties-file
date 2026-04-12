@@ -390,7 +390,7 @@ const updateReadmeBadge = (results: SizeResult[]): void => {
   }
 
   const sizeText = formatBytes(getPropertiesResult.gzipped)
-  const inlinePattern = /`getProperties` is only [\d.]+ [kB]+B min\+gzip/
+  const inlinePattern = /`getProperties` is only [\d.]+ (?:kB|B) min\+gzip/
   const updatedReadme = readme
     .replace(badgePattern, newBadge)
     .replace(inlinePattern, `\`getProperties\` is only ${sizeText} min+gzip`)
