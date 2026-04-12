@@ -96,6 +96,30 @@ const getFilePaths = (directoryPath: string, filePattern: RegExp): string[] =>
 
 /**
  * +-----------------------------------------------------------------+
+ * |              Inline imports for getProperties entry             |
+ * +-----------------------------------------------------------------+
+ *
+ * The main entry (dist/esm/index.js) imports from ../unescape to avoid
+ * code duplication in source. This step uses esbuild to bundle it into
+ * a self-contained file, eliminating the import so that tree-shaking
+ * produces the smallest possible output for getProperties consumers.
+ */
+
+console.log(`${EOL}🏃 Running build step: inline imports for getProperties entry.${EOL}`)
+
+{
+  const indexPath = path.resolve('dist/esm/index.js')
+  const { execSync } = await import('node:child_process')
+  const bundled = execSync(
+    `npx esbuild ${indexPath} --bundle --format=esm --platform=neutral --target=esnext --outfile=/dev/stdout`,
+    { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+  )
+  writeFileSync(indexPath, bundled)
+  console.log(`   📦 Bundled dist/esm/index.js (inlined unescape dependency)`)
+}
+
+/**
+ * +-----------------------------------------------------------------+
  * |                     Add ESM file extensions                     |
  * +-----------------------------------------------------------------+
  */

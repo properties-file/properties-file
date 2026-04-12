@@ -1,22 +1,19 @@
+import {
+  CH_BACKSLASH,
+  CH_BANG,
+  CH_BOM,
+  CH_COLON,
+  CH_CR,
+  CH_EQUALS,
+  CH_FF,
+  CH_HASH,
+  CH_LF,
+  CH_SPACE,
+  CH_TAB,
+} from '../characters'
 import { unescapeContent } from '../unescape'
 
 import type { BlankLineNode, CommentNode, PropertiesNode, PropertyNode } from './nodes'
-
-// ---------------------------------------------------------------------------
-// Character codes
-// ---------------------------------------------------------------------------
-
-const CH_TAB = 9 // \t
-const CH_LF = 10 // \n
-const CH_FF = 12 // \f
-const CH_CR = 13 // \r
-const CH_SPACE = 32 // ' '
-const CH_BANG = 33 // !
-const CH_HASH = 35 // #
-const CH_COLON = 58 // :
-const CH_EQUALS = 61 // =
-const CH_BACKSLASH = 92 // \\
-const CH_BOM = 0xfeff
 
 // ---------------------------------------------------------------------------
 // Helpers

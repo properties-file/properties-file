@@ -1,21 +1,15 @@
-// ---------------------------------------------------------------------------
-// Character codes (ES5-safe charCodeAt constants)
-// ---------------------------------------------------------------------------
-
-const CH_TAB = 9 // \t
-const CH_FF = 12 // \f
-const CH_SPACE = 32 // ' '
-const CH_BANG = 33 // !
-const CH_HASH = 35 // #
-const CH_COLON = 58 // :
-const CH_EQUALS = 61 // =
-const CH_BACKSLASH = 92 // \\
-const CH_LOWER_F = 102 // f
-const CH_LOWER_N = 110 // n
-const CH_LOWER_R = 114 // r
-const CH_LOWER_T = 116 // t
-const CH_LOWER_U = 117 // u
-const CH_BOM = 0xfeff
+import {
+  CH_BACKSLASH,
+  CH_BANG,
+  CH_BOM,
+  CH_COLON,
+  CH_EQUALS,
+  CH_FF,
+  CH_HASH,
+  CH_SPACE,
+  CH_TAB,
+} from './characters'
+import { unescapeContent } from './unescape'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,121 +44,6 @@ const skipWhitespace = (string: string, pos: number, limit: number): number => {
     pos++
   }
   return pos
-}
-
-/**
- * Check whether a character code is a hexadecimal digit (0-9, A-F, a-f).
- *
- * @param charCode - A UTF-16 character code.
- *
- * @returns `true` when the code represents a hex digit.
- */
-const isHexDigit = (charCode: number): boolean =>
-  (charCode >= 48 && charCode <= 57) || // 0-9
-  (charCode >= 65 && charCode <= 70) || // A-F
-  (charCode >= 97 && charCode <= 102) // a-f
-
-/**
- * Convert a hex-digit character code to its numeric value (0-15).
- *
- * @param charCode - A UTF-16 character code known to be a valid hex digit.
- *
- * @returns The numeric value of the hex digit.
- */
-const hexValue = (charCode: number): number => {
-  if (charCode >= 48 && charCode <= 57) {
-    return charCode - 48 // 0-9
-  }
-  if (charCode >= 65 && charCode <= 70) {
-    return charCode - 55 // A-F
-  }
-  return charCode - 87 // a-f
-}
-
-/**
- * Unescape a `.properties` string containing escape sequences.
- *
- * @param content - The escaped string to process.
- *
- * @returns The unescaped string.
- *
- * @throws {@link Error} when a malformed `\\uXXXX` sequence is encountered.
- */
-const unescapeContent = (content: string): string => {
-  const length = content.length
-  let unescaped = ''
-  let segmentStart = 0
-  let cursor = 0
-
-  while (cursor < length) {
-    if (content.charCodeAt(cursor) !== CH_BACKSLASH) {
-      cursor++
-      continue
-    }
-
-    if (cursor > segmentStart) {
-      unescaped += content.slice(segmentStart, cursor)
-    }
-
-    cursor++
-    const escapedCharCode = content.charCodeAt(cursor)
-
-    switch (escapedCharCode) {
-      case CH_LOWER_N: {
-        unescaped += '\n'
-        cursor++
-        break
-      }
-      case CH_LOWER_T: {
-        unescaped += '\t'
-        cursor++
-        break
-      }
-      case CH_LOWER_R: {
-        unescaped += '\r'
-        cursor++
-        break
-      }
-      case CH_LOWER_F: {
-        unescaped += '\f'
-        cursor++
-        break
-      }
-      case CH_LOWER_U: {
-        if (
-          cursor + 4 >= length ||
-          !isHexDigit(content.charCodeAt(cursor + 1)) ||
-          !isHexDigit(content.charCodeAt(cursor + 2)) ||
-          !isHexDigit(content.charCodeAt(cursor + 3)) ||
-          !isHexDigit(content.charCodeAt(cursor + 4))
-        ) {
-          const errorContext = content.slice(cursor - 1, cursor + 5)
-          throw new Error(`malformed escaped unicode characters '${errorContext}'`)
-        }
-        const codePoint =
-          (hexValue(content.charCodeAt(cursor + 1)) << 12) |
-          (hexValue(content.charCodeAt(cursor + 2)) << 8) |
-          (hexValue(content.charCodeAt(cursor + 3)) << 4) |
-          hexValue(content.charCodeAt(cursor + 4))
-        unescaped += String.fromCharCode(codePoint)
-        cursor += 5
-        break
-      }
-      default: {
-        unescaped += content.charAt(cursor)
-        cursor++
-        break
-      }
-    }
-
-    segmentStart = cursor
-  }
-
-  if (segmentStart < length) {
-    unescaped += content.slice(segmentStart, length)
-  }
-
-  return unescaped
 }
 
 // ---------------------------------------------------------------------------
