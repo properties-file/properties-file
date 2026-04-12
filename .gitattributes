@@ -3,3 +3,5 @@
 
 # Exclude Dockerfile from GitHub language statistics.
 Dockerfile linguist-vendored
+# Exclude Node.js 0.10 compatibility test (ES5 JavaScript) from GitHub language statistics.
+tests/node-compat/test.js linguist-vendored
