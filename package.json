@@ -171,7 +171,7 @@
     "npm-check-updates": "20.0.1",
     "prettier": "3.8.2",
     "release-it": "20.0.0-1",
-    "rollup": "4.60.1",
+    "rollup": "4.60.2",
     "terser": "5.46.1",
     "tinybench": "6.0.0",
     "ts-jest": "29.4.9",
