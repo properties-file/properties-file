@@ -128,7 +128,7 @@
   ],
   "scripts": {
     "benchmark": "npx tsx performance/benchmarks/compare.ts",
-    "build": "npm run check-nvm-node-version && npm run prettier-write && npm run eslint-fix && rm -Rf ./dist && tsc && npx tsx src/build-scripts/build.ts && npm run test && npm run size",
+    "build": "npm run check-nvm-node-version && npm run prettier-write && npm run eslint-fix && npm run typecheck && rm -Rf ./dist && tsc && npx tsx src/build-scripts/build.ts && npm run test && npm run size",
     "check-nvm-node-version": "check-node-version --node $(node -p \"'>='+require('fs').readFileSync('.nvmrc','utf-8').trim()\")",
     "depcheck": "depcheck",
     "eslint-fix": "eslint --fix",
@@ -141,7 +141,8 @@
     "size": "npx tsx performance/size/compare.ts",
     "snapshot": "npx tsx performance/snapshots/manage.ts",
     "test": "jest --coverage",
-    "test-node-compat": "docker build --platform linux/amd64 -f tests/node-compat/Dockerfile.node-0.4 ."
+    "test-node-compat": "docker build --platform linux/amd64 -f tests/node-compat/Dockerfile.node-0.4 .",
+    "typecheck": "find . -name tsconfig.json -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/.*/*' -print0 | xargs -0 -n1 -I{} npx tsc --noEmit -p {}"
   },
   "devDependencies": {
     "@release-it/conventional-changelog": "10.0.6",
