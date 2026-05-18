@@ -1,3 +1,7 @@
+/**
+ * Escape and unescape tests for `escapeKey`, `escapeValue`, and `unescapeContent`,
+ * covering ASCII, Unicode, and ISO-8859-1-compatible (`\uXXXX`) encoding paths.
+ */
 import { escapeKey, escapeValue } from '../src/escape/index'
 import { unescapeContent } from '../src/unescape/index'
 

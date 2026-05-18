@@ -120,20 +120,26 @@ export class Properties {
    * @returns An array of {@link KeyCollisions} for duplicate keys.
    */
   getKeyCollisions(): KeyCollisions[] {
-    const nodesByKey: { [key: string]: PropertyNode[] } = {}
+    // Typed as `| undefined` so TS-strict `no-unnecessary-condition` matches runtime reality:
+    // accessing a missing key returns `undefined`. `Map` would be cleaner but is ES2015 and not
+    // available in shipped ES5 output.
+    const nodesByKey: Record<string, PropertyNode[] | undefined> = {}
     for (const node of this.nodes) {
       if (node.type === 'property') {
-        if (!nodesByKey[node.key]) {
-          nodesByKey[node.key] = []
+        const existing = nodesByKey[node.key]
+        if (existing === undefined) {
+          nodesByKey[node.key] = [node]
+        } else {
+          existing.push(node)
         }
-        nodesByKey[node.key].push(node)
       }
     }
 
     const collisions: KeyCollisions[] = []
     for (const key of Object.keys(nodesByKey)) {
-      if (nodesByKey[key].length > 1) {
-        collisions.push({ key, nodes: nodesByKey[key] })
+      const nodes = nodesByKey[key]
+      if (nodes !== undefined && nodes.length > 1) {
+        collisions.push({ key, nodes })
       }
     }
     return collisions

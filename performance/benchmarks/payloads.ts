@@ -64,9 +64,17 @@ export const generateUnicodeEscapes = (): string => {
   const lines: string[] = []
   for (let index = 0; index < ENTRY_COUNT; index++) {
     const text = `value${index}`
-    const escaped = [...text]
-      .map((character) => String.raw`\u` + character.codePointAt(0)!.toString(16).padStart(4, '0'))
-      .join('')
+    // `for...of` over a string iterates by Unicode code point. Pure ASCII payloads, but using
+    // `codePointAt` keeps us aligned with `unicorn/prefer-code-point` and avoids the
+    // `no-misused-spread` warning that `[...text]` triggers.
+    let escaped = ''
+    for (const character of text) {
+      const codePoint = character.codePointAt(0)
+      if (codePoint === undefined) {
+        continue
+      }
+      escaped += String.raw`\u` + codePoint.toString(16).padStart(4, '0')
+    }
     lines.push(`key${index}=${escaped}`)
   }
   return lines.join('\n')

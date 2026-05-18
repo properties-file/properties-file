@@ -26,10 +26,6 @@ type EntryPoint = {
 }
 
 /**
- * Entry points to measure. Each represents a common import pattern that users
- * would use in their applications. esbuild tree-shakes away unused code.
- */
-/**
  * Resolve the Properties import path for a given distribution.
  *
  * In v5+, Properties lives in `parser/index.js`. In v4 and earlier, it was
@@ -46,6 +42,10 @@ const resolvePropertiesImport = (distributionEsmPath: string): string => {
     : `${distributionEsmPath}/index.js`
 }
 
+/**
+ * Entry points to measure. Each represents a common import pattern that users
+ * would use in their applications. esbuild tree-shakes away unused code.
+ */
 const ENTRY_POINTS: EntryPoint[] = [
   {
     name: 'getProperties',
@@ -414,18 +414,6 @@ const hasSizeRegressions = (rows: SizeComparisonRow[]): boolean =>
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-/**
- * Main entry point. Compares current bundle sizes against a resolved baseline.
- *
- * Steps:
- * 1. Resolve the baseline via CLI flags.
- * 2. Validate that the current `dist/esm/` exists.
- * 3. Measure current and baseline bundle sizes.
- * 4. Compare and print results.
- * 5. Update README badge with current `getProperties` gzipped size.
- * 6. Save results to `.results/`.
- * 7. Exit with code 1 if any entry point grew more than the threshold.
- */
 const USAGE = `Usage: npx tsx performance/size/compare.ts [options]
 
 Options:
@@ -442,6 +430,21 @@ Examples:
   npm run size
   npm run size -- --version 3.7.0 --strict`
 
+/**
+ * Compare current bundle sizes against a resolved baseline.
+ *
+ * Steps:
+ * 1. Resolve the baseline via CLI flags.
+ * 2. Validate that the current `dist/esm/` exists.
+ * 3. Measure current and baseline bundle sizes.
+ * 4. Compare and print results.
+ * 5. Update README badge with current `getProperties` gzipped size.
+ * 6. Save results to `.results/`.
+ * 7. Throw if `--strict` is set and any entry point grew more than the threshold.
+ *
+ * @throws Error if either `dist/esm/` directory is missing, or if `--strict` is set
+ *   and a size regression exceeds {@link SIZE_THRESHOLD_PERCENT}.
+ */
 const main = (): void => {
   const arguments_ = process.argv.slice(2)
 

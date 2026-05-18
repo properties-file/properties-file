@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20, 22, latest]
+        node-version: [22, 24, latest]
     steps:
       # Checkout
       - name: Checkout
@@ -50,13 +50,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      # Node 20 is only used to compile TypeScript → CJS.
+      # Node 24 is only used to compile TypeScript → CJS.
       # The actual test runs inside a Docker container with Node 0.4.0
       # compiled from source (the first stable release with ES5 support).
       - name: Setup node (for compilation only)
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies

@@ -219,8 +219,11 @@ describe('PropertiesEditor', () => {
     const editor = new PropertiesEditor('a = 1\nb = 2\nc = 3')
     const deleted = editor.delete('b')
     expect(deleted).toBeDefined()
-    expect(deleted!.key).toBe('b')
-    expect(deleted!.value).toBe('2')
+    if (deleted === undefined) {
+      return
+    }
+    expect(deleted.key).toBe('b')
+    expect(deleted.value).toBe('2')
     expect(editor.toObject()).toEqual({ a: '1', c: '3' })
   })
 
@@ -249,7 +252,10 @@ describe('PropertiesEditor', () => {
     const editor = new PropertiesEditor('key = first\nkey = second\nkey = third')
     const deleted = editor.delete('key', { occurrence: 'first' })
     expect(deleted).toBeDefined()
-    expect(deleted!.value).toBe('first')
+    if (deleted === undefined) {
+      return
+    }
+    expect(deleted.value).toBe('first')
     expect(editor.toObject()).toEqual({ key: 'third' })
     expect(editor.getPropertyNodes('key')).toHaveLength(2)
   })

@@ -18,9 +18,7 @@ import { unescapeContent } from './unescape'
 /**
  * A key-value pair object.
  */
-export type KeyValuePairObject = {
-  [key: string]: string
-}
+export type KeyValuePairObject = Record<string, string>
 
 // ---------------------------------------------------------------------------
 // Helpers
