@@ -63,14 +63,43 @@ const getGitBranch = (): string => {
 const snapshotDirectory = (name: string): string => path.resolve(snapshotsDirectory, name)
 
 /**
- * Parse a snapshot metadata file.
+ * Type guard for {@link SnapshotMetadata}. Verifies that all required string
+ * fields are present on the value.
+ *
+ * @param value - The value to test.
+ *
+ * @returns `true` if `value` matches the {@link SnapshotMetadata} shape.
+ */
+const isSnapshotMetadata = (value: unknown): value is SnapshotMetadata =>
+  typeof value === 'object' &&
+  value !== null &&
+  'name' in value &&
+  typeof value.name === 'string' &&
+  'date' in value &&
+  typeof value.date === 'string' &&
+  'commit' in value &&
+  typeof value.commit === 'string' &&
+  'branch' in value &&
+  typeof value.branch === 'string' &&
+  'description' in value &&
+  typeof value.description === 'string'
+
+/**
+ * Parse and validate a snapshot metadata file.
  *
  * @param metadataPath - The path to the metadata JSON file.
  *
  * @returns The parsed metadata.
+ *
+ * @throws Error if the file's contents do not match the {@link SnapshotMetadata} shape.
  */
-const readMetadata = (metadataPath: string): SnapshotMetadata =>
-  JSON.parse(readFileSync(metadataPath, 'utf8')) as SnapshotMetadata
+const readMetadata = (metadataPath: string): SnapshotMetadata => {
+  const parsed: unknown = JSON.parse(readFileSync(metadataPath, 'utf8'))
+  if (!isSnapshotMetadata(parsed)) {
+    throw new Error(`Invalid snapshot metadata at ${metadataPath}: missing required fields.`)
+  }
+  return parsed
+}
 
 // ─── Commands ────────────────────────────────────────────────────────────────
 

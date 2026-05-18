@@ -9,11 +9,21 @@ const cacheDirectory = path.resolve(import.meta.dirname, '.cache')
  * Read the package name from the project's own `package.json`.
  *
  * @returns The package name (e.g. "properties-file").
+ *
+ * @throws Error if `package.json` does not contain a string `name` field.
  */
 const getPackageName = (): string => {
   const packageJsonPath = path.resolve(rootDirectory, 'package.json')
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { name: string }
-  return packageJson.name
+  const parsed: unknown = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    !('name' in parsed) ||
+    typeof parsed.name !== 'string'
+  ) {
+    throw new Error(`Expected ${packageJsonPath} to contain a string "name" field.`)
+  }
+  return parsed.name
 }
 
 /**

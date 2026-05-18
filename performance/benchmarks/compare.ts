@@ -37,16 +37,114 @@ type BenchmarkModules = {
 }
 
 /**
+ * Dynamic `import()` whose return type is narrowed from `any` to `unknown`.
+ * Callers must validate the module shape with a type guard before use.
+ *
+ * @param specifier - The module specifier to import.
+ *
+ * @returns The imported module namespace, typed as `unknown`.
+ */
+const dynamicImport = async (specifier: string): Promise<unknown> => {
+  return import(specifier)
+}
+
+/**
+ * Type guard for {@link PropertiesModule}. Verifies that the value exposes the
+ * `getProperties` and `Properties` exports as functions.
+ *
+ * @param value - The value to test.
+ *
+ * @returns `true` if `value` matches the {@link PropertiesModule} shape.
+ */
+const isPropertiesModule = (value: unknown): value is PropertiesModule =>
+  typeof value === 'object' &&
+  value !== null &&
+  'getProperties' in value &&
+  typeof value.getProperties === 'function' &&
+  'Properties' in value &&
+  typeof value.Properties === 'function'
+
+/**
+ * Type guard for {@link PropertiesEditorModule}. Verifies that the value
+ * exposes the `PropertiesEditor` export as a function.
+ *
+ * @param value - The value to test.
+ *
+ * @returns `true` if `value` matches the {@link PropertiesEditorModule} shape.
+ */
+const isPropertiesEditorModule = (value: unknown): value is PropertiesEditorModule =>
+  typeof value === 'object' &&
+  value !== null &&
+  'PropertiesEditor' in value &&
+  typeof value.PropertiesEditor === 'function'
+
+/**
+ * Type guard for {@link EscapeModule}. Verifies that the value exposes the
+ * `escapeKey` and `escapeValue` exports as functions.
+ *
+ * @param value - The value to test.
+ *
+ * @returns `true` if `value` matches the {@link EscapeModule} shape.
+ */
+const isEscapeModule = (value: unknown): value is EscapeModule =>
+  typeof value === 'object' &&
+  value !== null &&
+  'escapeKey' in value &&
+  typeof value.escapeKey === 'function' &&
+  'escapeValue' in value &&
+  typeof value.escapeValue === 'function'
+
+/**
+ * Type guard for {@link UnescapeModule}. Verifies that the value exposes the
+ * `unescapeContent` export as a function.
+ *
+ * @param value - The value to test.
+ *
+ * @returns `true` if `value` matches the {@link UnescapeModule} shape.
+ */
+const isUnescapeModule = (value: unknown): value is UnescapeModule =>
+  typeof value === 'object' &&
+  value !== null &&
+  'unescapeContent' in value &&
+  typeof value.unescapeContent === 'function'
+
+/**
+ * Dynamically import a module and validate that its shape matches the expected
+ * type. Throws if the loaded module is missing any required export.
+ *
+ * @param specifier - The module specifier to import.
+ * @param guard - A type guard that validates the module's runtime shape.
+ * @param expectedShape - Human-readable name of the expected shape, used in error messages.
+ *
+ * @returns The imported module, typed as `T`.
+ *
+ * @throws Error if the imported module fails the type guard.
+ */
+const loadModule = async <T>(
+  specifier: string,
+  guard: (value: unknown) => value is T,
+  expectedShape: string
+): Promise<T> => {
+  const loaded = await dynamicImport(specifier)
+  if (!guard(loaded)) {
+    throw new Error(`Module at ${specifier} does not expose the expected ${expectedShape} shape.`)
+  }
+  return loaded
+}
+
+/**
  * Dynamically import all benchmark-relevant modules from a `dist/esm/` directory.
  *
  * Each import uses a cache-busting query parameter so that Node.js loads distinct
  * module instances for the current and baseline builds, even when called in
  * the same process.
  *
- * @param distEsmDirectory - Absolute path to a `dist/esm/` directory.
+ * @param distributionEsmDirectory - Absolute path to a `dist/esm/` directory.
  * @param cacheBustSuffix - A unique suffix appended as a query parameter to prevent module caching.
  *
  * @returns All modules needed by the benchmark suites.
+ *
+ * @throws Error if a required module file does not exist under the given directory.
  */
 const loadModules = async (
   distributionEsmDirectory: string,
@@ -69,16 +167,20 @@ const loadModules = async (
   }
 
   const [indexModule, editorModule, escapeModule, unescapeModule] = await Promise.all([
-    import(`${indexPath}?v=${cacheBustSuffix}`) as Promise<PropertiesModule>,
-    import(`${editorPath}?v=${cacheBustSuffix}`) as Promise<PropertiesEditorModule>,
-    import(`${escapePath}?v=${cacheBustSuffix}`) as Promise<EscapeModule>,
-    import(`${unescapePath}?v=${cacheBustSuffix}`) as Promise<UnescapeModule>,
+    loadModule(`${indexPath}?v=${cacheBustSuffix}`, isPropertiesModule, 'PropertiesModule'),
+    loadModule(
+      `${editorPath}?v=${cacheBustSuffix}`,
+      isPropertiesEditorModule,
+      'PropertiesEditorModule'
+    ),
+    loadModule(`${escapePath}?v=${cacheBustSuffix}`, isEscapeModule, 'EscapeModule'),
+    loadModule(`${unescapePath}?v=${cacheBustSuffix}`, isUnescapeModule, 'UnescapeModule'),
   ])
 
-  // In v5+, Properties lives in parser/index.js instead of index.js.
-  // Fall back to index.js for older baselines where Properties was in the main entry.
+  // When parser/index.js is present, Properties lives there; otherwise it is
+  // exported from the main index.js (older baselines).
   const parserModule = existsSync(parserPath)
-    ? ((await import(`${parserPath}?v=${cacheBustSuffix}`)) as PropertiesModule)
+    ? await loadModule(`${parserPath}?v=${cacheBustSuffix}`, isPropertiesModule, 'PropertiesModule')
     : undefined
 
   return {
@@ -149,6 +251,8 @@ const printResultsTable = (label: string, results: BenchmarkResult[]): void => {
  * and aggregates their results into a single flat array.
  *
  * @param modules - The dynamically imported modules to benchmark.
+ * @param suiteFilter - Optional suite name (`'properties'`, `'editor'`, or `'escape'`)
+ *   to restrict execution to a single suite. When omitted, all suites run.
  *
  * @returns A flat array of all benchmark results across all suites.
  */

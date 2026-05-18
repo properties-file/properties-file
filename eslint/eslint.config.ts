@@ -84,7 +84,7 @@ export default defineConfig(
       'performance/**/.*/',
       // Type declarations don't need linting.
       '**/*.d.ts',
-      // Node.js 0.10 compatibility test (intentionally ES5, not linted).
+      // Legacy Node.js compatibility test (intentionally ES5, not linted).
       'tests/node-compat/',
     ],
   },
@@ -165,6 +165,15 @@ export default defineConfig(
       // Enforces explicit return types on functions and class methods to avoid unintentionally breaking contracts.
       // @see https://typescript-eslint.io/rules/explicit-module-boundary-types/
       '@typescript-eslint/explicit-function-return-type': 'error',
+      // Enforces consistent type imports.
+      // @see https://typescript-eslint.io/rules/consistent-type-imports/
+      '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
+      // Prefer `type` over `interface` for object shapes.
+      // @see https://typescript-eslint.io/rules/consistent-type-definitions/
+      '@typescript-eslint/consistent-type-definitions': ['error', 'type'],
+      // Ban `as X` and `<X>foo` casts entirely.
+      // @see https://typescript-eslint.io/rules/consistent-type-assertions/
+      '@typescript-eslint/consistent-type-assertions': ['error', { assertionStyle: 'never' }],
       // Checks members (classes, interfaces, types) and applies consistent ordering.
       // @see https://typescript-eslint.io/rules/member-ordering/
       '@typescript-eslint/member-ordering': [
@@ -198,7 +207,7 @@ export default defineConfig(
          * @see https://github.com/sindresorhus/eslint-plugin-unicorn/issues/2604
          */
         'unicorn/no-nested-ternary': 'off',
-        // Performance is no longer an issue - we prefer `forEach` for readability.
+        // Prefer `forEach` over `for` loops for readability on modern engines.
         'unicorn/no-array-for-each': 'off',
         // Doesn't add a lot of value and makes numbers look odd.
         'unicorn/numeric-separators-style': 'off',
