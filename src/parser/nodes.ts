@@ -91,9 +91,7 @@ export type PropertiesNode = PropertyNode | CommentNode | BlankLineNode
 // ---------------------------------------------------------------------------
 
 /** A plain key-value pair object where every value is a string. */
-export type KeyValuePairObject = {
-  [key: string]: string
-}
+export type KeyValuePairObject = Record<string, string>
 
 // ---------------------------------------------------------------------------
 // Key collision tracking

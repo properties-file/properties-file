@@ -73,22 +73,18 @@ const rebuildPropertyLine = (node: PropertyNode, options: NormalizeOptions): str
   let separatorTrailing: string
 
   if (options.separatorChar !== undefined) {
-    separatorLeading =
-      options.separatorLeading !== undefined ? options.separatorLeading : node.separatorLeading
+    separatorLeading = options.separatorLeading ?? node.separatorLeading
     separatorCharacter = options.separatorChar === ' ' ? '' : options.separatorChar
-    separatorTrailing =
-      options.separatorTrailing !== undefined ? options.separatorTrailing : node.separatorTrailing
+    separatorTrailing = options.separatorTrailing ?? node.separatorTrailing
 
     // When separatorChar is ' ', the leading whitespace IS the separator.
     if (options.separatorChar === ' ') {
-      separatorLeading = options.separatorLeading !== undefined ? options.separatorLeading : ' '
+      separatorLeading = options.separatorLeading ?? ' '
     }
   } else {
-    separatorLeading =
-      options.separatorLeading !== undefined ? options.separatorLeading : node.separatorLeading
+    separatorLeading = options.separatorLeading ?? node.separatorLeading
     separatorCharacter = node.separatorChar ?? ''
-    separatorTrailing =
-      options.separatorTrailing !== undefined ? options.separatorTrailing : node.separatorTrailing
+    separatorTrailing = options.separatorTrailing ?? node.separatorTrailing
   }
 
   // Determine value content.
@@ -135,10 +131,10 @@ export const formatNormalized = (
     options.removeLeadingWhitespace === true
 
   // Pre-compute which node indices to keep when deduplicating.
-  let skipIndices: { [index: number]: boolean } | undefined
+  let skipIndices: Record<number, boolean> | undefined
   if (options.deduplicateKeys) {
     // Walk backward to find the last occurrence of each key.
-    const seen: { [key: string]: boolean } = {}
+    const seen: Record<string, boolean> = {}
     const duplicateIndices: number[] = []
     for (let index = nodes.length - 1; index >= 0; index--) {
       const node = nodes[index]
@@ -172,7 +168,7 @@ export const formatNormalized = (
   // eslint-disable-next-line unicorn/no-for-loop -- need index for keepIndices lookup, entries() is ES2015
   for (let nodeIndex = 0; nodeIndex < nodes.length; nodeIndex++) {
     // Skip nodes marked for removal by deduplication (property + its leading comments/blanks).
-    if (skipIndices && skipIndices[nodeIndex]) {
+    if (skipIndices?.[nodeIndex]) {
       continue
     }
 

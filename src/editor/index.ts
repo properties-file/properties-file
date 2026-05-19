@@ -225,14 +225,41 @@ const buildCommentNodes = (
  */
 const recalculateLineNumbers = (nodes: PropertiesNode[]): void => {
   let lineNumber = 1
-  for (const node of nodes) {
+  for (let index = 0; index < nodes.length; index++) {
+    const node = nodes[index]
     if (node.type === 'property') {
       const lineCount = node.rawLines.length
-      ;(node as { startingLineNumber: number }).startingLineNumber = lineNumber
-      ;(node as { endingLineNumber: number }).endingLineNumber = lineNumber + lineCount - 1
+      nodes[index] = {
+        type: 'property',
+        rawLines: node.rawLines,
+        leadingWhitespace: node.leadingWhitespace,
+        key: node.key,
+        escapedKey: node.escapedKey,
+        separatorLeading: node.separatorLeading,
+        separatorChar: node.separatorChar,
+        separatorTrailing: node.separatorTrailing,
+        value: node.value,
+        escapedValue: node.escapedValue,
+        startingLineNumber: lineNumber,
+        endingLineNumber: lineNumber + lineCount - 1,
+      }
       lineNumber += lineCount
+    } else if (node.type === 'comment') {
+      nodes[index] = {
+        type: 'comment',
+        rawLine: node.rawLine,
+        leadingWhitespace: node.leadingWhitespace,
+        delimiter: node.delimiter,
+        body: node.body,
+        lineNumber,
+      }
+      lineNumber++
     } else {
-      ;(node as { lineNumber: number }).lineNumber = lineNumber
+      nodes[index] = {
+        type: 'blank',
+        rawLine: node.rawLine,
+        lineNumber,
+      }
       lineNumber++
     }
   }
@@ -248,37 +275,37 @@ const recalculateLineNumbers = (nodes: PropertiesNode[]): void => {
  */
 export class PropertiesEditor extends Properties {
   /**
-   * Find the index of the first property node with the given key.
+   * Find the first property node with the given key.
    *
    * @param key - The unescaped key to search for.
    *
-   * @returns The index in `this.nodes`, or `-1` if not found.
+   * @returns The matching node and its index in `this.nodes`, or `undefined`.
    */
-  private findFirstPropertyIndex(key: string): number {
+  private findFirstProperty(key: string): { index: number; node: PropertyNode } | undefined {
     for (let index = 0; index < this.nodes.length; index++) {
       const node = this.nodes[index]
       if (node.type === 'property' && node.key === key) {
-        return index
+        return { index, node }
       }
     }
-    return -1
+    return undefined
   }
 
   /**
-   * Find the index of the last property node with the given key.
+   * Find the last property node with the given key.
    *
    * @param key - The unescaped key to search for.
    *
-   * @returns The index in `this.nodes`, or `-1` if not found.
+   * @returns The matching node and its index in `this.nodes`, or `undefined`.
    */
-  private findLastPropertyIndex(key: string): number {
+  private findLastProperty(key: string): { index: number; node: PropertyNode } | undefined {
     for (let index = this.nodes.length - 1; index >= 0; index--) {
       const node = this.nodes[index]
       if (node.type === 'property' && node.key === key) {
-        return index
+        return { index, node }
       }
     }
-    return -1
+    return undefined
   }
 
   /**
@@ -312,9 +339,9 @@ export class PropertiesEditor extends Properties {
 
     // Determine insertion position.
     if (options?.referenceKey) {
-      const referenceIndex = this.findLastPropertyIndex(options.referenceKey)
-      if (referenceIndex !== -1) {
-        const insertIndex = options.position === 'before' ? referenceIndex : referenceIndex + 1
+      const reference = this.findLastProperty(options.referenceKey)
+      if (reference !== undefined) {
+        const insertIndex = options.position === 'before' ? reference.index : reference.index + 1
         this.nodes.splice(insertIndex, 0, ...newNodes)
         recalculateLineNumbers(this.nodes)
         return
@@ -337,9 +364,9 @@ export class PropertiesEditor extends Properties {
     const newNodes = buildCommentNodes(comment, delimiter, 0)
 
     if (options?.referenceKey) {
-      const referenceIndex = this.findLastPropertyIndex(options.referenceKey)
-      if (referenceIndex !== -1) {
-        const insertIndex = options.position === 'before' ? referenceIndex : referenceIndex + 1
+      const reference = this.findLastProperty(options.referenceKey)
+      if (reference !== undefined) {
+        const insertIndex = options.position === 'before' ? reference.index : reference.index + 1
         this.nodes.splice(insertIndex, 0, ...newNodes)
         recalculateLineNumbers(this.nodes)
         return
@@ -363,9 +390,9 @@ export class PropertiesEditor extends Properties {
     }
 
     if (options?.referenceKey) {
-      const referenceIndex = this.findLastPropertyIndex(options.referenceKey)
-      if (referenceIndex !== -1) {
-        const insertIndex = options.position === 'before' ? referenceIndex : referenceIndex + 1
+      const reference = this.findLastProperty(options.referenceKey)
+      if (reference !== undefined) {
+        const insertIndex = options.position === 'before' ? reference.index : reference.index + 1
         this.nodes.splice(insertIndex, 0, blankNode)
         recalculateLineNumbers(this.nodes)
         return
@@ -385,12 +412,12 @@ export class PropertiesEditor extends Properties {
    * @returns `true` if the property was found and updated, `false` otherwise.
    */
   update(key: string, options: UpdateOptions): boolean {
-    const index = this.findLastPropertyIndex(key)
-    if (index === -1) {
+    const found = this.findLastProperty(key)
+    if (found === undefined) {
       return false
     }
 
-    const existing = this.nodes[index] as PropertyNode
+    const { index, node: existing } = found
 
     // Determine new key/value.
     const newKey = options.newKey ?? existing.key
@@ -477,8 +504,7 @@ export class PropertiesEditor extends Properties {
    * @param options - Upsert options.
    */
   upsert(key: string, value: string, options?: UpsertOptions): void {
-    const index = this.findLastPropertyIndex(key)
-    if (index !== -1) {
+    if (this.findLastProperty(key) !== undefined) {
       this.update(key, {
         newValue: value,
         escapeUnicode: options?.escapeUnicode,
@@ -504,15 +530,13 @@ export class PropertiesEditor extends Properties {
    * @returns The deleted {@link PropertyNode}, or `undefined` if the key was not found.
    */
   delete(key: string, options?: DeleteOptions): PropertyNode | undefined {
-    const index =
-      options?.occurrence === 'first'
-        ? this.findFirstPropertyIndex(key)
-        : this.findLastPropertyIndex(key)
-    if (index === -1) {
+    const found =
+      options?.occurrence === 'first' ? this.findFirstProperty(key) : this.findLastProperty(key)
+    if (found === undefined) {
       return undefined
     }
 
-    const deleted = this.nodes[index] as PropertyNode
+    const { index, node: deleted } = found
     const deleteLeading = options?.deleteLeadingNodes !== false
 
     if (deleteLeading) {

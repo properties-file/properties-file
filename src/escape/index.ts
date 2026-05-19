@@ -47,7 +47,7 @@ const escapeContent = (
   return unescapedContent.replace(regex, (character, position) => {
     switch (character) {
       case ' ': {
-        // Spaces.
+        // Only escape leading spaces or spaces in keys; in-value spaces stay literal.
         return escapeSpace || position === 0 ? '\\ ' : ' '
       }
       case '\\': {
@@ -74,13 +74,11 @@ const escapeContent = (
       case ':':
       case '#':
       case '!': {
-        // =, :, # and !.
         return `\\${character}`
       }
       default: {
-        // Any character that is not in the range of ASCII printable characters.
-        // istanbul ignore next -- guaranteed non-empty by regex match
-        const hex = (character.charCodeAt(0) ?? 0).toString(16)
+        // Any character outside the printable ASCII range — emit as `\uXXXX`.
+        const hex = character.charCodeAt(0).toString(16)
         return '\\u' + ('0000' + hex).slice(-4)
       }
     }

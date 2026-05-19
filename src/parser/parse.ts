@@ -26,15 +26,15 @@ const isWhitespace = (charCode: number): boolean =>
 /**
  * Count trailing backslashes in a string up to (but not including) `end`.
  *
- * @param str - The string to scan.
+ * @param string - The string to scan.
  * @param end - The exclusive end position.
  *
  * @returns The number of consecutive trailing backslashes.
  */
-const countTrailingBackslashes = (string_: string, end: number): number => {
+const countTrailingBackslashes = (string: string, end: number): number => {
   let count = 0
   let pos = end - 1
-  while (pos >= 0 && string_.charCodeAt(pos) === CH_BACKSLASH) {
+  while (pos >= 0 && string.charCodeAt(pos) === CH_BACKSLASH) {
     count++
     pos--
   }

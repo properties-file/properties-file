@@ -324,7 +324,10 @@ describe('Query methods', () => {
   it('getEffectiveProperty(key) returns last occurrence', () => {
     const node = new Properties('key = first\nkey = second').getEffectiveProperty('key')
     expect(node).toBeDefined()
-    expect(node!.value).toBe('second')
+    if (node === undefined) {
+      return
+    }
+    expect(node.value).toBe('second')
   })
 
   it('getEffectiveProperty(key) returns undefined for missing key', () => {
