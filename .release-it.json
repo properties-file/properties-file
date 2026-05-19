@@ -1,7 +1,8 @@
 {
   "git": {
     "commitMessage": "🔖 release v${version}",
-    "commitArgs": ["--no-verify"]
+    "commitArgs": ["--no-verify"],
+    "requireBranch": "main"
   },
   "github": {
     "release": true
