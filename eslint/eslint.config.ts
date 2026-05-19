@@ -235,7 +235,7 @@ export default defineConfig(
          */
         'unicorn/no-null': 'off',
         /**
-         * This rule conflicts with `prettier/prettier` and there is no way to disabled the Prettier rule.
+         * This rule conflicts with `prettier/prettier` and there is no way to disable the Prettier rule.
          *
          * @see https://github.com/sindresorhus/eslint-plugin-unicorn/issues/2285
          */
