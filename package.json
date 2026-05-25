@@ -146,7 +146,7 @@
   },
   "devDependencies": {
     "@release-it/conventional-changelog": "11.0.0",
-    "@swc/core": "1.15.33",
+    "@swc/core": "1.15.40",
     "@types/bun": "1.3.14",
     "@types/jest": "30.0.0",
     "@types/node": "25.9.0",
