@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
+import { isNormalizedError, noThrow } from '../../utilities/no-throw'
 import {
   averageBenchmarkResults,
   buildComparison,
@@ -471,13 +472,12 @@ const main = async (): Promise<void> => {
   }
 }
 
-try {
-  await main()
-} catch (error) {
-  if (error instanceof CliError) {
-    console.error(`\n  ${error.message}\n\n${USAGE}\n`)
+const outcome = await noThrow(main)
+if (isNormalizedError(outcome)) {
+  if (outcome.originalValue instanceof CliError) {
+    console.error(`\n  ${outcome.message}\n\n${USAGE}\n`)
     process.exitCode = 1
   } else {
-    throw error
+    throw outcome
   }
 }

@@ -24,6 +24,8 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { isNormalizedError, noThrow } from '../../utilities/no-throw'
+
 import type { GoldenScenario, ParseResult, SummarizedNode } from './execute-scenario'
 import type { EditorOperation } from './scenarios'
 import type { NormalizeOptions } from '../../src/parser'
@@ -331,15 +333,11 @@ let passCount = 0
 let failCount = 0
 
 for (const scenario of scenarios) {
-  let actual: unknown
+  const actual = noThrow(() => runScenario(scenario))
 
-  try {
-    actual = runScenario(scenario)
-  } catch (error) {
+  if (isNormalizedError(actual)) {
     failCount++
-    console.log(
-      `FAIL [${scenario.id}]: threw ${error instanceof Error ? error.message : String(error)}`
-    )
+    console.log(`FAIL [${scenario.id}]: threw ${actual.message}`)
     continue
   }
 

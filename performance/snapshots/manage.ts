@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
+import { isNormalizedError, noThrow } from '../../utilities/no-throw'
 import { CliError } from '../utilities'
 
 const rootDirectory = path.resolve(import.meta.dirname, '..', '..')
@@ -35,11 +36,10 @@ type SnapshotMetadata = {
  * @returns The 7-character commit hash.
  */
 const getGitCommit = (): string => {
-  try {
-    return execSync('git rev-parse --short HEAD', { encoding: 'utf8', stdio: 'pipe' }).trim()
-  } catch {
-    return 'unknown'
-  }
+  const commit = noThrow(() =>
+    execSync('git rev-parse --short HEAD', { encoding: 'utf8', stdio: 'pipe' }).trim()
+  )
+  return isNormalizedError(commit) ? 'unknown' : commit
 }
 
 /**
@@ -48,11 +48,10 @@ const getGitCommit = (): string => {
  * @returns The branch name.
  */
 const getGitBranch = (): string => {
-  try {
-    return execSync('git branch --show-current', { encoding: 'utf8', stdio: 'pipe' }).trim()
-  } catch {
-    return 'unknown'
-  }
+  const branch = noThrow(() =>
+    execSync('git branch --show-current', { encoding: 'utf8', stdio: 'pipe' }).trim()
+  )
+  return isNormalizedError(branch) ? 'unknown' : branch
 }
 
 /**
@@ -241,22 +240,19 @@ const restore = (name: string): void => {
     )
   }
 
-  // Abort if the working tree has uncommitted changes to src/ or dist/.
-  try {
-    const status = execSync('git status --porcelain -- src/ dist/', {
+  // Abort if the working tree has uncommitted changes to src/ or dist/. When git itself fails
+  // (not a git repo, or git not available), skip the check — previously this required a
+  // careful catch-and-rethrow so the CliError below wouldn't be swallowed with git failures.
+  const status = noThrow(() =>
+    execSync('git status --porcelain -- src/ dist/', {
       encoding: 'utf8',
       stdio: 'pipe',
     }).trim()
-    if (status) {
-      throw new CliError(
-        `Working tree has uncommitted changes in src/ or dist/. Commit or stash them before restoring.\n\n${status}`
-      )
-    }
-  } catch (error) {
-    if (error instanceof CliError) {
-      throw error
-    }
-    // Not a git repo or git not available — skip the check.
+  )
+  if (status && !isNormalizedError(status)) {
+    throw new CliError(
+      `Working tree has uncommitted changes in src/ or dist/. Commit or stash them before restoring.\n\n${status}`
+    )
   }
 
   const metadata: SnapshotMetadata = existsSync(metadataPath)
@@ -338,7 +334,8 @@ const requireName = (name: string | undefined, command: string): string => {
   return name
 }
 
-try {
+/** Parse the CLI command and dispatch it to the matching snapshot operation. */
+const main = (): void => {
   const [command, ...arguments_] = process.argv.slice(2)
 
   switch (command) {
@@ -367,11 +364,14 @@ try {
       fail(command ? `Unknown command: ${command}` : 'No command provided.')
     }
   }
-} catch (error) {
-  if (error instanceof CliError) {
-    console.error(`\n  ${error.message}\n\n${USAGE}\n`)
+}
+
+const outcome = noThrow(main)
+if (isNormalizedError(outcome)) {
+  if (outcome.originalValue instanceof CliError) {
+    console.error(`\n  ${outcome.message}\n\n${USAGE}\n`)
     process.exitCode = 1
   } else {
-    throw error
+    throw outcome
   }
 }

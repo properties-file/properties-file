@@ -15,6 +15,8 @@
  */
 import { readFileSync } from 'node:fs'
 
+import { isNormalizedError, noThrow } from '../../utilities/no-throw'
+
 import { executeScenario } from './execute-scenario'
 import { scenarios } from './scenarios'
 
@@ -75,11 +77,9 @@ describe.each(scenarios)('$kind: $id', (scenario) => {
 
     const actual = executeScenario(scenario)
 
-    try {
-      expect(actual).toEqual(goldenEntry.expected)
-    } catch (error) {
-      const details = error instanceof Error ? error.message : String(error)
-      throw new Error(`${STALENESS_HINT}\n\n${details}`)
+    const comparison = noThrow(() => expect(actual).toEqual(goldenEntry.expected))
+    if (isNormalizedError(comparison)) {
+      throw new Error(`${STALENESS_HINT}\n\n${comparison.message}`)
     }
   })
 })

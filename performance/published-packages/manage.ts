@@ -2,6 +2,8 @@ import { execSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import path from 'node:path'
 
+import { isNormalizedError, noThrow } from '../../utilities/no-throw'
+
 const rootDirectory = path.resolve(import.meta.dirname, '..', '..')
 const cacheDirectory = path.resolve(import.meta.dirname, '.cache')
 
@@ -34,24 +36,24 @@ const getPackageName = (): string => {
  */
 export const getLatestPublishedVersion = (): string => {
   const packageName = getPackageName()
-  try {
-    // Use `npm view` to get the latest version from the registry.
-    // During a release, npm may return the just-published version that hasn't
-    // fully propagated yet. In that case, the download will fail and we fall
-    // back to the previous version in `getPublishedPackageDirectory`.
-    return execSync(`npm view ${packageName} version`, {
+  // Use `npm view` to get the latest version from the registry.
+  // During a release, npm may return the just-published version that hasn't
+  // fully propagated yet. In that case, the download will fail and we fall
+  // back to the previous version in `getPublishedPackageDirectory`.
+  const version = noThrow(() =>
+    execSync(`npm view ${packageName} version`, {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim()
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Unknown error occurred while querying npm.'
+  )
+  if (isNormalizedError(version)) {
     throw new Error(
       `Failed to get the latest published version of "${packageName}" from npm.\n` +
         `This may be caused by a network issue or the package not being published yet.\n\n` +
-        `Details: ${message}`
+        `Details: ${version.message}`
     )
   }
+  return version
 }
 
 /**
@@ -84,43 +86,41 @@ export const getPublishedPackageDirectory = (version: string): string => {
   // npm CDN propagation delays during releases.
   const maxAttempts = 2
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
+    const download = noThrow(() =>
       execSync(`npm pack ${packageName}@${version} --pack-destination "${versionCacheDirectory}"`, {
         cwd: rootDirectory,
         stdio: 'pipe',
       })
+    )
+    if (!isNormalizedError(download)) {
       break
-    } catch (error) {
-      if (attempt < maxAttempts) {
-        console.log(`Download failed, retrying in 10 seconds (npm CDN propagation delay)...`)
-        execSync('sleep 10')
-        continue
-      }
-      // Clean up the empty cache directory on final failure.
-      rmSync(versionCacheDirectory, { recursive: true, force: true })
-      const message =
-        error instanceof Error ? error.message : 'Unknown error occurred while downloading.'
-      throw new Error(
-        `Failed to download ${packageName}@${version} from npm.\n` +
-          `Verify the version exists: npm view ${packageName} versions\n\n` +
-          `Details: ${message}`
-      )
     }
+    if (attempt < maxAttempts) {
+      console.log(`Download failed, retrying in 10 seconds (npm CDN propagation delay)...`)
+      execSync('sleep 10')
+      continue
+    }
+    // Clean up the empty cache directory on final failure.
+    rmSync(versionCacheDirectory, { recursive: true, force: true })
+    throw new Error(
+      `Failed to download ${packageName}@${version} from npm.\n` +
+        `Verify the version exists: npm view ${packageName} versions\n\n` +
+        `Details: ${download.message}`
+    )
   }
 
   // Extract the tarball.
-  try {
+  const extraction = noThrow(() =>
     execSync(
       `tar -xzf "${versionCacheDirectory}"/*.tgz -C "${versionCacheDirectory}" --strip-components=1`,
       { stdio: 'pipe' }
     )
-  } catch (error) {
+  )
+  if (isNormalizedError(extraction)) {
     rmSync(versionCacheDirectory, { recursive: true, force: true })
-    const message =
-      error instanceof Error ? error.message : 'Unknown error occurred while extracting.'
     throw new Error(
       `Failed to extract the downloaded tarball for ${packageName}@${version}.\n\n` +
-        `Details: ${message}`
+        `Details: ${extraction.message}`
     )
   }
 

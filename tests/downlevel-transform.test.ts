@@ -21,6 +21,7 @@ import { ScriptTarget as CompilerScriptTarget, transpileModule } from 'typescrip
 import { applyCatalogToSourceFile } from '../src/build-scripts/downlevel/catalog'
 import { HELPER_SOURCE } from '../src/build-scripts/downlevel/emitted-helpers'
 import { DownlevelRefusalError } from '../src/build-scripts/downlevel/helpers'
+import { isNormalizedError, noThrow } from '../utilities/no-throw'
 
 import type { DownlevelHelperName } from '../src/build-scripts/downlevel/emitted-helpers'
 import type { SourceFile } from 'ts-morph'
@@ -51,14 +52,12 @@ const rewrite = (text: string): SourceFile => {
  * @param expectedMessageParts - Substrings the thrown error message must contain.
  */
 const expectRefusal = (text: string, expectedMessageParts: string[]): void => {
-  let thrown: unknown
-  try {
-    rewrite(text)
-  } catch (error) {
-    thrown = error
+  const result = noThrow(() => rewrite(text))
+  if (!isNormalizedError(result)) {
+    throw new Error('Expected the rewrite to be refused, but it succeeded.')
   }
-  expect(thrown).toBeInstanceOf(DownlevelRefusalError)
-  const message = thrown instanceof Error ? thrown.message : String(thrown)
+  expect(result.originalValue).toBeInstanceOf(DownlevelRefusalError)
+  const message = result.message
   // Every refusal message carries the file:line diagnostic contract: location, offending code,
   // and a suggested fix.
   expect(message).toMatch(/input\.ts:\d+/)
@@ -785,18 +784,13 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
     // The helper is compiled and executed in a separate `vm` realm (see `compileHelper`), so the
     // thrown error is an instance of *that* realm's `TypeError`, not this file's — compare by
     // `.name` rather than `instanceof`.
-    let thrown: unknown
-    try {
-      helper('a-b', /-/, 'X')
-    } catch (error) {
-      thrown = error
-    }
-    if (!hasErrorName(thrown)) {
+    const result = noThrow(() => helper('a-b', /-/, 'X'))
+    if (!isNormalizedError(result) || !hasErrorName(result.originalValue)) {
       throw new Error(
         'Expected downlevelReplaceAllRegExp to throw an error-shaped value for a non-global RegExp.'
       )
     }
-    expect(thrown.name).toBe('TypeError')
+    expect(result.originalValue.name).toBe('TypeError')
   })
 
   // --- #11 Number statics --------------------------------------------------------------------
@@ -904,24 +898,13 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
       expect(helper('ab', count)).toBe('ab'.repeat(count))
     }
     for (const count of [-1, -Infinity, Infinity]) {
-      let isNativeThrew = false
-      try {
-        'ab'.repeat(count)
-      } catch {
-        isNativeThrew = true
-      }
-      expect(isNativeThrew).toBe(true)
+      expect(isNormalizedError(noThrow(() => 'ab'.repeat(count)))).toBe(true)
 
-      let thrown: unknown
-      try {
-        helper('ab', count)
-      } catch (error) {
-        thrown = error
-      }
-      if (!hasErrorName(thrown)) {
+      const result = noThrow(() => helper('ab', count))
+      if (!isNormalizedError(result) || !hasErrorName(result.originalValue)) {
         throw new Error(`Expected downlevelStringRepeat(${count}) to throw an error-shaped value.`)
       }
-      expect(thrown.name).toBe('RangeError')
+      expect(result.originalValue.name).toBe('RangeError')
     }
   })
 

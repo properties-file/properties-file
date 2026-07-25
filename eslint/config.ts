@@ -187,6 +187,21 @@ export default defineConfig(
       // code (see RESTRICTED_RUNTIME_GLOBALS; bundler plugins and non-shipped files are
       // exempted in their own blocks below).
       'no-restricted-globals': ['error', ...RESTRICTED_RUNTIME_GLOBALS],
+      // Error handling uses the shared noThrow()/NormalizedError pattern instead of try/catch:
+      // caught values are typed (never an ad-hoc `unknown` narrowing dance) and results stay in
+      // the enclosing scope. The helper file itself hosts the only permitted try/catch (see its
+      // exemption block below). Shipped code under src/ currently needs no error handling at
+      // all — if it ever does, this rule firing there is the decision point (the helper would
+      // add bundle bytes, so shipped code must not silently import it).
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'TryStatement',
+          message:
+            'Use noThrow()/isNormalizedError() from utilities/no-throw.ts instead of ' +
+            'try/catch for typed, consistent error handling.',
+        },
+      ],
       'no-restricted-imports': [
         'error',
         {
@@ -407,6 +422,7 @@ export default defineConfig(
       'eslint.config.ts',
       ...TYPESCRIPT_FILES.map((pattern) => `eslint/${pattern}`),
       ...TYPESCRIPT_FILES.map((pattern) => `performance/${pattern}`),
+      ...TYPESCRIPT_FILES.map((pattern) => `utilities/${pattern}`),
     ],
     rules: {
       // Non-shipped files run on modern Node.js: runtime-specific APIs and Node module imports
@@ -446,6 +462,25 @@ export default defineConfig(
     files: TYPESCRIPT_FILES.map((pattern) => `performance/${pattern}`),
     languageOptions: {
       parserOptions: { project: ['performance/tsconfig.json'], tsconfigRootDir: ROOT_DIR },
+    },
+  },
+  // Shared internal utilities (dev tooling only, never shipped).
+  {
+    files: TYPESCRIPT_FILES.map((pattern) => `utilities/${pattern}`),
+    languageOptions: {
+      parserOptions: { project: ['utilities/tsconfig.json'], tsconfigRootDir: ROOT_DIR },
+    },
+  },
+  // The noThrow error-handling module: the one place allowed to contain try/catch (it is the
+  // replacement the TryStatement restriction points everyone else to), and its promise
+  // handling must chain `.catch()` rather than await (awaiting would change its sync/async
+  // dual return contract).
+  {
+    files: ['utilities/no-throw.ts'],
+    rules: {
+      'no-restricted-syntax': 'off',
+      'unicorn/prefer-await': 'off',
+      'unicorn/prefer-top-level-await': 'off',
     },
   },
   // Functional test harness (scenarios.ts, execute-scenario.ts, generate.ts are non-test .ts
