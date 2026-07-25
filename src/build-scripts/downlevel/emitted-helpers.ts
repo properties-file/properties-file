@@ -574,9 +574,14 @@ const downlevelObjectValues = <T>(o: { [key: string]: T } | ArrayLike<T>): T[] =
   for (let index = 0; index < keys.length; index++) {
     // The assertion unifies the union for string-key reads: \`Object.keys\` yields string keys
     // for both members, but \`ArrayLike\`'s index signature is numeric, so TypeScript cannot
-    // index it with a string key. This generated code is outside ESLint's reach (it lives in a
-    // template string), so the repository-wide type-assertion ban is deviated from knowingly,
-    // scoped to this single property read.
+    // index it with a string key. The union parameter cannot be simplified away — it mirrors
+    // \`lib.es2017.object.d.ts\`'s own declared \`Object.values\` signature so rewritten call
+    // sites infer exactly the type the native call would. No truthful type guard can replace
+    // the assertion either: the asserted claim is not runtime-true for an \`ArrayLike\` (its
+    // own enumerable \`length\`, when present, joins the values at runtime — an unsoundness
+    // already present in the native lib typing this helper reproduces faithfully). The
+    // repository-wide type-assertion ban is deviated from knowingly, scoped to this single
+    // property read, in generated code outside ESLint's reach.
     result.push((o as { [key: string]: T })[keys[index]])
   }
   return result

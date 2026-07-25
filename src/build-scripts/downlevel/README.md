@@ -14,7 +14,11 @@ Backward compatibility is handled by three cooperating mechanisms, each owning o
 2. **Iteration** — SWC's `iterableIsArray` assumption lowers `for...of` and spread to plain
    index-based code with no `Symbol.iterator` dependency (see the SWC step in
    `src/build-scripts/build.ts`). Safe because the local `local/array-iteration-only` ESLint rule
-   proves shipped code only iterates arrays.
+   proves shipped code only iterates arrays: it type-checks every `for...of` target, every
+   iterable spread (in calls, array literals, and `new` expressions — object spread is exempt,
+   it lowers to property copying), and every array-destructuring `ArrayPattern` — covering
+   variable declarations, `for...of` loop bindings, function parameters, and nested patterns —
+   against an array/tuple type.
 3. **Runtime APIs** — this directory. Methods like `String#includes` cannot be "transpiled":
    the method simply does not exist on an old runtime. Instead, each supported API is
    **rewritten** into an equivalent ES5 expression (e.g. `x.includes(y)` →
