@@ -4,6 +4,12 @@ on:
   pull_request:
     branches: ['main']
 
+# Cancel superseded runs: with rapid pushes, an older run finishing last would otherwise post a
+# fresh-looking comment describing a stale commit.
+concurrency:
+  group: performance-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   benchmark:
     name: Performance comparison
@@ -36,23 +42,32 @@ jobs:
       - name: Run size comparison
         run: npx tsx performance/size/compare.ts
 
-      # The comment is edited in place on every push (--edit-last below), so GitHub's visible
-      # timestamp stays at the comment's creation time. The measured-commit line makes the
-      # freshness of the numbers self-evident.
+      # The hidden marker identifies the report comment for deletion on the next run. The
+      # measured-commit line pins the numbers to a commit — the comment's own timestamp says
+      # when, the SHA says what.
       - name: Combine reports
         run: >-
-          echo "> Measured at commit ${{ github.event.pull_request.head.sha }}." > performance/benchmarks/.results/pr-comment.md &&
+          echo "<!-- performance-report -->" > performance/benchmarks/.results/pr-comment.md &&
+          echo "> Measured at commit ${{ github.event.pull_request.head.sha }}." >> performance/benchmarks/.results/pr-comment.md &&
           echo "" >> performance/benchmarks/.results/pr-comment.md &&
           cat performance/benchmarks/.results/comparison.md >> performance/benchmarks/.results/pr-comment.md &&
           echo -e "\n\n---\n" >> performance/benchmarks/.results/pr-comment.md &&
           cat performance/size/.results/comparison.md >> performance/benchmarks/.results/pr-comment.md
 
+      # Delete the previous report comment and post a fresh one: the comment then carries a
+      # native, current timestamp and sits at the bottom of the PR timeline, instead of an
+      # edited-in-place comment that GitHub keeps displaying with its original creation time.
       - name: Post results to PR
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The startswith clause also matches report comments from before the hidden marker.
+          previous_comment_ids=$(gh api --paginate \
+            "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+            --jq '.[] | select((.body | contains("<!-- performance-report -->")) or (.body | startswith("> Measured at commit"))) | .id')
+          for comment_id in $previous_comment_ids; do
+            gh api -X DELETE "repos/${{ github.repository }}/issues/comments/${comment_id}"
+          done
           gh pr comment "${{ github.event.pull_request.number }}" \
             --repo "${{ github.repository }}" \
-            --body-file performance/benchmarks/.results/pr-comment.md \
-            --edit-last \
-            --create-if-none
+            --body-file performance/benchmarks/.results/pr-comment.md
