@@ -36,9 +36,14 @@ jobs:
       - name: Run size comparison
         run: npx tsx performance/size/compare.ts
 
+      # The comment is edited in place on every push (--edit-last below), so GitHub's visible
+      # timestamp stays at the comment's creation time. The measured-commit line makes the
+      # freshness of the numbers self-evident.
       - name: Combine reports
         run: >-
-          cat performance/benchmarks/.results/comparison.md > performance/benchmarks/.results/pr-comment.md &&
+          echo "> Measured at commit ${{ github.event.pull_request.head.sha }}." > performance/benchmarks/.results/pr-comment.md &&
+          echo "" >> performance/benchmarks/.results/pr-comment.md &&
+          cat performance/benchmarks/.results/comparison.md >> performance/benchmarks/.results/pr-comment.md &&
           echo -e "\n\n---\n" >> performance/benchmarks/.results/pr-comment.md &&
           cat performance/size/.results/comparison.md >> performance/benchmarks/.results/pr-comment.md
 
