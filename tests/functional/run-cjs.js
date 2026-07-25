@@ -29,8 +29,6 @@
  * container uses to point at `/dist/cjs`.
  */
 
-/* eslint-disable no-var, prefer-arrow-callback, unicorn/prefer-module */
-
 var fs = require('fs')
 var path = require('path')
 

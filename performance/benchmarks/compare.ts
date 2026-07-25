@@ -5,6 +5,7 @@ import {
   averageBenchmarkResults,
   buildComparison,
   buildMarkdownReport,
+  CliError,
   hasRegressions,
   printComparison,
   resolveBaseline,
@@ -354,9 +355,7 @@ const parseRunsFlag = (arguments_: string[]): number => {
   }
   const runsValue = Number(arguments_[runsIndex + 1])
   if (!Number.isSafeInteger(runsValue) || runsValue < 1) {
-    console.error(`\n  Invalid value for '--runs'. Must be a positive integer.\n\n${USAGE}\n`)
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(1)
+    throw new CliError(`Invalid value for '--runs'. Must be a positive integer.`)
   }
   return runsValue
 }
@@ -386,11 +385,9 @@ const main = async (): Promise<void> => {
 
   // Validate the current build exists.
   if (!existsSync(currentDistributionEsmDirectory)) {
-    console.error(
-      'Error: ./dist/esm/ not found. Run `npm run build` first to compile the current code.'
+    throw new CliError(
+      './dist/esm/ not found. Run `npm run build` first to compile the current code.'
     )
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(1)
   }
 
   const runs = parseRunsFlag(arguments_)
@@ -474,4 +471,13 @@ const main = async (): Promise<void> => {
   }
 }
 
-void main()
+try {
+  await main()
+} catch (error) {
+  if (error instanceof CliError) {
+    console.error(`\n  ${error.message}\n\n${USAGE}\n`)
+    process.exitCode = 1
+  } else {
+    throw error
+  }
+}

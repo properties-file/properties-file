@@ -134,8 +134,6 @@ export default defineConfig(
       'performance/**/.*/',
       // Type declarations don't need linting.
       '**/*.d.ts',
-      // Legacy Node.js compatibility test (intentionally ES5, not linted).
-      'tests/node-compat/',
       // Intentionally ES5 (must execute on Node.js 0.4 via the compat Docker image).
       'tests/functional/run-cjs.js',
       // Generated file (golden.json scenario fixtures produced by generate.ts).
@@ -317,79 +315,77 @@ export default defineConfig(
       ],
       /**
        * Unicorn-specific configuration.
+       *
+       * The Unicorn plugin comes with opinionated checks, including some that we prefer disabling.
        */
-      // eslint-disable-next-line unicorn/no-useless-spread
-      ...{
-        // The Unicorn plugin comes with opinionated checks, including some that we prefer disabling.
-        'unicorn/no-array-reduce': [
-          // 'reduce' is a powerful method for functional programming patterns, use it when appropriate.
-          'off',
-        ],
-        /**
-         * Avoids circular conflict between `unicorn/no-nested-ternary` and `prettier`.
-         *
-         * @see https://github.com/sindresorhus/eslint-plugin-unicorn/issues/2604
-         */
-        'unicorn/no-nested-ternary': 'off',
-        // Prefer `forEach` over `for...of` loops for readability on modern engines.
-        'unicorn/no-for-each': 'off',
-        // Doesn't add a lot of value and makes numbers look odd.
-        'unicorn/numeric-separators-style': 'off',
-        // Not really applicable when using TypeScript (mostly triggers false positives).
-        'unicorn/prefer-type-error': 'off',
-        /**
-         * `undefined` and `null` have distinct semantics (i.e. `undefined` means absent, while
-         * `null` means explicitly set to empty). We prefer to keep both in our codebase.
-         */
-        'unicorn/no-null': 'off',
-        /**
-         * Negated conditions with an explicit else branch are sometimes the clearer reading
-         * order (e.g. handling the exceptional case first); left to author judgment.
-         */
-        'unicorn/no-negated-condition': 'off',
-        /**
-         * Code-unit (`charCodeAt`/`fromCharCode`) string handling is the domain-correct form
-         * for this project, everywhere: the `.properties` format is defined over UTF-16 code
-         * units (a Java `\uXXXX` escape is one code unit; an astral character is two escapes
-         * forming a surrogate pair), so code-point APIs would produce spec-invalid escapes.
-         * This is a domain preference, not an ES5-compatibility exclusion —
-         * `codePointAt`/`fromCodePoint` are downlevel-catalog-coverable if a genuine
-         * code-point use case ever appears (see src/build-scripts/downlevel/README.md).
-         */
-        'unicorn/prefer-code-point': 'off',
-        /**
-         * Extracting nested-loop `break`/`continue` into functions adds call overhead and hurts
-         * readability in the character-scanning parser hot paths (guarded by the benchmark suite).
-         */
-        'unicorn/no-break-in-nested-loop': 'off',
-        /**
-         * Enforce `is`/`has`/`should`-style prefixes on boolean names.
-         *
-         * The `ignore` list is a deliberate vocabulary decision, not (only) breaking-change
-         * avoidance — this codebase intentionally uses two boolean naming conventions:
-         *
-         * - State-describing booleans (locals, predicates, results) use `is`/`has`/`should`
-         *   prefixes, enforced by this rule (e.g. `shouldEscapeUnicode`, `hasDanglingContinuation`).
-         * - Boolean option keys in the public API use imperative verb phrases describing the
-         *   action to perform (`escapeUnicode`, `removeComments`, `collapseMultiline`,
-         *   `deduplicateKeys`), matching the broader ecosystem convention for boolean options
-         *   (e.g. TypeScript's `removeComments`, terser's `compress`).
-         *
-         * The `escapeKey`/`escapeValue` parameters named `escapeUnicode` mirror the option key of
-         * the same name, so prefixing them would break vocabulary consistency with the options
-         * they feed. The rule only checks variables and parameters (`checkProperties` defaults to
-         * `false`), so renaming the parameters would not make the option keys lint-enforced anyway.
-         */
-        'unicorn/consistent-boolean-name': ['error', { ignore: ['^escape(Unicode|Space)$'] }],
-        /**
-         * This rule conflicts with `prettier/prettier` and there is no way to disable the Prettier rule.
-         *
-         * @see https://github.com/sindresorhus/eslint-plugin-unicorn/issues/2285
-         */
-        'unicorn/number-literal-case': 'off',
-        // Disable modern API rules for backward compatibility (see UNICORN_MODERN_API_RULES).
-        ...setRules(UNICORN_MODERN_API_RULES, 'off'),
-      },
+      'unicorn/no-array-reduce': [
+        // 'reduce' is a powerful method for functional programming patterns, use it when appropriate.
+        'off',
+      ],
+      /**
+       * Avoids circular conflict between `unicorn/no-nested-ternary` and `prettier`.
+       *
+       * @see https://github.com/sindresorhus/eslint-plugin-unicorn/issues/2604
+       */
+      'unicorn/no-nested-ternary': 'off',
+      // Prefer `forEach` over `for...of` loops for readability on modern engines.
+      'unicorn/no-for-each': 'off',
+      // Doesn't add a lot of value and makes numbers look odd.
+      'unicorn/numeric-separators-style': 'off',
+      // Not really applicable when using TypeScript (mostly triggers false positives).
+      'unicorn/prefer-type-error': 'off',
+      /**
+       * `undefined` and `null` have distinct semantics (i.e. `undefined` means absent, while
+       * `null` means explicitly set to empty). We prefer to keep both in our codebase.
+       */
+      'unicorn/no-null': 'off',
+      /**
+       * Negated conditions with an explicit else branch are sometimes the clearer reading
+       * order (e.g. handling the exceptional case first); left to author judgment.
+       */
+      'unicorn/no-negated-condition': 'off',
+      /**
+       * Code-unit (`charCodeAt`/`fromCharCode`) string handling is the domain-correct form
+       * for this project, everywhere: the `.properties` format is defined over UTF-16 code
+       * units (a Java `\uXXXX` escape is one code unit; an astral character is two escapes
+       * forming a surrogate pair), so code-point APIs would produce spec-invalid escapes.
+       * This is a domain preference, not an ES5-compatibility exclusion —
+       * `codePointAt`/`fromCodePoint` are downlevel-catalog-coverable if a genuine
+       * code-point use case ever appears (see src/build-scripts/downlevel/README.md).
+       */
+      'unicorn/prefer-code-point': 'off',
+      /**
+       * Extracting nested-loop `break`/`continue` into functions adds call overhead and hurts
+       * readability in the character-scanning parser hot paths (guarded by the benchmark suite).
+       */
+      'unicorn/no-break-in-nested-loop': 'off',
+      /**
+       * Enforce `is`/`has`/`should`-style prefixes on boolean names.
+       *
+       * The `ignore` list is a deliberate vocabulary decision, not (only) breaking-change
+       * avoidance — this codebase intentionally uses two boolean naming conventions:
+       *
+       * - State-describing booleans (locals, predicates, results) use `is`/`has`/`should`
+       *   prefixes, enforced by this rule (e.g. `shouldEscapeUnicode`, `hasDanglingContinuation`).
+       * - Boolean option keys in the public API use imperative verb phrases describing the
+       *   action to perform (`escapeUnicode`, `removeComments`, `collapseMultiline`,
+       *   `deduplicateKeys`), matching the broader ecosystem convention for boolean options
+       *   (e.g. TypeScript's `removeComments`, terser's `compress`).
+       *
+       * The `escapeKey`/`escapeValue` parameters named `escapeUnicode` mirror the option key of
+       * the same name, so prefixing them would break vocabulary consistency with the options
+       * they feed. The rule only checks variables and parameters (`checkProperties` defaults to
+       * `false`), so renaming the parameters would not make the option keys lint-enforced anyway.
+       */
+      'unicorn/consistent-boolean-name': ['error', { ignore: ['^escape(Unicode|Space)$'] }],
+      /**
+       * This rule conflicts with `prettier/prettier` and there is no way to disable the Prettier rule.
+       *
+       * @see https://github.com/sindresorhus/eslint-plugin-unicorn/issues/2285
+       */
+      'unicorn/number-literal-case': 'off',
+      // Disable modern API rules for backward compatibility (see UNICORN_MODERN_API_RULES).
+      ...setRules(UNICORN_MODERN_API_RULES, 'off'),
       // Disable typescript-eslint stylistic rules that suggest ES2015+ runtime APIs
       // (see TS_ESLINT_MODERN_API_RULES). Re-enabled in non-shipped files block below.
       ...setRules(TS_ESLINT_MODERN_API_RULES, 'off'),

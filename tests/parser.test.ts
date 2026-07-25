@@ -484,8 +484,7 @@ describe('format() with normalization options', () => {
     expect(result).toBe('key =value')
   })
 
-  // eslint-disable-next-line unicorn/prefer-string-raw
-  it('escapeUnicode converts non-ASCII to \\uXXXX', () => {
+  it('escapeUnicode converts non-ASCII to unicode escape sequences', () => {
     const result = new Properties('key = \u{FC}').format({ escapeUnicode: true })
     expect(result.toLowerCase()).toContain(String.raw`\u00fc`)
   })
@@ -527,8 +526,7 @@ describe('format() with normalization options', () => {
     })
   })
 
-  // eslint-disable-next-line unicorn/prefer-string-raw
-  it('wrapValuesAt does not split \\uXXXX sequences', () => {
+  it('wrapValuesAt does not split unicode escape sequences', () => {
     const result = new Properties(String.raw`key = abc\u0041def`).format({
       wrapValuesAt: 6,
     })
@@ -616,8 +614,7 @@ describe('Edge cases', () => {
     expect(new Properties('a = 1\r\nb = 2\nc = 3').eolCharacter).toBe('\r\n')
   })
 
-  // eslint-disable-next-line unicorn/prefer-string-raw
-  it('defaults EOL to \\n when no line terminators present', () => {
+  it('defaults EOL to LF when no line terminators present', () => {
     expect(new Properties('key = value').eolCharacter).toBe('\n')
   })
 
@@ -625,8 +622,7 @@ describe('Edge cases', () => {
     expect(new Properties(String.raw`key\\ = value`).toObject()).toEqual({ 'key\\': 'value' })
   })
 
-  // eslint-disable-next-line unicorn/prefer-string-raw
-  it('handles continuation at end of file (no content after \\)', () => {
+  it('handles continuation at end of file (no content after the backslash)', () => {
     expect(new Properties('key = value\\').toObject()).toEqual({ key: 'value' })
   })
 

@@ -2,6 +2,8 @@ import { execSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
+import { CliError } from '../utilities'
+
 const rootDirectory = path.resolve(import.meta.dirname, '..', '..')
 const snapshotsDirectory = path.resolve(import.meta.dirname, '.snapshots')
 
@@ -312,9 +314,6 @@ npm script shortcuts:
   npm run snapshot -- restore my-snapshot
   npm run snapshot -- list`
 
-/** Sentinel class used to distinguish CLI usage errors from unexpected failures. */
-class CliError extends Error {}
-
 /**
  * Throw a CLI usage error with a friendly message.
  *
@@ -371,8 +370,8 @@ try {
 } catch (error) {
   if (error instanceof CliError) {
     console.error(`\n  ${error.message}\n\n${USAGE}\n`)
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(1)
+    process.exitCode = 1
+  } else {
+    throw error
   }
-  throw error
 }

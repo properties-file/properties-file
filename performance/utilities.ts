@@ -6,6 +6,13 @@ import {
   getPublishedPackageDirectory,
 } from './published-packages/manage'
 
+/**
+ * Sentinel class distinguishing CLI usage errors (print a friendly message, exit with code 1)
+ * from unexpected failures (rethrow with a stack trace) in the performance scripts' entry
+ * points.
+ */
+export class CliError extends Error {}
+
 // ─── Baseline Resolution ────────────────────────────────────────────────────
 
 /** A resolved baseline containing the label and absolute path to its distribution directory. */
