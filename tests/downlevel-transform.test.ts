@@ -664,6 +664,24 @@ const isObjectIterableHelper = functionGuard<(o: object) => unknown>()
 const isToSplicedHelper =
   functionGuard<(array: readonly unknown[], ...rest: unknown[]) => unknown[]>()
 
+describe('downlevel emitted helpers - standalone strict type-checking', () => {
+  // The runtime-equivalence suites below transpile helpers with `transpileModule`, which never
+  // type-checks. A helper only meets `tsc` when a src/ call site pulls it into the shadow tree,
+  // so a helper defined ahead of any real usage could otherwise carry a type error undetected.
+  it('every HELPER_SOURCE entry type-checks under the strict compiler settings', () => {
+    const project = new Project({
+      useInMemoryFileSystem: true,
+      compilerOptions: { target: ScriptTarget.ES2023, strict: true },
+    })
+    // One file holding every helper: helpers may reference each other, and the shadow tree
+    // emits them into the same file scope as the rewritten code.
+    const combinedSource = Object.values(HELPER_SOURCE).join('\n\n')
+    const file = project.createSourceFile('helpers.ts', `export {}\n${combinedSource}\n`)
+    const diagnostics = file.getPreEmitDiagnostics()
+    expect(project.formatDiagnosticsWithColorAndContext(diagnostics)).toBe('')
+  })
+})
+
 describe('downlevel emitted helpers - runtime equivalence with the native methods', () => {
   const strings = ['', 'a', 'abc', 'aabc']
   const patterns = ['', 'a', 'ab', 'bc', 'abcd']
@@ -994,7 +1012,8 @@ const isCallable = functionGuard<(...arguments_: unknown[]) => unknown>()
  * function over `parameterNames`, using the same transpile-then-vm-execute approach as
  * {@link compileHelper} — running the exact code the build would ship, rather than
  * re-implementing the rewrite by hand in the test (which could hide the same bug the rewrite
- * itself has, as the replaceAll `$&` bug this suite now regression-tests demonstrated).
+ * itself has — the class of failure the replaceAll `$`-substitution regression test guards
+ * against).
  *
  * @param parameterNames - The rewritten expression's free variable names, in argument order.
  * @param expressionText - The rewritten expression's exact source text.
@@ -1206,7 +1225,7 @@ describe('downlevel inline rewrites - runtime equivalence with the native method
 // ---------------------------------------------------------------------------
 
 describe('downlevel catalog #6 - String#replaceAll (full coverage)', () => {
-  it('regression: a $-containing string replacement no longer uses split/join (the bug this catalog version fixes)', () => {
+  it('regression: a $-containing string replacement must not be routed through split/join', () => {
     const sourceFile = rewrite("declare const s: string\nconst v = s.replaceAll('-', '$&$&')\n")
     const text = sourceFile.getFullText()
     expect(text).not.toContain(".split('-').join('$&$&')")

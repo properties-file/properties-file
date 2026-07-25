@@ -241,8 +241,8 @@ const restore = (name: string): void => {
   }
 
   // Abort if the working tree has uncommitted changes to src/ or dist/. When git itself fails
-  // (not a git repo, or git not available), skip the check — previously this required a
-  // careful catch-and-rethrow so the CliError below wouldn't be swallowed with git failures.
+  // (not a git repo, or git not available), skip the check: only a successful git status can
+  // prove the tree is dirty, and the CliError below must fire only on that proof.
   const status = noThrow(() =>
     execSync('git status --porcelain -- src/ dist/', {
       encoding: 'utf8',

@@ -91,9 +91,11 @@ export const isSimpleArgument = (expression: Node): boolean =>
 /**
  * Check whether an array literal element is a plain identifier, string/numeric literal, or
  * negative numeric literal — the element shapes the literal-array `.includes()`
- * comparison-chain rewrite is allowed to duplicate the search argument against (the argument is
- * compared once per chain branch, so every element position must itself be safe to re-evaluate
- * for free, which a plain identifier/literal always is).
+ * comparison-chain rewrite accepts. The chain (`x === a || x === b`) short-circuits, so
+ * elements move from the array literal's guaranteed left-to-right, always-evaluated
+ * construction to conditionally-evaluated comparison operands: an element with observable
+ * evaluation effects could run conditionally or not at all. Restricting elements to
+ * identifiers/literals (whose evaluation is effect-free) makes that difference unobservable.
  *
  * @param element - The array literal element to check.
  *

@@ -64,10 +64,10 @@ const setRules = (rules: string[], level: 'off' | 'error'): Record<string, 'off'
  * (not transpilable by TypeScript or SWC). Mirrors {@link UNICORN_MODERN_API_RULES}:
  * disabled in shipped code to maintain backward compatibility, re-enabled for non-shipped files.
  *
- * Intentionally empty: `@typescript-eslint/prefer-find` (ES2015 - Array.prototype.find) was the
- * only entry, and the downlevel catalog's find-family coverage (`find`/`findIndex`/`findLast`/
- * `findLastIndex`) now covers its entire suggestion surface, so it was removed. A future entry
- * belongs here only if it suggests a runtime API the downlevel catalog does not (yet) rewrite.
+ * Intentionally empty: the downlevel catalog's find-family coverage (`find`/`findIndex`/
+ * `findLast`/`findLastIndex`) covers the entire suggestion surface of the one candidate rule
+ * (`@typescript-eslint/prefer-find`). An entry belongs here only if it suggests a runtime API
+ * the downlevel catalog does not (yet) rewrite.
  */
 const TS_ESLINT_MODERN_API_RULES: string[] = []
 

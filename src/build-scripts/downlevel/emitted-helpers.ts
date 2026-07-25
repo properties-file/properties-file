@@ -317,6 +317,9 @@ function downlevelReplaceAllRegExp(
   if (!re.global) {
     throw new TypeError('replaceAll must be called with a global RegExp')
   }
+  // Both branches are runtime-identical; the \`typeof\` split exists purely for overload
+  // resolution: \`String#replace\` has separate string-replacement and replacer-function
+  // overloads, and the union-typed parameter satisfies neither without narrowing.
   if (typeof replacement === 'string') {
     return s.replace(re, replacement)
   }
@@ -569,6 +572,11 @@ const downlevelObjectValues = <T>(o: { [key: string]: T } | ArrayLike<T>): T[] =
   const keys = Object.keys(o)
   const result: T[] = []
   for (let index = 0; index < keys.length; index++) {
+    // The assertion unifies the union for string-key reads: \`Object.keys\` yields string keys
+    // for both members, but \`ArrayLike\`'s index signature is numeric, so TypeScript cannot
+    // index it with a string key. This generated code is outside ESLint's reach (it lives in a
+    // template string), so the repository-wide type-assertion ban is deviated from knowingly,
+    // scoped to this single property read.
     result.push((o as { [key: string]: T })[keys[index]])
   }
   return result
@@ -589,6 +597,8 @@ const downlevelObjectEntries = <T>(o: { [key: string]: T } | ArrayLike<T>): [str
   const keys = Object.keys(o)
   const result: [string, T][] = []
   for (let index = 0; index < keys.length; index++) {
+    // Same knowingly-scoped type assertion as downlevelObjectValues: \`ArrayLike\`'s numeric
+    // index signature cannot be read with the string keys \`Object.keys\` yields.
     result.push([keys[index], (o as { [key: string]: T })[keys[index]]])
   }
   return result

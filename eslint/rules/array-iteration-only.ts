@@ -8,8 +8,10 @@
  * units instead of code points, and iterating a `Map`/`Set`/generator would silently break.
  *
  * This rule makes the assumption provably safe: any `for...of`, iterable spread, or array
- * destructuring over a non-array type is a lint error in shipped code. The Node.js 0.4
- * functional replay test (`npm run test-node-compat`) is the behavioral backstop.
+ * destructuring over a non-array type is a lint error in shipped code. Destructuring is checked
+ * at every `ArrayPattern` via the pattern's own resolved type, which covers variable
+ * declarations, `for...of` loop bindings, function parameters, and nested patterns alike. The
+ * Node.js 0.4 functional replay test (`npm run test-node-compat`) is the behavioral backstop.
  *
  * Disabled for non-shipped files (tests, build scripts, performance), which run on modern
  * Node.js and never pass through the ES5 downlevel.
@@ -128,9 +130,15 @@ export const arrayIterationOnlyRule: Rule.RuleModule = {
           checkExpression(node.argument, 'nonArraySpread')
         }
       },
-      VariableDeclarator: (node): void => {
-        if (node.id.type === 'ArrayPattern' && node.init) {
-          checkExpression(node.init, 'nonArrayDestructuring')
+      ArrayPattern: (node): void => {
+        // A pattern's own resolved type is the value being destructured into it, in every
+        // context: the initializer's type in a declaration, the element type in a `for...of`
+        // binding, the declared type of a function parameter, and the element type inside a
+        // nested pattern. In a destructuring *assignment* (`[a] = expression`) the target is an
+        // array literal in TypeScript's AST, so that form is checked via the assignment's
+        // right-hand side below instead.
+        if (node.parent.type !== 'AssignmentExpression') {
+          checkExpression(node, 'nonArrayDestructuring')
         }
       },
       AssignmentExpression: (node): void => {
