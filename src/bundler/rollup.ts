@@ -13,7 +13,7 @@ const PROPERTIES_EXTENSION = '.properties'
 const rollupPlugin = (): Plugin => ({
   name: 'properties-file',
   transform: (content: string, id: string): { code: string; map: null } | null => {
-    if (id.indexOf(PROPERTIES_EXTENSION, id.length - PROPERTIES_EXTENSION.length) === -1) {
+    if (!id.includes(PROPERTIES_EXTENSION, id.length - PROPERTIES_EXTENSION.length)) {
       return null
     }
     return {

@@ -169,7 +169,7 @@ const list = (): void => {
 
   const names = readdirSync(snapshotsDirectory)
     .filter((name) => existsSync(path.resolve(snapshotsDirectory, name, 'metadata.json')))
-    .toSorted()
+    .toSorted((first, second) => first.localeCompare(second, 'en'))
 
   if (names.length === 0) {
     console.log('No snapshots found.')

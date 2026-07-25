@@ -112,12 +112,12 @@ export const getProperties = (content: string | Buffer): KeyValuePairObject => {
     if (!isContinuation) {
       // Single-line: use content after leading whitespace directly.
       logicalLine = firstNonWs > 0 ? line.slice(firstNonWs) : line
-      hasBackslash = logicalLine.indexOf('\\') !== -1
+      hasBackslash = logicalLine.includes('\\')
     } else {
       // Multi-line: collect continuation segments.
       const firstSegment = (firstNonWs > 0 ? line.slice(firstNonWs) : line).slice(0, -1)
       const segments: string[] = [firstSegment]
-      hasBackslash = firstSegment.indexOf('\\') !== -1
+      hasBackslash = firstSegment.includes('\\')
 
       while (isContinuation && lineIndex + 1 < lineCount) {
         lineIndex++
@@ -141,7 +141,7 @@ export const getProperties = (content: string | Buffer): KeyValuePairObject => {
         const segment = isContinuation
           ? nextLine.slice(start, nextLength - 1)
           : nextLine.slice(start)
-        if (!hasBackslash && segment.indexOf('\\') !== -1) {
+        if (!hasBackslash && segment.includes('\\')) {
           hasBackslash = true
         }
         segments.push(segment)
@@ -164,11 +164,7 @@ export const getProperties = (content: string | Buffer): KeyValuePairObject => {
       }
       if (
         !hasPrecedingBackslash &&
-        (charCode === CH_EQUALS ||
-          charCode === CH_COLON ||
-          charCode === CH_SPACE ||
-          charCode === CH_TAB ||
-          charCode === CH_FF)
+        [CH_EQUALS, CH_COLON, CH_SPACE, CH_TAB, CH_FF].includes(charCode)
       ) {
         break
       }
@@ -180,7 +176,7 @@ export const getProperties = (content: string | Buffer): KeyValuePairObject => {
     let valueStart = keyEnd
     if (valueStart < logicalLength) {
       let charCode = logicalLine.charCodeAt(valueStart)
-      if (charCode === CH_SPACE || charCode === CH_TAB || charCode === CH_FF) {
+      if ([CH_SPACE, CH_TAB, CH_FF].includes(charCode)) {
         valueStart = skipWhitespace(logicalLine, valueStart, logicalLength)
         if (valueStart < logicalLength) {
           charCode = logicalLine.charCodeAt(valueStart)

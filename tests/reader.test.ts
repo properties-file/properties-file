@@ -45,7 +45,7 @@ describe.each(readers)('%s', (_name, read) => {
   })
 
   it('handles BOM characters', () => {
-    expect(read('\uFEFFhello = world')).toEqual({ hello: 'world' })
+    expect(read('\u{FEFF}hello = world')).toEqual({ hello: 'world' })
   })
 
   it('handles comment lines with # and !', () => {
@@ -138,12 +138,12 @@ describe.each(readers)('%s', (_name, read) => {
   })
 
   it('decodes Unicode escape sequences', () => {
-    expect(read(String.raw`city = M\u00FCnchen`)).toEqual({ city: 'M\u00FCnchen' })
+    expect(read(String.raw`city = M\u00FCnchen`)).toEqual({ city: 'M\u{FC}nchen' })
   })
 
   it('decodes multiple Unicode escape sequences', () => {
     expect(read(String.raw`hello = \u3053\u3093\u306b\u3061\u306f`)).toEqual({
-      hello: '\u3053\u3093\u306B\u3061\u306F',
+      hello: '\u{3053}\u{3093}\u{306B}\u{3061}\u{306F}',
     })
   })
 
@@ -156,7 +156,7 @@ describe.each(readers)('%s', (_name, read) => {
   })
 
   it('handles content with only whitespace', () => {
-    expect(read('   ')).toEqual({})
+    expect(read(' '.repeat(3))).toEqual({})
   })
 
   it('handles content with only a comment', () => {

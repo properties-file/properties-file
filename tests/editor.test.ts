@@ -60,7 +60,7 @@ describe('PropertiesEditor', () => {
 
   it('insert with escapeUnicode', () => {
     const editor = new PropertiesEditor('')
-    editor.insert('\u00FC', '\u00FC', { escapeUnicode: true })
+    editor.insert('\u{FC}', '\u{FC}', { escapeUnicode: true })
     const result = editor.format()
     expect(result.toLowerCase()).toContain(String.raw`\u00fc`)
   })
@@ -203,7 +203,7 @@ describe('PropertiesEditor', () => {
   })
 
   it('update with escapeUnicode', () => {
-    const editor = new PropertiesEditor('key = \u00FC')
+    const editor = new PropertiesEditor('key = \u{FC}')
     editor.update('key', { escapeUnicode: true })
     expect(editor.format().toLowerCase()).toContain(String.raw`\u00fc`)
   })
@@ -332,7 +332,7 @@ describe('PropertiesEditor', () => {
 
   it('upsert updates with all options', () => {
     const editor = new PropertiesEditor('a = 1')
-    editor.upsert('a', '\u00FC', {
+    editor.upsert('a', '\u{FC}', {
       escapeUnicode: true,
       separator: ':',
       comment: 'Updated',

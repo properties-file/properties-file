@@ -19,7 +19,7 @@ const PLAIN_ASCII = 'This is a simple plain ASCII string with no special charact
 
 /** String with CJK, accented, and Hangul characters. */
 const UNICODE_HEAVY =
-  '\u3053\u3093\u306B\u3061\u306F World \u00E9\u00E8\u00EA \u4E16\u754C \uD55C\uAD6D\uC5B4'
+  '\u{3053}\u{3093}\u{306B}\u{3061}\u{306F} World \u{E9}\u{E8}\u{EA} \u{4E16}\u{754C} \u{D55C}\u{AD6D}\u{C5B4}'
 
 /** Pre-escaped Unicode sequences (as they would appear in a `.properties` file). */
 const ESCAPED_UNICODE = String.raw`\u3053\u3093\u306b\u3061\u306f World \u00e9\u00e8\u00ea \u4e16\u754c \ud55c\uad6d\uc5b4`

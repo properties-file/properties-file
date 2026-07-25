@@ -374,12 +374,12 @@ const buildSizeMarkdownReport = (label: string, rows: SizeComparisonRow[]): stri
  * @param results - The measured size results for the current build.
  */
 const updateReadmeBadge = (results: SizeResult[]): void => {
-  const getPropertiesResult = results.find((result) => result.name === 'getProperties')
-  if (!getPropertiesResult) {
+  const sizeResultForGetProperties = results.find((result) => result.name === 'getProperties')
+  if (!sizeResultForGetProperties) {
     return
   }
 
-  const sizeLabel = formatBytes(getPropertiesResult.gzipped).replace(' ', '%20')
+  const sizeLabel = formatBytes(sizeResultForGetProperties.gzipped).replace(' ', '%20')
   const newBadge = `![Package Size](https://img.shields.io/badge/min%2Bgzip-${sizeLabel}-brightgreen)`
 
   const readme = readFileSync(readmePath, 'utf8')
@@ -389,11 +389,11 @@ const updateReadmeBadge = (results: SizeResult[]): void => {
     return
   }
 
-  const sizeText = formatBytes(getPropertiesResult.gzipped)
+  const sizeText = formatBytes(sizeResultForGetProperties.gzipped)
   const inlinePattern = /`getProperties` is only [\d.]+ (?:kB|B) min\+gzip/
   const updatedReadme = readme
-    .replace(badgePattern, newBadge)
-    .replace(inlinePattern, `\`getProperties\` is only ${sizeText} min+gzip`)
+    .replace(badgePattern, () => newBadge)
+    .replace(inlinePattern, () => `\`getProperties\` is only ${sizeText} min+gzip`)
   if (updatedReadme !== readme) {
     writeFileSync(readmePath, updatedReadme)
     console.log(`README.md updated: ${sizeText}`)

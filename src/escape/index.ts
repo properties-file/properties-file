@@ -26,6 +26,7 @@ export const escapeValue = (unescapedValue: string, escapeUnicode = false): stri
 const REGEX_ESCAPE_NO_UNICODE = /[\s!#:=\\]/g
 
 /** Pre-compiled regex for escaping with unicode expansion. */
+// eslint-disable-next-line unicorn/prefer-unicode-code-point-escapes -- `\u{...}` in a regex requires the ES2015 `u` flag, which would survive into the ES5 output
 const REGEX_ESCAPE_UNICODE = /[\s!#:=\\\u0000-\u001F\u007F-\uFFFF]/g
 
 /**
@@ -48,7 +49,7 @@ const escapeContent = (
     switch (character) {
       case ' ': {
         // Only escape leading spaces or spaces in keys; in-value spaces stay literal.
-        return escapeSpace || position === 0 ? '\\ ' : ' '
+        return escapeSpace || position === 0 ? String.raw`\ ` : ' '
       }
       case '\\': {
         // Backslash.
@@ -56,19 +57,19 @@ const escapeContent = (
       }
       case '\f': {
         // Formfeed.
-        return '\\f'
+        return String.raw`\f`
       }
       case '\n': {
         // Newline.
-        return '\\n'
+        return String.raw`\n`
       }
       case '\r': {
         // Carriage return.
-        return '\\r'
+        return String.raw`\r`
       }
       case '\t': {
         // Tab.
-        return '\\t'
+        return String.raw`\t`
       }
       case '=':
       case ':':
@@ -79,7 +80,7 @@ const escapeContent = (
       default: {
         // Any character outside the printable ASCII range — emit as `\uXXXX`.
         const hex = character.charCodeAt(0).toString(16)
-        return '\\u' + ('0000' + hex).slice(-4)
+        return String.raw`\u` + ('0000' + hex).slice(-4)
       }
     }
   })

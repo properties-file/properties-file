@@ -195,10 +195,10 @@ const isBenchmarkResult = (value: unknown): value is BenchmarkResult =>
  */
 export const parseBenchmarkResults = (json: string): BenchmarkResult[] => {
   const parsed: unknown = JSON.parse(json)
-  if (!Array.isArray(parsed) || !parsed.every((item) => isBenchmarkResult(item))) {
-    throw new Error('Invalid benchmark results JSON')
+  if (Array.isArray(parsed) && parsed.every((item) => isBenchmarkResult(item))) {
+    return parsed
   }
-  return parsed
+  throw new Error('Invalid benchmark results JSON')
 }
 
 // ─── Averaging Logic ────────────────────────────────────────────────────────
@@ -246,15 +246,12 @@ export const averageBenchmarkResults = (runs: BenchmarkResult[][]): BenchmarkRes
     { opsPerSecondValues, medianNanosecondValues, marginOfErrorValues },
   ] of grouped) {
     const count = opsPerSecondValues.length
+    const sumOfSquaredMargins = marginOfErrorValues.reduce((sum, value) => sum + value * value, 0)
     averaged.push({
       name,
       opsPerSecond: Math.round(opsPerSecondValues.reduce((sum, value) => sum + value, 0) / count),
       medianNs: Math.round(medianNanosecondValues.reduce((sum, value) => sum + value, 0) / count),
-      marginOfError: Number(
-        Math.sqrt(
-          marginOfErrorValues.reduce((sum, value) => sum + value * value, 0) / count
-        ).toFixed(2)
-      ),
+      marginOfError: Number(Math.sqrt(sumOfSquaredMargins / count).toFixed(2)),
     })
   }
 
@@ -276,7 +273,7 @@ export const THRESHOLD_PERCENT = 20
  *
  * @returns `true` if the change represents a regression beyond the threshold.
  */
-export const exceedsRegressionThreshold = (changePercent: number): boolean =>
+export const isAboveRegressionThreshold = (changePercent: number): boolean =>
   changePercent <= -THRESHOLD_PERCENT
 
 // ─── Comparison Types ───────────────────────────────────────────────────────
