@@ -107,9 +107,16 @@ const getSwcHelperRanges = (filePath: string, fileContent: string): [number, num
  * name-matches a post-ES5 *prototype* rule (`Array#keys`), but a static namespace call can
  * never be a prototype-method call. The receiver is checked from the flagged position's own
  * text, which is reliable because the gate runs before minification renames identifiers.
+ *
+ * The negative lookahead keeps `X.prototype.…` receivers OUT of the filter: a direct
+ * `Array.prototype.includes(...)` call is a genuine post-ES5 prototype-method usage that
+ * happens to start with a global's name, and must stay reported. (Indirected calls like
+ * `Array.prototype.includes.call(arr, x)` are a known blind spot of es-x itself — a
+ * property-access-then-`.call` shape is not a method call es-x can attribute — and are covered
+ * only by the Node.js 0.4 behavioral replay.)
  */
 const ES5_STATIC_GLOBAL_CALL_PATTERN =
-  /^(?:Object|Math|JSON|Date|String|Number|Boolean|RegExp|Array|Function|Error)\s*\./
+  /^(?:Object|Math|JSON|Date|String|Number|Boolean|RegExp|Array|Function|Error)\s*\.(?!\s*prototype\s*[.[])/
 
 /**
  * Lint every built JavaScript file in a directory against the full es-x ES5 restriction set

@@ -12,8 +12,12 @@
  * {@link isSimpleArgument} at all. The rule only gates the handful of rewrite forms that
  * genuinely duplicate an operand (e.g. inlining `s.slice(s.length - p.length) === p` for
  * `endsWith`, which uses `s` and `p` twice each) — those forms fall back to an emitted helper
- * function (see `emitted-helpers.ts`) instead of refusing when the operand isn't simple, so no
- * catalog entry actually refuses on shape grounds anymore.
+ * function (see `emitted-helpers.ts`) instead of refusing when the operand isn't simple, so
+ * operand *simplicity* alone never causes a refusal. The refusals that do exist are for shapes
+ * with no equivalent rewrite at all: spread call arguments (see
+ * {@link refuseSpreadArguments}), constructs whose ES2015 semantics have no ES5 counterpart
+ * (an escaped `.entries()` iterator), and labeled `.entries()` loops (a label cannot target
+ * the rewrite's block wrapper).
  */
 import { Node, SyntaxKind, ts } from 'ts-morph'
 

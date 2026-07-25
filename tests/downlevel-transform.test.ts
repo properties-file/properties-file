@@ -14,7 +14,7 @@
  * cases can't interfere with each other or touch the real filesystem.
  */
 import { execSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { runInNewContext } from 'node:vm'
@@ -22,7 +22,7 @@ import { runInNewContext } from 'node:vm'
 import { Project, ScriptTarget } from 'ts-morph'
 import { ScriptTarget as CompilerScriptTarget, transpileModule } from 'typescript'
 
-import { applyCatalogToSourceFile } from '../src/build-scripts/downlevel/catalog'
+import { applyCatalogToSourceFile, CATALOG_RULES } from '../src/build-scripts/downlevel/catalog'
 import { HELPER_SOURCE } from '../src/build-scripts/downlevel/emitted-helpers'
 import { DownlevelRefusalError } from '../src/build-scripts/downlevel/helpers'
 import { isNormalizedError, noThrow } from '../utilities/no-throw'
@@ -1663,6 +1663,45 @@ describe('downlevel catalog #16 - Array#toSpliced', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Coverage meta-guard: additions to the catalog must bring their tests along
+// ---------------------------------------------------------------------------
+
+describe('downlevel catalog - coverage meta-guard', () => {
+  // The README's add-a-catalog-entry checklist ("rule + tests + lint must stay consistent") is
+  // enforced here rather than trusted: a rule or helper added without tests fails this suite,
+  // not a future code review.
+  const ownSource = readFileSync(__filename, 'utf8')
+  // Whitespace-normalized view, so formatting (a wrapped call, a re-indented title) never
+  // defeats a match.
+  const normalizedSource = ownSource.replaceAll(/\s+/g, '')
+
+  it('every catalog rule family has a matching describe block in this file', () => {
+    // A describe title may cover several families at once (e.g. "#13/#14"), so collect every
+    // family number appearing in any "downlevel catalog ..." title.
+    const coveredFamilies = new Set(
+      ownSource
+        .matchAll(/downlevel catalog ([^']*)/g)
+        .flatMap((titleMatch) =>
+          titleMatch[1].matchAll(/#(\d+)/g).map((numberMatch) => numberMatch[1])
+        )
+    )
+    const missingFamilies = CATALOG_RULES.map((rule) => rule.id)
+      .map((id) => /^#(?<familyNumber>\d+) /.exec(id)?.groups?.familyNumber)
+      .filter((familyNumber): familyNumber is string => familyNumber !== undefined)
+      .filter((familyNumber, index, families) => families.indexOf(familyNumber) === index)
+      .filter((familyNumber) => !coveredFamilies.has(familyNumber))
+    expect(missingFamilies).toEqual([])
+  })
+
+  it('every emitted helper is exercised by at least one compileHelper equivalence test', () => {
+    const unexercisedHelpers = Object.keys(HELPER_SOURCE).filter(
+      (helperName) => !normalizedSource.includes(`compileHelper('${helperName}'`)
+    )
+    expect(unexercisedHelpers).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
 // The ES5 output gate itself (verify-es5-output.ts)
 // ---------------------------------------------------------------------------
 
@@ -1738,6 +1777,15 @@ describe('ES5 output gate (verify-es5-output)', () => {
     // The static-global false-positive filter must apply to prototype-rule name collisions
     // only — an escaped `Object.entries(...)` is a real ES2017 usage and must fail the gate.
     const verdict = gateVerdictFor('var entries = Object.entries({ a: 1 })\n')
+    expect(verdict).toContain('GATE_FAILED')
+    expect(verdict).toContain('post-ES5 construct')
+  })
+
+  it('never skips a direct prototype-method call spelled through a global (Array.prototype.includes(...))', () => {
+    // The receiver text starts with an ES5 global's name AND the finding comes from a
+    // prototype-named rule — the exact shape the static-global filter skips — but a
+    // `Global.prototype.…` receiver is a genuine prototype-method usage, not a static call.
+    const verdict = gateVerdictFor('var found = Array.prototype.includes([1])\n')
     expect(verdict).toContain('GATE_FAILED')
     expect(verdict).toContain('post-ES5 construct')
   })
