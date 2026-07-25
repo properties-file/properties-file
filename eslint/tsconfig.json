@@ -7,7 +7,7 @@
     "moduleResolution": "bundler",
     "strict": true,
     "paths": {
-      "@package-json/types": ["./package-json-types.d.ts"]
+      "eslint-plugin-package-json": ["./eslint-plugin-package-json.d.ts"]
     }
   },
   "include": ["./**/*.ts", "../eslint.config.ts"]

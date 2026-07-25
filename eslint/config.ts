@@ -2,7 +2,6 @@ import path from 'node:path'
 
 import { defineConfig } from 'eslint/config'
 import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescript'
-import esXPlugin from 'eslint-plugin-es-x'
 import { flatConfigs as importXPluginFlatConfigs } from 'eslint-plugin-import-x'
 import jestPlugin from 'eslint-plugin-jest'
 import { configs as packageJsonConfigs } from 'eslint-plugin-package-json'
@@ -13,28 +12,40 @@ import unicornPlugin from 'eslint-plugin-unicorn'
 import * as jsoncParser from 'jsonc-eslint-parser'
 import { configs as tsEslintConfigs } from 'typescript-eslint'
 
+import { arrayIterationOnlyRule } from './rules/array-iteration-only'
+
 /** Project root directory (one level up from eslint/). */
 const ROOT_DIR = path.resolve(import.meta.dirname, '..')
 
 const TYPESCRIPT_FILES = ['**/*.ts', '**/*.mts', '**/*.cts']
 
 /**
- * Unicorn rules that suggest modern ES APIs not available in ES5 environments. These are disabled
- * in shipped code to maintain backward compatibility with older browsers and runtimes, and
- * re-enabled for non-shipped files (tests, build scripts, config) that run in Node 20+.
+ * Unicorn rules that push modern APIs, disabled in shipped code (and re-enabled for non-shipped
+ * files, which run on modern Node.js).
+ *
+ * This list is deliberately minimal. The general policy for modern-API rules is *lazy*: rules
+ * whose suggestions the downlevel catalog does not (yet) cover stay ACTIVE. If one ever fires —
+ * new code, or a unicorn upgrade adding rules — the build makes it impossible to miss: the
+ * `eslint --fix` step may modernize the source, and the build's ES5 output gate then rejects
+ * the uncovered API. That failure is the decision point, made when a real use case exists:
+ *
+ * 1. Cover the API in the downlevel catalog (see src/build-scripts/downlevel/README.md), or
+ * 2. add the rule here with the decision documented (reverting any autofix), or
+ * 3. keep the ES5-expressible form and suppress the single site with a justification.
+ *
+ * Nothing is parked here preemptively. Every push a rule can make is immediately checked by a
+ * precise counterpart: uncovered ES APIs fail the build's ES5 output gate; runtime-specific
+ * host APIs (which that gate cannot see — es-x only knows ECMAScript) fail the
+ * `no-restricted-globals` runtime-agnostic ban (see {@link RESTRICTED_RUNTIME_GLOBALS}); and
+ * non-array iteration (e.g. a `prefer-direct-iteration` suggestion targeting a non-array
+ * iterable) fails `local/array-iteration-only`, in the same lint pass.
+ *
+ * Rules disabled for project-wide *domain* reasons (rather than ES5 compatibility) do not
+ * belong here either — this list is re-enabled as errors for non-shipped files, which only
+ * makes sense for compatibility-driven exclusions. Domain preferences live with the other
+ * unicorn overrides below (e.g. `unicorn/prefer-code-point`).
  */
-const UNICORN_MODERN_API_RULES = [
-  'unicorn/prefer-includes', // ES2015 - Array/String.prototype.includes
-  'unicorn/prefer-code-point', // ES2015 - String.prototype.codePointAt/String.fromCodePoint
-  'unicorn/prefer-string-raw', // ES2015 - String.raw
-  'unicorn/prefer-number-properties', // ES2015 - Number.parseInt/Number.parseFloat
-  'unicorn/prefer-string-replace-all', // ES2021 - String.prototype.replaceAll
-  'unicorn/prefer-at', // ES2022 - Array/String.prototype.at
-  'unicorn/prefer-top-level-await', // ES2022 - top-level await (also incompatible with CJS)
-  'unicorn/no-array-reverse', // ES2023 - Array.prototype.toReversed
-  'unicorn/no-array-sort', // ES2023 - Array.prototype.toSorted
-  'unicorn/no-negated-condition', // Style - disabled to allow `indexOf() !== -1` patterns
-]
+const UNICORN_MODERN_API_RULES: string[] = []
 
 /**
  * Set a list of ESLint rules to a given severity level.
@@ -51,31 +62,58 @@ const setRules = (rules: string[], level: 'off' | 'error'): Record<string, 'off'
  * typescript-eslint rules from `stylisticTypeChecked` that suggest ES2015+ runtime APIs
  * (not transpilable by TypeScript or SWC). Mirrors {@link UNICORN_MODERN_API_RULES}:
  * disabled in shipped code to maintain backward compatibility, re-enabled for non-shipped files.
+ *
+ * Intentionally empty: `@typescript-eslint/prefer-find` (ES2015 - Array.prototype.find) was the
+ * only entry, and the downlevel catalog's find-family coverage (`find`/`findIndex`/`findLast`/
+ * `findLastIndex`) now covers its entire suggestion surface, so it was removed. A future entry
+ * belongs here only if it suggests a runtime API the downlevel catalog does not (yet) rewrite.
  */
-const TS_ESLINT_MODERN_API_RULES = [
-  '@typescript-eslint/prefer-includes', // ES2015 - Array/String.prototype.includes
-  '@typescript-eslint/prefer-string-starts-ends-with', // ES2015 - String.prototype.startsWith/endsWith
-  '@typescript-eslint/prefer-find', // ES2015 - Array.prototype.find
-]
+const TS_ESLINT_MODERN_API_RULES: string[] = []
 
 /**
- * Syntax-only es-x rules that TypeScript already transpiles to ES5. These must be disabled
- * because we write modern TypeScript syntax (arrow functions, classes, template literals, etc.)
- * but rely on TypeScript's compiler to emit ES5-compatible output. Only runtime API rules
- * (e.g., `no-string-prototype-includes`) should remain active to prevent usage of APIs that
- * would require polyfills.
+ * Globals whose presence marks runtime-specific code. The core library is runtime-agnostic —
+ * usable from browsers, Node.js, and every bundler — so shipped code may only use the
+ * ECMAScript language itself plus explicitly-passed inputs. Node.js-only, browser-only, and
+ * host-environment APIs are all banned (bundler integration plugins are exempted below — they
+ * run inside Node.js-based build tools by nature).
+ *
+ * This is also what makes the lazy modern-API-rule policy (see UNICORN_MODERN_API_RULES) safe
+ * for host APIs: the build's ES5 output gate only understands ECMAScript, so a lint autofix
+ * pushing a host API (e.g. `queueMicrotask`) would otherwise ship undetected by every static
+ * layer. With this ban, any such push fails source linting immediately.
  */
-const ES_X_SYNTAX_RULES_HANDLED_BY_TYPESCRIPT = Object.fromEntries(
-  Object.keys(esXPlugin.configs['flat/restrict-to-es5'].rules ?? {})
-    .filter(
-      (rule) =>
-        !rule.includes('prototype') &&
-        !/no-(array-from|array-of|map$|set$|weak-map|weak-set|weak-ref|promise|proxy|reflect|typed-arrays|shared-array-buffer|atomics|object-assign|object-entries|object-fromentries|object-getownpropertydescriptors|object-getownpropertysymbols|object-is$|object-setprototypeof|object-values|object-groupby|object-hasown|number-|math-|string-fromcodepoint|string-raw|global-this|map-groupby)/.test(
-          rule
-        )
-    )
-    .map((rule) => [rule, 'off'] as const)
-)
+const RESTRICTED_RUNTIME_GLOBALS = [
+  // Node.js / host APIs.
+  'process',
+  'Buffer',
+  'setImmediate',
+  'queueMicrotask',
+  'structuredClone',
+  'fetch',
+  'URL',
+  'URLSearchParams',
+  'AbortController',
+  'AbortSignal',
+  'TextEncoder',
+  'TextDecoder',
+  'performance',
+  'crypto',
+  'setTimeout',
+  'setInterval',
+  'clearTimeout',
+  'clearInterval',
+  // Browser-only APIs.
+  'window',
+  'document',
+  'navigator',
+  'localStorage',
+  'sessionStorage',
+].map((name) => ({
+  name,
+  message:
+    'Shipped code must stay runtime-agnostic (ECMAScript only) — this API is unavailable on ' +
+    'some supported runtimes.',
+}))
 
 export default defineConfig(
   // Files to ignore (replaces `.eslintignore`).
@@ -85,6 +123,8 @@ export default defineConfig(
     ignores: [
       // Distribution (compiled code).
       'dist/',
+      // Downlevel transform shadow tree (see src/build-scripts/downlevel/), regenerated per build.
+      '.transformed-src/',
       // Jest files.
       'coverage/',
       // Asset (static) files.
@@ -95,6 +135,12 @@ export default defineConfig(
       '**/*.d.ts',
       // Legacy Node.js compatibility test (intentionally ES5, not linted).
       'tests/node-compat/',
+      // Intentionally ES5 (must execute on Node.js 0.4 via the compat Docker image).
+      'tests/functional/run-cjs.js',
+      // Generated file (golden.json scenario fixtures produced by generate.ts).
+      'tests/functional/golden.json',
+      // Minimal CommonJS marker (mirrors dist/cjs/package.json), not a publishable package.
+      'tests/functional/package.json',
     ],
   },
   // Prettier recommended configs.
@@ -103,10 +149,12 @@ export default defineConfig(
   // Unicorn recommended configs.
   // @see https://github.com/sindresorhus/eslint-plugin-unicorn
   unicornPlugin.configs.recommended,
-  // TypeScript configuration.
+  // Local project-specific rules (see eslint/rules/).
+  { plugins: { local: { rules: { 'array-iteration-only': arrayIterationOnlyRule } } } },
+  // TypeScript configuration. Applies to eslint/ files too (their tsconfig project is
+  // overridden by the dedicated block below, mirroring the performance/ and build-scripts/ dirs).
   {
     files: [...TYPESCRIPT_FILES],
-    ignores: ['eslint/**'],
     extends: [
       // TypeScript ESLint recommended configs.
       // @see https://typescript-eslint.io/getting-started/
@@ -116,10 +164,6 @@ export default defineConfig(
       // @see https://github.com/un-ts/eslint-plugin-import-x
       importXPluginFlatConfigs.recommended,
       importXPluginFlatConfigs.typescript,
-      // Restrict runtime APIs to ES5 to maximize backward compatibility.
-      // Syntax rules are disabled since TypeScript handles transpilation.
-      // @see https://github.com/eslint-community/eslint-plugin-es-x
-      esXPlugin.configs['flat/restrict-to-es5'],
     ],
     plugins: { 'prefer-arrow-functions': preferArrowFunctionsPlugin, tsdoc: tsdocPlugin },
     languageOptions: { parserOptions: { project: ['tsconfig.json'], tsconfigRootDir: ROOT_DIR } },
@@ -127,8 +171,35 @@ export default defineConfig(
       'import-x/resolver-next': [createTypeScriptImportResolver()],
     },
     rules: {
-      // Disable es-x syntax rules that TypeScript transpiles (keep only runtime API rules).
-      ...ES_X_SYNTAX_RULES_HANDLED_BY_TYPESCRIPT,
+      /**
+       * ES5 runtime compatibility is deliberately NOT linted at source level: the downlevel
+       * transform (src/build-scripts/downlevel/) rewrites modern APIs before compilation, and
+       * the authoritative, exceptionless check runs against the BUILT output (the es-x
+       * "verify ES5 output" step in src/build-scripts/build.ts). An uncovered modern API is
+       * therefore caught by the build, not the editor — see the lazy policy documented on
+       * {@link UNICORN_MODERN_API_RULES}.
+       */
+      // The core library is runtime-agnostic: no Node.js-only or browser-only APIs in shipped
+      // code (see RESTRICTED_RUNTIME_GLOBALS; bundler plugins and non-shipped files are
+      // exempted in their own blocks below).
+      'no-restricted-globals': ['error', ...RESTRICTED_RUNTIME_GLOBALS],
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['node:*'],
+              message:
+                'Shipped code must stay runtime-agnostic (ECMAScript only) — Node.js modules ' +
+                'are unavailable on other supported runtimes.',
+            },
+          ],
+        },
+      ],
+      // Prove `for...of`/spread/array destructuring only target arrays, so the ES5 downlevel's
+      // `iterableIsArray` assumption is safe (see src/build-scripts/build.ts). Disabled for
+      // non-shipped files below, which never pass through the ES5 downlevel.
+      'local/array-iteration-only': 'error',
       // Sort import declarations by group (builtin → external → internal → parent → sibling → index).
       // @see https://github.com/un-ts/eslint-plugin-import-x/blob/master/docs/rules/order.md
       'import-x/order': [
@@ -223,8 +294,8 @@ export default defineConfig(
          * @see https://github.com/sindresorhus/eslint-plugin-unicorn/issues/2604
          */
         'unicorn/no-nested-ternary': 'off',
-        // Prefer `forEach` over `for` loops for readability on modern engines.
-        'unicorn/no-array-for-each': 'off',
+        // Prefer `forEach` over `for...of` loops for readability on modern engines.
+        'unicorn/no-for-each': 'off',
         // Doesn't add a lot of value and makes numbers look odd.
         'unicorn/numeric-separators-style': 'off',
         // Not really applicable when using TypeScript (mostly triggers false positives).
@@ -234,6 +305,45 @@ export default defineConfig(
          * `null` means explicitly set to empty). We prefer to keep both in our codebase.
          */
         'unicorn/no-null': 'off',
+        /**
+         * Negated conditions with an explicit else branch are sometimes the clearer reading
+         * order (e.g. handling the exceptional case first); left to author judgment.
+         */
+        'unicorn/no-negated-condition': 'off',
+        /**
+         * Code-unit (`charCodeAt`/`fromCharCode`) string handling is the domain-correct form
+         * for this project, everywhere: the `.properties` format is defined over UTF-16 code
+         * units (a Java `\uXXXX` escape is one code unit; an astral character is two escapes
+         * forming a surrogate pair), so code-point APIs would produce spec-invalid escapes.
+         * This is a domain preference, not an ES5-compatibility exclusion —
+         * `codePointAt`/`fromCodePoint` are downlevel-catalog-coverable if a genuine
+         * code-point use case ever appears (see src/build-scripts/downlevel/README.md).
+         */
+        'unicorn/prefer-code-point': 'off',
+        /**
+         * Extracting nested-loop `break`/`continue` into functions adds call overhead and hurts
+         * readability in the character-scanning parser hot paths (guarded by the benchmark suite).
+         */
+        'unicorn/no-break-in-nested-loop': 'off',
+        /**
+         * Enforce `is`/`has`/`should`-style prefixes on boolean names.
+         *
+         * The `ignore` list is a deliberate vocabulary decision, not (only) breaking-change
+         * avoidance — this codebase intentionally uses two boolean naming conventions:
+         *
+         * - State-describing booleans (locals, predicates, results) use `is`/`has`/`should`
+         *   prefixes, enforced by this rule (e.g. `shouldEscapeUnicode`, `hasDanglingContinuation`).
+         * - Boolean option keys in the public API use imperative verb phrases describing the
+         *   action to perform (`escapeUnicode`, `removeComments`, `collapseMultiline`,
+         *   `deduplicateKeys`), matching the broader ecosystem convention for boolean options
+         *   (e.g. TypeScript's `removeComments`, terser's `compress`).
+         *
+         * The `escapeKey`/`escapeValue` parameters named `escapeUnicode` mirror the option key of
+         * the same name, so prefixing them would break vocabulary consistency with the options
+         * they feed. The rule only checks variables and parameters (`checkProperties` defaults to
+         * `false`), so renaming the parameters would not make the option keys lint-enforced anyway.
+         */
+        'unicorn/consistent-boolean-name': ['error', { ignore: ['^escape(Unicode|Space)$'] }],
         /**
          * This rule conflicts with `prettier/prettier` and there is no way to disable the Prettier rule.
          *
@@ -259,24 +369,23 @@ export default defineConfig(
   // Non-shipped files (build scripts, tests, config) run in Node 20+ and should use modern APIs.
   {
     files: [
-      'src/build-scripts/**/*.ts',
-      'tests/**/*.ts',
+      ...TYPESCRIPT_FILES.map((pattern) => `src/build-scripts/${pattern}`),
+      ...TYPESCRIPT_FILES.map((pattern) => `tests/${pattern}`),
       'eslint.config.ts',
-      'eslint/**/*.ts',
-      'performance/**/*.ts',
+      ...TYPESCRIPT_FILES.map((pattern) => `eslint/${pattern}`),
+      ...TYPESCRIPT_FILES.map((pattern) => `performance/${pattern}`),
     ],
     rules: {
-      // Disable all es-x restrictions since these files are not shipped to consumers.
-      ...Object.fromEntries(
-        Object.keys(esXPlugin.configs['flat/restrict-to-es5'].rules ?? {}).map((rule) => [
-          rule,
-          'off',
-        ])
-      ),
+      // Non-shipped files run on modern Node.js: runtime-specific APIs and Node module imports
+      // are fine here.
+      'no-restricted-globals': 'off',
+      'no-restricted-imports': 'off',
       // Re-enable modern unicorn rules that are disabled for backward compatibility in shipped code.
       ...setRules(UNICORN_MODERN_API_RULES, 'error'),
       // Re-enable typescript-eslint stylistic modern-API rules.
       ...setRules(TS_ESLINT_MODERN_API_RULES, 'error'),
+      // Non-shipped files never pass through the ES5 downlevel; iterating any iterable is fine.
+      'local/array-iteration-only': 'off',
       // Allow `console.log` for status output, benchmark results, and test diagnostics.
       // @see https://eslint.org/docs/latest/rules/no-console
       'no-console': 'off',
@@ -289,11 +398,32 @@ export default defineConfig(
       parserOptions: { project: ['src/build-scripts/tsconfig.json'], tsconfigRootDir: ROOT_DIR },
     },
   },
+  // Bundler integration plugins (shipped, but Node.js-context by nature: they run inside
+  // Node.js-based build tools and legitimately read files). The runtime-agnostic restriction
+  // applies to the core library only.
+  {
+    files: TYPESCRIPT_FILES.map((pattern) => `src/bundler/${pattern}`),
+    rules: {
+      'no-restricted-globals': 'off',
+      'no-restricted-imports': 'off',
+    },
+  },
   // Performance TypeScript files.
   {
     files: TYPESCRIPT_FILES.map((pattern) => `performance/${pattern}`),
     languageOptions: {
       parserOptions: { project: ['performance/tsconfig.json'], tsconfigRootDir: ROOT_DIR },
+    },
+  },
+  // Functional test harness (scenarios.ts, execute-scenario.ts, generate.ts are non-test .ts
+  // files under tests/, so they fall outside the Jest-only `tests/**/*.test.ts` project block
+  // below) — needs its own typed-lint project coverage, mirrored from how performance/**/*.ts
+  // is handled above. functional.test.ts matches both this block and the Jest block; the Jest
+  // block below applies last and adds jest-specific plugin rules on top.
+  {
+    files: TYPESCRIPT_FILES.map((pattern) => `tests/functional/${pattern}`),
+    languageOptions: {
+      parserOptions: { project: ['tests/tsconfig.json'], tsconfigRootDir: ROOT_DIR },
     },
   },
   // JSON files.
@@ -330,7 +460,7 @@ export default defineConfig(
   // Rules applying to all files.
   {
     rules: {
-      'unicorn/prevent-abbreviations': [
+      'unicorn/name-replacements': [
         'error',
         {
           ignore: [
@@ -339,6 +469,10 @@ export default defineConfig(
           ],
         },
       ],
+      // Suggests `Map.prototype.getOrInsertComputed` (TC39 proposal, not available in any Node.js release).
+      'unicorn/prefer-get-or-insert-computed': 'off',
+      // Suggests `Promise.try` (ES2025, Node.js 23+) which is not available in the Node.js version used by this project.
+      'unicorn/prefer-promise-try': 'off',
     },
   }
 )
