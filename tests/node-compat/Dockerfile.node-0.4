@@ -34,5 +34,8 @@ COPY --from=builder /usr/local/bin/node /usr/local/bin/node
 
 COPY dist/cjs /dist/cjs
 COPY tests/node-compat/test.js /test.js
+COPY tests/functional/golden.json /golden.json
+COPY tests/functional/run-cjs.js /run-cjs.js
 
 RUN node /test.js
+RUN node /run-cjs.js /dist/cjs

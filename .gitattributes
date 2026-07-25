@@ -5,3 +5,5 @@
 Dockerfile linguist-vendored
 # Exclude Node.js 0.10 compatibility test (ES5 JavaScript) from GitHub language statistics.
 tests/node-compat/test.js linguist-vendored
+# Exclude Node.js 0.4 functional replay runner (intentionally ES5 JavaScript) from GitHub language statistics.
+tests/functional/run-cjs.js linguist-vendored
