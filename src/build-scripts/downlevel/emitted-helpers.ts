@@ -579,7 +579,8 @@ const downlevelObjectValues = <T>(o: { [key: string]: T } | ArrayLike<T>): T[] =
     // sites infer exactly the type the native call would. No truthful type guard can replace
     // the assertion either: the asserted claim is not runtime-true for an \`ArrayLike\` (its
     // own enumerable \`length\`, when present, joins the values at runtime — an unsoundness
-    // already present in the native lib typing this helper reproduces faithfully). The
+    // already present in the native lib typing this helper reproduces faithfully; see
+    // https://github.com/microsoft/TypeScript/issues/38520). The
     // repository-wide type-assertion ban is deviated from knowingly, scoped to this single
     // property read, in generated code outside ESLint's reach.
     result.push((o as { [key: string]: T })[keys[index]])
