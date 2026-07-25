@@ -1,6 +1,6 @@
 # Comparison with Other `.properties` Packages
 
-> **Last updated:** April 11, 2026. Download counts, compliance scores, and performance numbers may have changed since this was written. Feel free to [open an issue](https://github.com/properties-file/properties-file/issues) if you notice something outdated.
+> **Last updated:** July 25, 2026. Download counts, compliance scores, and performance numbers may have changed since this was written. Feel free to [open an issue](https://github.com/properties-file/properties-file/issues) if you notice something outdated. No compared package has published a release since the previous audit (April 2026), so the compliance results below are unchanged; download counts and performance numbers were re-measured.
 
 There are many `.properties` file packages on npm. This document compares the most popular ones to help you choose the right tool for your needs.
 
@@ -8,13 +8,13 @@ There are many `.properties` file packages on npm. This document compares the mo
 
 | Package                                                              | Weekly Downloads | Last Updated | Java Compliance | TypeScript | Deps  | min+gzip  | Browser        | Node      |
 | -------------------------------------------------------------------- | ---------------: | :----------- | :-------------- | :--------- | :---- | :-------- | :------------- | :-------- |
-| [properties-reader](https://www.npmjs.com/package/properties-reader) |        3,063,130 | Jan 2026     | Basic (45%)     | Yes (v3+)  | 2     | 7.2 kB    | No             | >=18      |
-| [java-properties](https://www.npmjs.com/package/java-properties)     |        2,790,666 | Jul 2019     | Partial (64%)   | Yes        | 0     | 1.3 kB    | No             | >=0.6     |
-| **[properties-file](https://www.npmjs.com/package/properties-file)** |      **718,105** | **Mar 2026** | **Full (100%)** | **Yes**    | **0** | **970 B** | **Yes (ES5+)** | **>=0.4** |
-| [properties](https://www.npmjs.com/package/properties)               |          677,733 | Feb 2014     | Mostly (91%)    | No         | 0     | 3.6 kB    | Partial        | >=0.10    |
-| [properties-parser](https://www.npmjs.com/package/properties-parser) |          110,318 | May 2023     | Full (100%)     | No         | 0     | 2.1 kB    | No             | >=0.3     |
+| [properties-reader](https://www.npmjs.com/package/properties-reader) |        5,368,209 | Jan 2026     | Basic (45%)     | Yes (v3+)  | 2     | 7.2 kB    | No             | >=18      |
+| [java-properties](https://www.npmjs.com/package/java-properties)     |        3,538,534 | Jul 2019     | Partial (64%)   | Yes        | 0     | 1.3 kB    | No             | >=0.6     |
+| **[properties-file](https://www.npmjs.com/package/properties-file)** |      **951,994** | **May 2026** | **Full (100%)** | **Yes**    | **0** | **970 B** | **Yes (ES5+)** | **>=0.4** |
+| [properties](https://www.npmjs.com/package/properties)               |          731,133 | Feb 2014     | Mostly (91%)    | No         | 0     | 3.6 kB    | Partial        | >=0.10    |
+| [properties-parser](https://www.npmjs.com/package/properties-parser) |          128,920 | May 2023     | Full (100%)     | No         | 0     | 2.1 kB    | No             | >=0.3     |
 
-> Download counts as of April 2026.
+> Download counts as of July 2026.
 
 > **Note on `properties-reader`:** `properties-reader` works for basic `key=value` files with `#` comments — which covers many simple use cases. However, it is designed as an INI-style config parser and does not implement the Java `.properties` specification. `:` separators, whitespace separators, escape sequences, multiline continuations, and escaped characters in keys will not be handled correctly.
 
@@ -70,16 +70,18 @@ We tested each library against 22 test cases that cover the [Java Properties spe
 
 ## Performance
 
-Benchmark parsing 10,000 key-value entries to a key-value object, 200 iterations, median time:
+Benchmark parsing 10,000 key-value entries to a key-value object — 200 iterations after warmup,
+median time, Node.js 22. `properties-reader` and `java-properties` only accept file paths, so
+their numbers include one (OS-cached) file read per iteration, matching their real-world usage.
 
 | Package                                         |     Median |      Throughput |           Relative |
 | ----------------------------------------------- | ---------: | --------------: | -----------------: |
-| **properties-file** (`getProperties`)           | **1.7 ms** | **580 ops/sec** | **1.0x (fastest)** |
-| **properties-file** (`Properties` + `toObject`) | **1.9 ms** | **520 ops/sec** |           **1.1x** |
-| properties-reader                               |     4.0 ms |     250 ops/sec |        2.4x slower |
-| java-properties                                 |     6.1 ms |     165 ops/sec |        3.6x slower |
-| properties-parser                               |    11.6 ms |      86 ops/sec |        6.8x slower |
-| properties                                      |    11.7 ms |      86 ops/sec |        6.9x slower |
+| **properties-file** (`getProperties`)           | **2.5 ms** | **405 ops/sec** | **1.0x (fastest)** |
+| **properties-file** (`Properties` + `toObject`) | **2.7 ms** | **370 ops/sec** |           **1.1x** |
+| properties-reader                               |     4.6 ms |     219 ops/sec |        1.8x slower |
+| java-properties                                 |     5.6 ms |     179 ops/sec |        2.3x slower |
+| properties                                      |    11.0 ms |      91 ops/sec |        4.5x slower |
+| properties-parser                               |    12.1 ms |      83 ops/sec |        4.9x slower |
 
 ## Feature Comparison
 
@@ -116,15 +118,24 @@ Benchmark parsing 10,000 key-value entries to a key-value object, 200 iterations
 | Escape utilities                                |       Yes       |        No         |       No        |     No     |        No         |
 | **Integration**                                 |                 |                   |                 |            |                   |
 | TypeScript                                      |       Yes       |     Yes (v3+)     |       Yes       |     No     |        No         |
+| ESM + CJS dual build                            |       Yes       |     Yes (v3+)     |       No        |     No     |        No         |
 | Bundler plugins (Webpack, Rollup, esbuild, Bun) |       Yes       |        No         |       No        |     No     |        No         |
 | Tree-shakable                                   |       Yes       |        N/A        |       N/A       |    N/A     |        N/A        |
 | Zero dependencies                               |       Yes       |      No (2)       |       Yes       |    Yes     |        Yes        |
 | Browser support                                 |   Yes (ES5+)    |        No         |       No        |  Partial   |        No         |
+| Runtime-agnostic core (no Node/browser APIs)    |       Yes       |        No         |       No        |  Partial   |        No         |
 | Node.js minimum                                 |      >=0.4      |       >=18        |      >=0.6      |   >=0.10   |       >=0.3       |
 | **Quality**                                     |                 |                   |                 |            |                   |
 | Test coverage                                   |      100%       |      Unknown      |     Unknown     |  Unknown   |      Unknown      |
+| Published artifacts behaviorally tested         |   Node 0.4–26   |        No         |       No        |     No     |        No         |
 | Active maintenance                              |   Yes (2026)    |    Yes (2026)     |    No (2019)    | No (2014)  |  Minimal (2023)   |
-| min+gzip (reading)                              |     1.1 kB      |      7.2 kB       |     1.3 kB      |   3.6 kB   |      2.1 kB       |
+| min+gzip (reading)                              |      970 B      |      7.2 kB       |     1.3 kB      |   3.6 kB   |      2.1 kB       |
+| min+gzip (full editing API)                     |     4.8 kB      |      7.2 kB       |       N/A       |    N/A     |      2.1 kB       |
+
+> **"Published artifacts behaviorally tested"** means the compiled output that ships to npm — not
+> just the source — is executed against a golden behavioral suite on every build, including on a
+> real Node.js 0.4 runtime in CI. See
+> [`tests/functional/`](../tests/functional/README.md) for how this works.
 
 ## When to use what
 
@@ -132,5 +143,5 @@ Benchmark parsing 10,000 key-value entries to a key-value object, 200 iterations
 - **You need to inspect or transform the file** → `properties-file` (`Properties`) — lossless data model with normalization.
 - **You need to edit and write back** → `properties-file` (`PropertiesEditor`) — full editing with format preservation.
 - **You need INI-style config parsing** → `properties-reader` — not Java-compliant, but good for INI files with sections.
-- **You're already using `java-properties`** → consider switching — it crashes on valid input, hasn't been updated since 2019, and is 3.6x slower.
+- **You're already using `java-properties`** → consider switching — it crashes on valid input, hasn't been updated since 2019, and is 2.3x slower.
 - **You're already using `properties`** → consider switching — abandoned since 2014, returns `null` for empty values (spec violation).
