@@ -19,7 +19,14 @@ import type { BlankLineNode, CommentNode, PropertiesNode, PropertyNode } from '.
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Characters that count as whitespace in .properties files (space, tab, formfeed). */
+/**
+ * Check whether a character code counts as whitespace in `.properties` files (space, tab,
+ * formfeed).
+ *
+ * @param charCode - The character code to test.
+ *
+ * @returns `true` if the character code is a `.properties` whitespace character.
+ */
 const isWhitespace = (charCode: number): boolean => [CH_SPACE, CH_TAB, CH_FF].includes(charCode)
 
 /**

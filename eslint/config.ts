@@ -4,6 +4,7 @@ import { defineConfig } from 'eslint/config'
 import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescript'
 import { flatConfigs as importXPluginFlatConfigs } from 'eslint-plugin-import-x'
 import jestPlugin from 'eslint-plugin-jest'
+import jsdocPlugin from 'eslint-plugin-jsdoc'
 import { configs as packageJsonConfigs } from 'eslint-plugin-package-json'
 import preferArrowFunctionsPlugin from 'eslint-plugin-prefer-arrow-functions'
 import prettierRecommendedConfig from 'eslint-plugin-prettier/recommended'
@@ -165,10 +166,15 @@ export default defineConfig(
       importXPluginFlatConfigs.recommended,
       importXPluginFlatConfigs.typescript,
     ],
-    plugins: { 'prefer-arrow-functions': preferArrowFunctionsPlugin, tsdoc: tsdocPlugin },
+    plugins: {
+      'prefer-arrow-functions': preferArrowFunctionsPlugin,
+      tsdoc: tsdocPlugin,
+      jsdoc: jsdocPlugin,
+    },
     languageOptions: { parserOptions: { project: ['tsconfig.json'], tsconfigRootDir: ROOT_DIR } },
     settings: {
       'import-x/resolver-next': [createTypeScriptImportResolver()],
+      jsdoc: { mode: 'typescript' },
     },
     rules: {
       /**
@@ -246,6 +252,37 @@ export default defineConfig(
       // Validates that TypeScript doc comments conform to the TSDoc specification.
       // @see https://tsdoc.org/pages/packages/eslint-plugin-tsdoc/
       'tsdoc/syntax': 'warn',
+      // TSDoc completeness: `tsdoc/syntax` above only validates syntax of comments that exist;
+      // the jsdoc rules below make documentation mandatory (presence, one @param per parameter
+      // with matching names, @returns on value-returning functions, non-empty descriptions).
+      // Type annotations in braces are deliberately NOT required (`require-param-type`/
+      // `require-returns-type` stay off): types live in TypeScript, which is TSDoc style.
+      // @see https://github.com/gajus/eslint-plugin-jsdoc
+      'jsdoc/require-jsdoc': [
+        'error',
+        {
+          require: {
+            FunctionDeclaration: true,
+            MethodDefinition: true,
+            ClassDeclaration: true,
+          },
+          contexts: [
+            'VariableDeclarator > ArrowFunctionExpression',
+            'TSInterfaceDeclaration',
+            'TSTypeAliasDeclaration',
+            'TSEnumDeclaration',
+            'PropertyDefinition',
+            'TSInterfaceDeclaration TSPropertySignature',
+            'TSInterfaceDeclaration TSMethodSignature',
+          ],
+        },
+      ],
+      'jsdoc/require-description': 'error',
+      'jsdoc/require-param': 'error',
+      'jsdoc/require-param-description': 'error',
+      'jsdoc/check-param-names': 'error',
+      'jsdoc/require-returns': 'error',
+      'jsdoc/require-returns-description': 'error',
       // Enforces explicit return types on functions and class methods to avoid unintentionally breaking contracts.
       // @see https://typescript-eslint.io/rules/explicit-module-boundary-types/
       '@typescript-eslint/explicit-function-return-type': 'error',

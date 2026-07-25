@@ -10,10 +10,30 @@ import { Properties } from '../src/parser'
 
 import type { KeyValuePairObject } from '../src/parser/nodes'
 
+/**
+ * Read properties using the fast functional parser.
+ *
+ * @param content - The `.properties` file content.
+ *
+ * @returns The parsed key-value object.
+ */
+const readUsingGetProperties = (content: string | Buffer): KeyValuePairObject =>
+  getProperties(content)
+
+/**
+ * Read properties using the lossless object-oriented parser.
+ *
+ * @param content - The `.properties` file content.
+ *
+ * @returns The parsed key-value object.
+ */
+const readUsingToObject = (content: string | Buffer): KeyValuePairObject =>
+  new Properties(content).toObject()
+
 /** Two readers that must produce identical results. */
 const readers: [string, (content: string | Buffer) => KeyValuePairObject][] = [
-  ['getProperties()', (content): KeyValuePairObject => getProperties(content)],
-  ['Properties.toObject()', (content): KeyValuePairObject => new Properties(content).toObject()],
+  ['getProperties()', readUsingGetProperties],
+  ['Properties.toObject()', readUsingToObject],
 ]
 
 describe.each(readers)('%s', (_name, read) => {

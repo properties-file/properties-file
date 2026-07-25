@@ -130,6 +130,14 @@ export type DeleteOptions = {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Formatting options for {@link buildPropertyNode}. */
+type BuildPropertyNodeOptions = {
+  /** If `true`, escape non-ASCII characters as `\\uXXXX` sequences. Default: `false`. */
+  escapeUnicode?: boolean
+  /** Separator character to use between key and value. Default: `'='`. */
+  separator?: KeyValuePairSeparator
+}
+
 /**
  * Build a {@link PropertyNode} from key, value, and formatting options.
  *
@@ -143,10 +151,7 @@ export type DeleteOptions = {
 const buildPropertyNode = (
   key: string,
   value: string,
-  options: {
-    escapeUnicode?: boolean
-    separator?: KeyValuePairSeparator
-  },
+  options: BuildPropertyNodeOptions,
   lineNumber: number
 ): PropertyNode => {
   const shouldEscapeUnicode = options.escapeUnicode === true

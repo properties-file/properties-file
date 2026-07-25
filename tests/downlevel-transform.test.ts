@@ -527,22 +527,34 @@ const compileHelper = <HelperFunction>(
   return evaluated
 }
 
-const isStringPredicateHelper = (
-  value: unknown
-): value is (s: string, p: string, position: number) => boolean => typeof value === 'function'
+/* eslint-disable @typescript-eslint/no-unnecessary-type-parameters --
+   The return-only type parameter is deliberate (see the doc comment below), so the rule's
+   "used only once" heuristic is wrong for this specific function. */
+/**
+ * Build a type guard asserting that a value evaluated in the `vm` realm is a function with the
+ * given signature. The runtime check can only verify "is a function"; the signature is declared
+ * by the call site and trusted, which is exactly the contract {@link compileHelper} needs — the
+ * equivalence tests then exercise that trusted signature against edge inputs.
+ *
+ * The return-only type parameter is what lets each call site state the expected signature
+ * without a type assertion.
+ *
+ * @returns A type guard narrowing to the declared function signature.
+ */
+const functionGuard =
+  <FunctionSignature>(): ((value: unknown) => value is FunctionSignature) =>
+  (value: unknown): value is FunctionSignature =>
+    typeof value === 'function'
+/* eslint-enable @typescript-eslint/no-unnecessary-type-parameters */
 
-const isPlainEndsWithHelper = (value: unknown): value is (s: string, p: string) => boolean =>
-  typeof value === 'function'
+const isStringPredicateHelper = functionGuard<(s: string, p: string, position: number) => boolean>()
 
-const isAtHelper = (
-  value: unknown
-): value is (x: string | readonly unknown[], index: number) => unknown =>
-  typeof value === 'function'
+const isPlainEndsWithHelper = functionGuard<(s: string, p: string) => boolean>()
 
-const isIncludesHelper = (
-  value: unknown
-): value is (array: readonly number[], v: number, from?: number) => boolean =>
-  typeof value === 'function'
+const isAtHelper = functionGuard<(x: string | readonly unknown[], index: number) => unknown>()
+
+const isIncludesHelper =
+  functionGuard<(array: readonly number[], v: number, from?: number) => boolean>()
 
 /**
  * Check whether a thrown value has a string `name` property (e.g. `'TypeError'`,
@@ -558,72 +570,100 @@ const isIncludesHelper = (
 const hasErrorName = (value: unknown): value is { name: string } =>
   typeof value === 'object' && value !== null && 'name' in value && typeof value.name === 'string'
 
-const isReplaceAllStringHelper = (
-  value: unknown
-): value is (s: string, search: string, replacement: string) => string =>
-  typeof value === 'function'
+const isReplaceAllStringHelper =
+  functionGuard<(s: string, search: string, replacement: string) => string>()
 
-const isReplaceAllStringFunctionHelper = (
-  value: unknown
-): value is (
-  s: string,
-  search: string,
-  replacer: (matched: string, position: number, fullString: string) => unknown
-) => string => typeof value === 'function'
+const isReplaceAllStringFunctionHelper =
+  functionGuard<
+    (
+      s: string,
+      search: string,
+      replacer: (matched: string, position: number, fullString: string) => unknown
+    ) => string
+  >()
 
-const isReplaceAllRegExpHelper = (
-  value: unknown
-): value is (s: string, re: RegExp, replacement: unknown) => string => typeof value === 'function'
+const isReplaceAllRegExpHelper =
+  functionGuard<(s: string, re: RegExp, replacement: unknown) => string>()
 
-/** A replacer function used only as a dynamic (non-literal) `replaceAll` argument in tests. */
+/**
+ * A replacer function used only as a dynamic (non-literal) `replaceAll` argument in tests.
+ *
+ * @param matched - The matched substring.
+ * @param position - The match's position in the full string.
+ * @param fullString - The full string being searched.
+ *
+ * @returns A marker embedding all three replacer arguments, so tests can verify each was
+ * forwarded correctly.
+ */
 const describeReplacer = (matched: string, position: number, fullString: string): string =>
   `<${matched}@${position}/${fullString.length}>`
 
-/** A replacer function used only as a dynamic (non-literal) `replaceAll` argument in tests. */
+/**
+ * A replacer function used only as a dynamic (non-literal) `replaceAll` argument in tests.
+ *
+ * @param matched - The matched substring.
+ *
+ * @returns The matched substring in upper case.
+ */
 const upperCaseReplacer = (matched: string): string => matched.toUpperCase()
 
-const isUnaryPredicateHelper = (value: unknown): value is (v: unknown) => boolean =>
-  typeof value === 'function'
+const isUnaryPredicateHelper = functionGuard<(v: unknown) => boolean>()
 
-const isFindFamilyHelper = (
-  value: unknown
-): value is (
-  array: readonly unknown[],
-  predicate: (value: unknown, index: number, array: readonly unknown[]) => unknown,
-  thisArgument?: unknown
-) => unknown => typeof value === 'function'
+const isFindFamilyHelper =
+  functionGuard<
+    (
+      array: readonly unknown[],
+      predicate: (value: unknown, index: number, array: readonly unknown[]) => unknown,
+      thisArgument?: unknown
+    ) => unknown
+  >()
 
-/** A find-family predicate used by value, never by reference, in the equivalence tests. */
+/**
+ * A find-family predicate used by value, never by reference, in the equivalence tests.
+ *
+ * @param value - The array element under test.
+ *
+ * @returns `true` if the element is a number greater than three.
+ */
 const isBiggerThanThree = (value: unknown): boolean => typeof value === 'number' && value > 3
 
-/** A find-family predicate used by value, never by reference, in the equivalence tests. */
+/**
+ * A find-family predicate used by value, never by reference, in the equivalence tests.
+ *
+ * @param value - The array element under test.
+ *
+ * @returns `true` if the element is a number greater than one hundred.
+ */
 const isBiggerThanOneHundred = (value: unknown): boolean => typeof value === 'number' && value > 100
+
+/** The `this` shape bound to {@link isBiggerThanThisThreshold} via the helper's `thisArg`. */
+type ThresholdHolder = {
+  /** The exclusive lower bound the predicate compares elements against. */
+  threshold: number
+}
 
 /**
  * A find-family predicate that reads its `thisArg` — exercising `this` outside a class is the
  * point of this predicate (it exists solely to verify the emitted find-family helpers forward
  * their optional `thisArg` the same way native `Array#find` does).
+ *
+ * @param this - The bound {@link ThresholdHolder}, forwarded by the helper under test.
+ * @param value - The array element under test.
+ *
+ * @returns `true` if the element is a number greater than the bound `this.threshold`.
  */
-
-function isBiggerThanThisThreshold(this: { threshold: number }, value: unknown): boolean {
+function isBiggerThanThisThreshold(this: ThresholdHolder, value: unknown): boolean {
   return typeof value === 'number' && value > this.threshold // eslint-disable-line unicorn/no-this-outside-of-class
 }
 
-const isRepeatHelper = (value: unknown): value is (s: string, count: number) => string =>
-  typeof value === 'function'
+const isRepeatHelper = functionGuard<(s: string, count: number) => string>()
 
-const isPadHelper = (
-  value: unknown
-): value is (s: string, targetLength: number, padString?: string) => string =>
-  typeof value === 'function'
+const isPadHelper = functionGuard<(s: string, targetLength: number, padString?: string) => string>()
 
-const isObjectIterableHelper = (value: unknown): value is (o: object) => unknown =>
-  typeof value === 'function'
+const isObjectIterableHelper = functionGuard<(o: object) => unknown>()
 
-const isToSplicedHelper = (
-  value: unknown
-): value is (array: readonly unknown[], ...rest: unknown[]) => unknown[] =>
-  typeof value === 'function'
+const isToSplicedHelper =
+  functionGuard<(array: readonly unknown[], ...rest: unknown[]) => unknown[]>()
 
 describe('downlevel emitted helpers - runtime equivalence with the native methods', () => {
   const strings = ['', 'a', 'abc', 'aabc']
@@ -964,6 +1004,8 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
 const extractRewrittenExpression = (sourceFile: SourceFile, variableName: string): string =>
   sourceFile.getVariableDeclarationOrThrow(variableName).getInitializerOrThrow().getText()
 
+const isCallable = functionGuard<(...arguments_: unknown[]) => unknown>()
+
 /**
  * Compile a rewritten expression (see {@link extractRewrittenExpression}) into a callable
  * function over `parameterNames`, using the same transpile-then-vm-execute approach as
@@ -976,9 +1018,6 @@ const extractRewrittenExpression = (sourceFile: SourceFile, variableName: string
  *
  * @returns A callable function wrapping the expression.
  */
-const isCallable = (value: unknown): value is (...arguments_: unknown[]) => unknown =>
-  typeof value === 'function'
-
 const compileRewrittenExpression = (
   parameterNames: string[],
   expressionText: string
