@@ -128,7 +128,8 @@
   ],
   "scripts": {
     "benchmark": "npx tsx performance/benchmarks/compare.ts",
-    "build": "npm run check-nvm-node-version && npm run prettier-write && npm run eslint-fix && npm run typecheck && rm -Rf ./dist && npx tsx src/build-scripts/downlevel/transform.ts && tsc -p tsconfig.build.json && npx tsx src/build-scripts/build.ts && npm run test && npm run test-functional && npm run size",
+    "build": "npm run check-nvm-node-version && npm run prettier-write && npm run eslint-fix && npm run typecheck && npm run build-artifacts && npm run test && npm run test-functional && npm run size",
+    "build-artifacts": "rm -Rf ./dist && npx tsx src/build-scripts/downlevel/transform.ts && tsc -p tsconfig.build.json && npx tsx src/build-scripts/build.ts",
     "check-nvm-node-version": "check-node-version --node $(node -p \"'>='+require('fs').readFileSync('.nvmrc','utf-8').trim()\")",
     "depcheck": "depcheck",
     "eslint-fix": "eslint --fix",

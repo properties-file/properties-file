@@ -28,10 +28,7 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       - name: Build
-        run: >-
-          rm -Rf ./dist &&
-          tsc &&
-          npx tsx src/build-scripts/build.ts
+        run: npm run build-artifacts
 
       - name: Run benchmark comparison
         run: npx tsx performance/benchmarks/compare.ts

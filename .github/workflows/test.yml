@@ -50,10 +50,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      # Node 24 is only used to compile TypeScript → CJS.
+      # Node 24 is only used to build the dist artifacts.
       # The actual test runs inside a Docker container with Node 0.4.0
       # compiled from source (the first stable release with ES5 support).
-      - name: Setup node (for compilation only)
+      - name: Setup node (for building only)
         uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -62,8 +62,8 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Compile TypeScript to CJS
-        run: rm -Rf ./dist && tsc && npx tsx src/build-scripts/build.ts
+      - name: Build the dist artifacts
+        run: npm run build-artifacts
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
