@@ -88,14 +88,17 @@ const downlevelEndsWithAt = (s: string, p: string, end: number): boolean => {
  *
  * @param s - The string to test.
  * @param p - The prefix to test for.
- * @param position - The position within \`s\` to begin searching from.
+ * @param position - The position within \`s\` to begin searching from (\`undefined\` behaves as
+ *   \`0\`, matching the native optional parameter).
  *
  * @returns \`true\` if \`s\`, starting at \`position\`, begins with \`p\`.
  */
-const downlevelStartsWithAt = (s: string, p: string, position: number): boolean => {
-  // A negative position is clamped to 0, matching \`String#startsWith\` (which clamps the search
-  // position into [0, length]; \`slice\` would instead count a negative position from the end).
-  const start = position < 0 ? 0 : position
+const downlevelStartsWithAt = (s: string, p: string, position: number | undefined): boolean => {
+  // ToIntegerOrInfinity on the position, matching \`String#startsWith\`: \`undefined\` and \`NaN\`
+  // become \`0\`, negatives clamp to \`0\` (\`slice\` would instead count them from the end), and
+  // fractions are truncated by \`slice\`'s own internal integer coercion. Computing the slice end
+  // from an un-normalized position would poison it (\`NaN + p.length\` is \`NaN\`).
+  const start = position === undefined || position !== position || position < 0 ? 0 : position
   return s.slice(start, start + p.length) === p
 }
 `.trim(),
@@ -103,11 +106,6 @@ const downlevelStartsWithAt = (s: string, p: string, position: number): boolean 
 /**
  * ES5-safe \`String#at\`/\`Array#at\` for an index that is not an integer literal, or a receiver
  * that cannot be duplicated inline (see the \`.at()\` downlevel rewrite in the shipped build).
- *
- * Only integer indexes are meaningful for \`.at()\`; the \`number\` parameter type means a
- * non-integer \`i\` cannot occur from type-checked call sites, so — unlike \`Array#at\` /
- * \`String#at\` themselves, which internally truncate a fractional index — this helper does not
- * separately normalize \`i\` to an integer before indexing.
  *
  * @param x - The string or array to index into.
  * @param i - The index; negative counts back from the end.
@@ -117,17 +115,19 @@ const downlevelStartsWithAt = (s: string, p: string, position: number): boolean 
 function downlevelAt(x: string, i: number): string | undefined
 function downlevelAt<T>(x: readonly T[], i: number): T | undefined
 function downlevelAt<T>(x: string | readonly T[], i: number): T | string | undefined {
-  return i < 0 ? x[x.length + i] : x[i]
+  // ToIntegerOrInfinity on the index, matching \`.at()\`: \`NaN\` becomes \`0\` and fractions
+  // truncate toward zero (\`number\` admits both — \`arr.at(n / 2)\` type-checks). The
+  // \`Math.ceil\`/\`Math.floor\` split is ES5's truncation (\`Math.trunc\` is ES2015).
+  const n = i !== i ? 0 : i < 0 ? Math.ceil(i) : Math.floor(i)
+  return n < 0 ? x[x.length + n] : x[n]
 }
 `.trim(),
   downlevelIncludesNaNSafe: `
 /**
- * ES5-safe, NaN-aware \`Array#includes\` for a numeric-element receiver or argument that cannot
- * be duplicated inline (see the includes downlevel rewrite in the shipped build).
- *
- * \`Array#includes\` finds \`NaN\` via the SameValueZero algorithm; \`Array#indexOf\` never does
- * (strict equality, under which \`NaN !== NaN\`) — this helper restores that behavior only when
- * the search value itself is \`NaN\`, the one case where the two methods can disagree.
+ * ES5-safe \`Array#includes\` for receivers or arguments the rewrite cannot prove immune to the
+ * two \`indexOf\`/\`includes\` divergences (see the includes downlevel rewrite in the shipped
+ * build): \`includes\` finds \`NaN\` via SameValueZero (\`indexOf\`'s strict equality never does),
+ * and \`includes\` reads array holes as \`undefined\` (\`indexOf\` skips them).
  *
  * @param arr - The array to search.
  * @param v - The value to search for.
@@ -136,24 +136,25 @@ function downlevelAt<T>(x: string | readonly T[], i: number): T | string | undef
  * @returns \`true\` if \`arr\` includes \`v\`.
  */
 const downlevelIncludesNaNSafe = <T>(arr: readonly T[], v: T, from?: number): boolean => {
-  if (v !== v) {
-    // A negative start index counts back from the end and is clamped to 0, matching
-    // \`Array#includes\` (\`Array#indexOf\` applies the same normalization in the branch below).
-    let start = from ?? 0
+  // ToIntegerOrInfinity on the start index, matching \`Array#includes\`: \`undefined\`/\`NaN\`
+  // become \`0\`, fractions truncate toward zero (\`Math.trunc\` is ES2015, hence the
+  // \`Math.ceil\`/\`Math.floor\` split), and negatives count back from the end, clamped to \`0\`.
+  let start = from === undefined || from !== from ? 0 : from < 0 ? Math.ceil(from) : Math.floor(from)
+  if (start < 0) {
+    start = arr.length + start
     if (start < 0) {
-      start = arr.length + start
-      if (start < 0) {
-        start = 0
-      }
+      start = 0
     }
-    for (let index = start; index < arr.length; index++) {
-      if (arr[index] !== arr[index]) {
-        return true
-      }
-    }
-    return false
   }
-  return arr.indexOf(v, from) !== -1
+  // Every index is read directly — never via \`indexOf\`, which would skip holes — and compared
+  // with SameValueZero (strict equality, plus the mutual-NaN case it excludes).
+  for (let index = start; index < arr.length; index++) {
+    const element = arr[index]
+    if (element === v || (element !== element && v !== v)) {
+      return true
+    }
+  }
+  return false
 }
 `.trim(),
   downlevelReplaceAllString: `
@@ -394,7 +395,11 @@ const downlevelArrayFind = <T>(
   predicate: (value: T, index: number, array: readonly T[]) => unknown,
   thisArg?: unknown
 ): T | undefined => {
-  for (let index = 0; index < arr.length; index++) {
+  // \`Array#find\` captures the length once before iterating: a predicate that grows the array
+  // must not extend the loop (and a re-read length would make a self-appending predicate loop
+  // forever).
+  const length = arr.length
+  for (let index = 0; index < length; index++) {
     if (predicate.call(thisArg, arr[index], index, arr)) {
       return arr[index]
     }
@@ -420,7 +425,9 @@ const downlevelArrayFindIndex = <T>(
   predicate: (value: T, index: number, array: readonly T[]) => unknown,
   thisArg?: unknown
 ): number => {
-  for (let index = 0; index < arr.length; index++) {
+  // \`Array#findIndex\` captures the length once before iterating (see downlevelArrayFind).
+  const length = arr.length
+  for (let index = 0; index < length; index++) {
     if (predicate.call(thisArg, arr[index], index, arr)) {
       return index
     }
@@ -625,17 +632,21 @@ const downlevelObjectEntries = <T>(o: { [key: string]: T } | ArrayLike<T>): [str
  *
  * @returns A new array reflecting the splice, leaving \`arr\` untouched.
  */
-const downlevelArrayToSpliced = <T>(
+// A function declaration (not an arrow) so \`arguments.length\` can distinguish an *omitted*
+// deleteCount from an explicitly passed \`undefined\`: native \`toSpliced\` deletes to the end
+// only when the argument is absent, while an explicit \`undefined\` coerces to \`0\` via
+// ToIntegerOrInfinity (delete nothing). A parameter-value check alone cannot tell these apart.
+function downlevelArrayToSpliced<T>(
   arr: readonly T[],
   start: number,
   deleteCount?: number,
   ...items: T[]
-): T[] => {
+): T[] {
   const copy = arr.slice()
-  if (deleteCount === undefined) {
+  if (arguments.length < 3) {
     copy.splice(start)
   } else {
-    copy.splice(start, deleteCount, ...items)
+    copy.splice(start, deleteCount === undefined ? 0 : deleteCount, ...items)
   }
   return copy
 }

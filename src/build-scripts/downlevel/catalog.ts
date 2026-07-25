@@ -36,9 +36,11 @@ import {
   capitalizeFirstLetter,
   escapeForSingleQuotedLiteral,
   getIntegerLiteral,
-  hasNumberElementType,
   isArrayLikeType,
   isGlobalConstructorReference,
+  isIndexOfSafeReceiverType,
+  isIndexOfSafeType,
+  isNaNLiteralElement,
   isNumberLikeType,
   isRegExpLikeType,
   isSimpleArgument,
@@ -46,6 +48,7 @@ import {
   isSimpleExpression,
   isStringLikeType,
   refuse,
+  refuseSpreadArguments,
 } from './helpers'
 
 import type { DownlevelHelperName } from './emitted-helpers'
@@ -111,9 +114,11 @@ const CATALOG_RULE_INCLUDES: CatalogRule = {
         if (isChainEligible) {
           const argumentText = arguments_[0].getText()
           const branches = elements.map((element) =>
-            // `NaN === NaN` is always `false`; `NaN !== NaN` is the only way to test "is this
-            // the search value?" for a literal `NaN` element (mirrors `includes`' SameValueZero).
-            Node.isIdentifier(element) && element.getText() === 'NaN'
+            // `NaN === NaN` is always `false`; a self-inequality test is the only way to test
+            // "is this the search value?" for a `NaN` element (mirrors `includes`'
+            // SameValueZero). Matches both the bare `NaN` and `Number.NaN` spellings — see
+            // isNaNLiteralElement.
+            isNaNLiteralElement(element)
               ? `${argumentText} !== ${argumentText}`
               : `${argumentText} === ${element.getText()}`
           )
@@ -122,14 +127,20 @@ const CATALOG_RULE_INCLUDES: CatalogRule = {
         }
       }
 
-      // Any other array receiver: `.indexOf()` is safe whenever the element type can never be
-      // `number` (so it can never be `NaN`, the only value `includes`/`indexOf` disagree on).
-      if (!hasNumberElementType(receiverType)) {
+      // Any other array receiver: `.indexOf()` is safe only when the element type AND the
+      // search argument's type provably exclude the two divergence values — `NaN` (found by
+      // `includes`, never by `indexOf`) and `undefined` (read from holes by `includes`, skipped
+      // by `indexOf`). Generic, `any`, and `unknown` types are not provable, so they take the
+      // exact helper below.
+      if (
+        isIndexOfSafeReceiverType(receiverType) &&
+        (arguments_.length === 0 || isIndexOfSafeType(arguments_[0].getType()))
+      ) {
         call.replaceWithText(`(${receiver.getText()}.indexOf(${argumentsText}) !== -1)`)
         return true
       }
 
-      // Numeric element type, and not eligible for the comparison chain above: the NaN-safe
+      // Not provably indexOf-safe, and not eligible for the comparison chain above: the exact
       // helper — receiver and arguments are each passed through once, so arbitrary shapes OK.
       requestHelper(sourceFile, 'downlevelIncludesNaNSafe')
       call.replaceWithText(`downlevelIncludesNaNSafe(${receiver.getText()}, ${argumentsText})`)
@@ -155,6 +166,9 @@ const CATALOG_RULE_STARTS_WITH: CatalogRule = {
       if (!isStringLikeType(receiver.getType())) {
         continue
       }
+      // The two rewrite forms below dispatch on the syntactic argument count, which a spread
+      // argument would silently defeat (one spread node can carry a runtime position).
+      refuseSpreadArguments(call)
 
       const arguments_ = call.getArguments()
       if (arguments_.length === 2) {
@@ -194,6 +208,9 @@ const CATALOG_RULE_ENDS_WITH: CatalogRule = {
       if (!isStringLikeType(receiver.getType())) {
         continue
       }
+      // The rewrite forms below dispatch on the syntactic argument count, which a spread
+      // argument would silently defeat (one spread node can carry a runtime endPosition).
+      refuseSpreadArguments(call)
 
       const arguments_ = call.getArguments()
       const pattern = arguments_[0]
@@ -241,6 +258,9 @@ const CATALOG_RULE_HAS_OWN: CatalogRule = {
       if (!isGlobalConstructorReference(receiver, 'Object', 'ObjectConstructor')) {
         continue
       }
+      // The positional destructuring below assumes two syntactic arguments; a spread argument
+      // would leave `key` with no node at all.
+      refuseSpreadArguments(call)
 
       // `object` and `key` are each evaluated once — arbitrary shapes OK.
       const [object, key] = call.getArguments()
@@ -359,6 +379,10 @@ const CATALOG_RULE_REPLACE_ALL: CatalogRule = {
       if (!isStringLikeType(receiver.getType())) {
         continue
       }
+
+      // The positional destructuring below assumes two syntactic arguments; a spread argument
+      // would leave `replaceValue` with no node at all.
+      refuseSpreadArguments(call)
 
       // `receiver`, `searchValue`, and `replaceValue` are each evaluated once — arbitrary shapes
       // OK throughout; only the argument *types* (and, for the split/join fast path, the
@@ -479,6 +503,19 @@ const CATALOG_RULE_PARSE_FLOAT = createNumberStaticMethodRule('#7 Number.parseFl
 // #8 — `` String.raw`...` `` (with or without substitutions) → constant-folded expression
 // ---------------------------------------------------------------------------
 
+/**
+ * Normalize line terminators in a template's raw source text the way the spec's template raw
+ * value (TRV) does: `\r\n` and a lone `\r` both become `\n`. Without this, a folded
+ * `String.raw` literal would embed the file's on-disk line endings — producing different
+ * shipped output from a CRLF (Windows) working tree than from an LF one, where native
+ * `String.raw` yields `\n` on both.
+ *
+ * @param rawText - The raw source text between a template's backticks/braces.
+ *
+ * @returns The text with spec-normalized line terminators.
+ */
+const normalizeTemplateRawText = (rawText: string): string => rawText.replaceAll(/\r\n?/g, '\n')
+
 const CATALOG_RULE_STRING_RAW: CatalogRule = {
   id: '#8 String.raw',
   rewriteNext: (sourceFile) => {
@@ -497,8 +534,9 @@ const CATALOG_RULE_STRING_RAW: CatalogRule = {
 
       if (Node.isNoSubstitutionTemplateLiteral(template)) {
         // The raw text is the exact source text between the backticks (unlike
-        // `getLiteralValue()`, which returns the *cooked*, escape-interpreted value).
-        const rawText = template.getText().slice(1, -1)
+        // `getLiteralValue()`, which returns the *cooked*, escape-interpreted value), with the
+        // spec's line-terminator normalization applied (see normalizeTemplateRawText).
+        const rawText = normalizeTemplateRawText(template.getText().slice(1, -1))
         taggedTemplate.replaceWithText(`'${escapeForSingleQuotedLiteral(rawText)}'`)
         return true
       }
@@ -507,14 +545,16 @@ const CATALOG_RULE_STRING_RAW: CatalogRule = {
       // (raw, un-interpreted — same as above) and parenthesized substitution expressions, each
       // evaluated exactly once, in their original left-to-right order (matching a tagged
       // template's own evaluation order) — arbitrary substitution expressions OK.
-      const headRawText = template.getHead().getText().slice(1, -2)
+      const headRawText = normalizeTemplateRawText(template.getHead().getText().slice(1, -2))
       const parts = [`'${escapeForSingleQuotedLiteral(headRawText)}'`]
       for (const span of template.getTemplateSpans()) {
         parts.push(`(${span.getExpression().getText()})`)
         const literal = span.getLiteral()
-        const literalRawText = Node.isTemplateTail(literal)
-          ? literal.getText().slice(1, -1)
-          : literal.getText().slice(1, -2)
+        const literalRawText = normalizeTemplateRawText(
+          Node.isTemplateTail(literal)
+            ? literal.getText().slice(1, -1)
+            : literal.getText().slice(1, -2)
+        )
         parts.push(`'${escapeForSingleQuotedLiteral(literalRawText)}'`)
       }
       taggedTemplate.replaceWithText(`(${parts.join(' + ')})`)
@@ -536,23 +576,31 @@ type EntriesForOfBindingShape =
       /**
        * The value binding's exact source text — a plain identifier (e.g. `value`) or an
        * arbitrarily nested destructuring pattern (e.g. `[a, b]`, `{ x, y }`), copied verbatim
-       * into the rewritten `const <valueBindingText> = ...` declaration. Only the pair's second
-       * *element itself* is restricted (no rest, no default — see
+       * into the rewritten `<declarationKind> <valueBindingText> = ...` declaration. Only the
+       * pair's second *element itself* is restricted (no rest, no default — see
        * {@link getEntriesForOfBindingShape}); whatever is nested inside it is never inspected.
        */
       readonly valueBindingText: string
       /** A plain identifier to derive a related hoisted-receiver name from, if one exists. */
       readonly nameSeed: string
+      /** The original declaration keyword (`const`/`let`/`var`), reused for the bindings. */
+      readonly declarationKind: string
     }
-  | { readonly kind: 'tuple'; readonly entryName: string }
+  | {
+      readonly kind: 'tuple'
+      readonly entryName: string
+      /** The original declaration keyword (`const`/`let`/`var`), reused for the binding. */
+      readonly declarationKind: string
+    }
 
 /**
  * Recognize the variable-binding shape of a `for (... of expr.entries())` initializer: either a
  * `[index, value]` destructuring — where `index` is a plain identifier and `value` is a plain
  * identifier or an arbitrarily nested pattern — or a single plain identifier bound to the whole
- * `[index, value]` pair. Any declaration kind (`const`/`let`/`var`) is accepted, since the
- * rewrite always emits its own `let` for the index and `const` for the value/entry regardless of
- * the original kind.
+ * `[index, value]` pair. Any declaration kind (`const`/`let`/`var`) is accepted and reused for
+ * the rewritten per-iteration bindings, so mutating a `let` binding stays local to that
+ * iteration exactly as it does with native `for...of` (the loop's own counter is a separate,
+ * fresh name the body cannot reach).
  *
  * @param initializer - The for...of statement's initializer.
  *
@@ -570,10 +618,11 @@ const getEntriesForOfBindingShape = (
   if (declarations.length !== 1) {
     return undefined
   }
+  const declarationKind = initializer.getDeclarationKind()
   const nameNode = declarations[0].getNameNode()
 
   if (Node.isIdentifier(nameNode)) {
-    return { kind: 'tuple', entryName: nameNode.getText() }
+    return { kind: 'tuple', entryName: nameNode.getText(), declarationKind }
   }
 
   if (!Node.isArrayBindingPattern(nameNode)) {
@@ -601,31 +650,26 @@ const getEntriesForOfBindingShape = (
     indexName: indexElement.getNameNode().getText(),
     valueBindingText: valueNameNode.getText(),
     nameSeed: Node.isIdentifier(valueNameNode) ? valueNameNode.getText() : 'receiver',
+    declarationKind,
   }
 }
 
 /** How to reference a `.entries()` receiver inside the rewritten loop, from {@link planEntriesReceiver}. */
 type EntriesReceiverPlan = {
-  /** The expression text to use in place of the original receiver everywhere in the loop. */
+  /** The fresh name that references the receiver everywhere in the rewritten loop. */
   readonly text: string
-  /**
-   * Text to prepend before the rewritten `for` statement (a `const <name> = <expr>\n` hoist), or
-   * `''` if the receiver is simple enough to reference directly with no hoist needed.
-   */
-  readonly hoistPrefix: string
+  /** The `const <name> = <expr>` declaration that captures the receiver, emitted first. */
+  readonly hoistDeclaration: string
 }
 
 /**
- * Plan how to reference a `.entries()` receiver inside the rewritten loop. A simple receiver is
- * used directly (no hoist). A non-simple receiver is hoisted into a `const <name> = <expr>`
- * statement, matching `Array#entries()`'s own once-only evaluation of its receiver at the start
- * of iteration — the caller is responsible for actually prepending {@link EntriesReceiverPlan.hoistPrefix}
- * to its single `forOf.replaceWithText()` call (a for...of statement's node can only safely be
- * replaced once; splitting the hoist into its own separate `replaceWithText()` call first would
- * forget the node before the loop body itself gets rewritten).
- *
- * The hoisted name is derived from the loop's own binding (so the result reads as related to the
- * loop it feeds) and is collision-checked against the whole file (see {@link pickFreshName}).
+ * Plan how to reference a `.entries()` receiver inside the rewritten loop. The receiver is
+ * always captured into a fresh `const` — even when it is a plain identifier — for two reasons:
+ * it matches `Array#entries()`'s own once-only evaluation of its receiver at the start of
+ * iteration, and the rewritten value-binding line lives inside the loop body's block right next
+ * to the user's own statements, where a user declaration shadowing (or TDZ-ing) the original
+ * receiver identifier must not affect the read. A fresh, whole-file-collision-checked name (see
+ * {@link pickFreshName}) cannot be shadowed by any existing code.
  *
  * @param sourceFile - The source file being rewritten (used to pick a collision-free name).
  * @param receiver - The `.entries()` receiver expression.
@@ -639,11 +683,8 @@ const planEntriesReceiver = (
   receiver: Node,
   nameSeed: string
 ): EntriesReceiverPlan => {
-  if (isSimpleExpression(receiver)) {
-    return { text: receiver.getText(), hoistPrefix: '' }
-  }
   const name = pickFreshName(sourceFile, `downlevel${capitalizeFirstLetter(nameSeed)}`)
-  return { text: name, hoistPrefix: `const ${name} = ${receiver.getText()}\n` }
+  return { text: name, hoistDeclaration: `const ${name} = ${receiver.getText()}` }
 }
 
 const CATALOG_RULE_ARRAY_ENTRIES_FOR_OF: CatalogRule = {
@@ -686,29 +727,48 @@ const CATALOG_RULE_ARRAY_ENTRIES_FOR_OF: CatalogRule = {
         )
       }
 
+      // The rewrite wraps the loop in a block (so the whole replacement stays a single
+      // statement, valid in any statement position — e.g. a braceless `if` body). A label
+      // cannot survive that wrapping: `continue <label>` must target a loop, not a block.
+      if (Node.isLabeledStatement(forOf.getParent())) {
+        return refuse(
+          forOf,
+          'a labeled `for...of` over `.entries()` cannot be rewritten — the rewrite wraps the ' +
+            'loop in a block scope, and `continue`/`break` with a label cannot target a label ' +
+            'that sits on a block',
+          'restructure the loop so the label is not needed'
+        )
+      }
+
+      // The body is copied verbatim — a block body keeps everything between its braces,
+      // including comments (which also preserves any `@ts-expect-error` suppressions into the
+      // shadow tree).
       const body = forOf.getStatement()
-      const bodyText = Node.isBlock(body)
-        ? body
-            .getStatements()
-            .map((statement) => statement.getText())
-            .join('\n  ')
-        : body.getText()
+      const bodyText = Node.isBlock(body) ? body.getText().slice(1, -1) : body.getText()
 
       const nameSeed = bindingShape.kind === 'pair' ? bindingShape.nameSeed : bindingShape.entryName
-      const { text: receiverText, hoistPrefix } = planEntriesReceiver(
+      const { text: receiverText, hoistDeclaration } = planEntriesReceiver(
         sourceFile,
         receiver,
         nameSeed
       )
+      // The loop's own counter is a fresh name derived from the receiver name (the strict
+      // suffix guarantees the two can never collide, even before either is inserted into the
+      // file): user code can neither read nor write it, so assigning to the user's own
+      // per-iteration bindings below cannot change the iteration — exactly native `for...of`
+      // semantics.
+      const counterName = pickFreshName(sourceFile, `${receiverText}Index`)
+      const loopHead =
+        `for (let ${counterName} = 0; ` +
+        `${counterName} < ${receiverText}.length; ${counterName}++)`
 
       if (bindingShape.kind === 'pair') {
-        const { indexName, valueBindingText } = bindingShape
+        const { indexName, valueBindingText, declarationKind } = bindingShape
         forOf.replaceWithText(
-          hoistPrefix +
-            `for (let ${indexName} = 0; ${indexName} < ${receiverText}.length; ${indexName}++) {\n` +
-            `  const ${valueBindingText} = ${receiverText}[${indexName}]\n` +
-            `  ${bodyText}\n` +
-            `}`
+          `{\n${hoistDeclaration}\n${loopHead} {\n` +
+            `${declarationKind} ${indexName} = ${counterName}\n` +
+            `${declarationKind} ${valueBindingText} = ${receiverText}[${counterName}]\n` +
+            `${bodyText}\n}\n}`
         )
         return true
       }
@@ -716,13 +776,11 @@ const CATALOG_RULE_ARRAY_ENTRIES_FOR_OF: CatalogRule = {
       // Whole-tuple form (`for (const entry of expr.entries())`): the body observes a single
       // `[index, value]` pair per iteration — matching native `entries()`, this allocates one
       // fresh 2-element array per iteration (unavoidable: the body may hold onto it).
-      const indexName = pickFreshName(sourceFile, 'downlevelIndex')
       forOf.replaceWithText(
-        hoistPrefix +
-          `for (let ${indexName} = 0; ${indexName} < ${receiverText}.length; ${indexName}++) {\n` +
-          `  const ${bindingShape.entryName} = [${indexName}, ${receiverText}[${indexName}]]\n` +
-          `  ${bodyText}\n` +
-          `}`
+        `{\n${hoistDeclaration}\n${loopHead} {\n` +
+          `${bindingShape.declarationKind} ${bindingShape.entryName} = ` +
+          `[${counterName}, ${receiverText}[${counterName}]]\n` +
+          `${bodyText}\n}\n}`
       )
       return true
     }

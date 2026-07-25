@@ -2,10 +2,10 @@
  * Shared helpers for the downlevel rewrite catalog (see `catalog.ts`).
  *
  * These helpers implement the "simple expression" rule: a receiver or argument may only be an
- * identifier, `this`, or a dot-member chain of those, plus string/number literals for arguments.
- * That restriction only matters for rewrites that reference the same source expression more
- * than once in their generated output — duplicating a complex expression would evaluate a
- * potential side effect twice, or observe a value that changed between the two evaluations.
+ * identifier or `this`, plus string/number literals for arguments. That restriction only
+ * matters for rewrites that reference the same source expression more than once in their
+ * generated output — duplicating a complex expression would evaluate a potential side effect
+ * twice, or observe a value that changed between the two evaluations.
  *
  * Most catalog entries evaluate their receiver and every argument exactly once, in the original
  * order, so they accept arbitrary expressions and never call {@link isSimpleExpression} /
@@ -15,9 +15,9 @@
  * function (see `emitted-helpers.ts`) instead of refusing when the operand isn't simple, so no
  * catalog entry actually refuses on shape grounds anymore.
  */
-import { Node, SyntaxKind } from 'ts-morph'
+import { Node, SyntaxKind, ts } from 'ts-morph'
 
-import type { Type } from 'ts-morph'
+import type { CallExpression, Type } from 'ts-morph'
 
 /**
  * Thrown when the catalog finds shipped-code usage of a downlevel-catalog API that it cannot
@@ -52,8 +52,15 @@ export const refuse = (
 }
 
 /**
- * Check whether an expression is side-effect-free: an identifier, `this`, or a dot-member
- * access chain rooted in one of those, with no calls or computed (`[]`) access along the way.
+ * Check whether an expression is safe to duplicate or relocate in generated code: a plain
+ * identifier or `this`, whose evaluation is guaranteed effect-free and idempotent.
+ *
+ * Property-access chains (`o.x.y`) are deliberately NOT accepted even though they read as
+ * plain data: any link of a member chain may be an accessor property (or a Proxy trap), so a
+ * duplicating rewrite would change how many times the getter runs — and a getter returning
+ * changing values would make the duplicated reads disagree with each other, diverging from the
+ * single-read native semantics. Such operands take a rewrite's helper fallback instead, which
+ * evaluates them exactly once.
  *
  * Only used by rewrites that duplicate a receiver or argument in their generated output — see
  * the module documentation above for why non-duplicating rewrites don't need this at all.
@@ -62,15 +69,8 @@ export const refuse = (
  *
  * @returns `true` if `expression` is safe to duplicate or relocate in generated code.
  */
-export const isSimpleExpression = (expression: Node): boolean => {
-  if (Node.isIdentifier(expression) || expression.getKind() === SyntaxKind.ThisKeyword) {
-    return true
-  }
-  if (Node.isPropertyAccessExpression(expression)) {
-    return isSimpleExpression(expression.getExpression())
-  }
-  return false
-}
+export const isSimpleExpression = (expression: Node): boolean =>
+  Node.isIdentifier(expression) || expression.getKind() === SyntaxKind.ThisKeyword
 
 /**
  * Check whether an expression is a {@link isSimpleExpression} expression, or a string/numeric
@@ -104,6 +104,7 @@ export const isSimpleArgument = (expression: Node): boolean =>
  */
 export const isSimpleArrayLiteralElement = (element: Node): boolean =>
   isSimpleArgument(element) ||
+  isNaNLiteralElement(element) ||
   (Node.isPrefixUnaryExpression(element) &&
     element.getOperatorToken() === SyntaxKind.MinusToken &&
     Node.isNumericLiteral(element.getOperand()))
@@ -144,18 +145,35 @@ export const isGlobalConstructorReference = (
   expression.getType().getText() === constructorTypeName
 
 /**
- * Check whether a type is a `string` type: the primitive `string` type, a string literal type,
- * or a union where every constituent is such.
+ * Check whether a type is guaranteed to be a string primitive at runtime: the primitive
+ * `string` type, a string literal type, a template-literal type such as `id-${string}`, a
+ * string-mapping type (`Uppercase<...>`), a type parameter whose constraint is string-like
+ * (string primitives have no subclasses, so — unlike arrays — every instantiation behaves
+ * identically), an intersection with a string-like member (a branded string is a string at
+ * runtime), or a union where every constituent is such.
  *
  * @param type - The type to check.
  *
- * @returns `true` if `type` is a string (or string literal) type.
+ * @returns `true` if every runtime value of `type` is a string primitive.
  */
 export const isStringLikeType = (type: Type): boolean => {
   if (type.isUnion()) {
     return type.getUnionTypes().every((constituent) => isStringLikeType(constituent))
   }
-  return type.isString() || type.isStringLiteral()
+  if (type.isIntersection()) {
+    return type.getIntersectionTypes().some((constituent) => isStringLikeType(constituent))
+  }
+  if (type.isTypeParameter()) {
+    const constraint = type.getConstraint()
+    return constraint !== undefined && isStringLikeType(constraint)
+  }
+  const flags = type.getFlags()
+  return (
+    type.isString() ||
+    type.isStringLiteral() ||
+    (flags & ts.TypeFlags.TemplateLiteral) !== 0 ||
+    (flags & ts.TypeFlags.StringMapping) !== 0
+  )
 }
 
 /**
@@ -203,39 +221,100 @@ export const isArrayLikeType = (type: Type): boolean => {
 }
 
 /**
- * Check whether a type is (or, for a union, includes a constituent that is) `number` or a
- * number literal type.
+ * Check whether a type provably rules out both values on which an `indexOf`-based `includes`
+ * rewrite diverges from native `Array#includes`: `NaN` (found by `includes`' SameValueZero,
+ * never by `indexOf`'s strict equality) and `undefined` (read from array holes by `includes`,
+ * skipped over by `indexOf`). Anything not statically decidable — `any`, `unknown`, type
+ * parameters (whose instantiations are unknowable), enums, and unresolved type operators — is
+ * treated as unsafe, routing the rewrite to the exact `downlevelIncludesNaNSafe` helper.
  *
- * @param type - The type to check.
+ * Intersections require every constituent safe: a branded number (`number & { brand }`) is a
+ * number — and possibly `NaN` — at runtime.
  *
- * @returns `true` if `type` is or includes a `number` type.
+ * @param type - The element or search-argument type to check.
+ *
+ * @returns `true` if no runtime value of `type` can be `NaN` or `undefined`.
  */
-const isOrIncludesNumberType = (type: Type): boolean => {
+export const isIndexOfSafeType = (type: Type): boolean => {
   if (type.isUnion()) {
-    return type.getUnionTypes().some((constituent) => isOrIncludesNumberType(constituent))
+    return type.getUnionTypes().every((constituent) => isIndexOfSafeType(constituent))
   }
-  return type.isNumber() || type.isNumberLiteral()
+  if (type.isIntersection()) {
+    return type.getIntersectionTypes().every((constituent) => isIndexOfSafeType(constituent))
+  }
+  const unsafeFlags =
+    ts.TypeFlags.Any |
+    ts.TypeFlags.Unknown |
+    ts.TypeFlags.Number |
+    ts.TypeFlags.NumberLiteral |
+    ts.TypeFlags.Enum |
+    ts.TypeFlags.EnumLiteral |
+    ts.TypeFlags.Undefined |
+    ts.TypeFlags.Void |
+    ts.TypeFlags.TypeParameter |
+    ts.TypeFlags.Index |
+    ts.TypeFlags.IndexedAccess |
+    ts.TypeFlags.Conditional
+  return (type.getFlags() & unsafeFlags) === 0
 }
 
 /**
- * Check whether an array/tuple-like type's element type is or includes `number`. Used to refuse
- * downleveling `Array#includes` to `indexOf` for numeric arrays, since `NaN` is matched by
- * `includes` but never found by `indexOf`.
+ * Check whether every element position of an array/tuple-like receiver type is
+ * {@link isIndexOfSafeType} — the receiver-side half of the `.indexOf()` fast-path condition
+ * for the `Array#includes` rewrite.
  *
  * @param type - An array, readonly array, or tuple type (as validated by
  *   {@link isArrayLikeType}).
  *
- * @returns `true` if any element position of `type` is or includes `number`.
+ * @returns `true` if no element of `type` can be `NaN` or `undefined`.
  */
-export const hasNumberElementType = (type: Type): boolean => {
+export const isIndexOfSafeReceiverType = (type: Type): boolean => {
   if (type.isUnion()) {
-    return type.getUnionTypes().some((constituent) => hasNumberElementType(constituent))
+    return type.getUnionTypes().every((constituent) => isIndexOfSafeReceiverType(constituent))
   }
   if (type.isTuple()) {
-    return type.getTupleElements().some((element) => isOrIncludesNumberType(element))
+    return type.getTupleElements().every((element) => isIndexOfSafeType(element))
   }
   const elementType = type.getArrayElementType()
-  return elementType !== undefined && isOrIncludesNumberType(elementType)
+  return elementType !== undefined && isIndexOfSafeType(elementType)
+}
+
+/**
+ * Check whether an array literal element is a literal spelling of `NaN`: the bare global `NaN`
+ * identifier or `Number.NaN` (verified to reference the real global `Number`, not a shadowing
+ * local). The comparison-chain `.includes()` rewrite must emit a self-inequality branch for
+ * these — a strict-equality branch against `NaN` would be constantly `false`. The `Number.NaN`
+ * spelling matters in practice because `unicorn/prefer-number-properties` autofixes the bare
+ * form to it, making it the spelling that actually survives in lint-clean shipped code.
+ *
+ * @param element - The array literal element to check.
+ *
+ * @returns `true` if `element` denotes the `NaN` value.
+ */
+export const isNaNLiteralElement = (element: Node): boolean =>
+  (Node.isIdentifier(element) && element.getText() === 'NaN') ||
+  (Node.isPropertyAccessExpression(element) &&
+    element.getName() === 'NaN' &&
+    isGlobalConstructorReference(element.getExpression(), 'Number', 'NumberConstructor'))
+
+/**
+ * Refuse the rewrite when any call argument is a spread (`...args`): every catalog rewrite
+ * reasons about arguments positionally — arity dispatch, per-argument forwarding — and a
+ * spread collapses an unknown number of runtime arguments into one syntactic node, so e.g. an
+ * arity-2 dispatch would silently drop the spread's second element.
+ *
+ * @param call - The matched call expression to validate.
+ */
+export const refuseSpreadArguments = (call: CallExpression): void => {
+  for (const argument of call.getArguments()) {
+    if (Node.isSpreadElement(argument)) {
+      refuse(
+        argument,
+        "a spread argument defeats the rewrite's positional argument handling",
+        'spell the arguments out positionally'
+      )
+    }
+  }
 }
 
 /** An integer literal argument, as matched by {@link getIntegerLiteral}. */

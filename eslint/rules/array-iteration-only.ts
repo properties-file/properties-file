@@ -7,11 +7,13 @@
  * value really is an array: under the assumption, iterating a string would produce UTF-16 code
  * units instead of code points, and iterating a `Map`/`Set`/generator would silently break.
  *
- * This rule makes the assumption provably safe: any `for...of`, iterable spread, or array
- * destructuring over a non-array type is a lint error in shipped code. Destructuring is checked
- * at every `ArrayPattern` via the pattern's own resolved type, which covers variable
- * declarations, `for...of` loop bindings, function parameters, and nested patterns alike. The
- * Node.js 0.4 functional replay test (`npm run test-node-compat`) is the behavioral backstop.
+ * This rule makes the assumption provably safe: any `for...of`, iterable spread, `yield*`
+ * delegation, or array destructuring over a non-array type is a lint error in shipped code.
+ * Destructuring is checked at every `ArrayPattern` via the pattern's own resolved type, which
+ * covers variable declarations, `for...of` loop bindings, function parameters, and nested
+ * patterns alike. Type parameters resolve through their constraint (`<T extends string[]>` is
+ * an array at every instantiation). The Node.js 0.4 functional replay test
+ * (`npm run test-node-compat`) is the behavioral backstop.
  *
  * Disabled for non-shipped files (tests, build scripts, performance), which run on modern
  * Node.js and never pass through the ES5 downlevel.
@@ -63,6 +65,12 @@ const hasTypeInformation = (services: unknown): services is TypeAwareParserServi
 const isArrayOrTupleType = (checker: TypeChecker, type: Type): boolean => {
   if (type.isUnion()) {
     return type.types.every((constituent) => isArrayOrTupleType(checker, constituent))
+  }
+  if (type.isTypeParameter()) {
+    // `<T extends string[]>`: every instantiation is an array, so iterating it is safe. A type
+    // parameter without an array/tuple constraint stays flagged (conservative).
+    const constraint = checker.getBaseConstraintOfType(type)
+    return constraint !== undefined && isArrayOrTupleType(checker, constraint)
   }
   return checker.isArrayType(type) || checker.isTupleType(type)
 }
@@ -123,6 +131,14 @@ export const arrayIterationOnlyRule: Rule.RuleModule = {
     return {
       ForOfStatement: (node): void => {
         checkExpression(node.right, 'nonArrayIteration')
+      },
+      YieldExpression: (node): void => {
+        // `yield*` delegates iteration to its operand: under the ES5 downlevel, delegation
+        // falls back to length-based indexing, so — exactly like `for...of` — only arrays may
+        // be delegated to. A plain `yield` hands over a single value and is unrestricted.
+        if (node.delegate && node.argument) {
+          checkExpression(node.argument, 'nonArrayIteration')
+        }
       },
       SpreadElement: (node): void => {
         // Object spread (`{ ...object }`) lowers to property copying, not iteration.

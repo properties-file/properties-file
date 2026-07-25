@@ -28,15 +28,19 @@ Backward compatibility is handled by three cooperating mechanisms, each owning o
 Two verification layers make the guarantee provable rather than aspirational:
 
 - **Artifact gate** — the build runs every es-x `restrict-to-es5` rule against the built output
-  itself (see the "verify ES5 output" step in `src/build-scripts/build.ts`). This is the ONLY
-  place ES5 compatibility is checked — deliberately not at source level, where covered APIs
-  would need exception lists and generated code (emitted helpers, toolchain output) is
-  invisible anyway. On the output the check is exceptionless: every covered API has already
-  been rewritten away, so anything modern that remains is a build-pipeline bug. The only exempt
-  region is SWC's own underscore-prefixed compatibility helpers, which reference modern globals
-  deliberately behind feature-detection guards. Note the gate only understands ECMAScript —
-  runtime-specific host APIs are kept out of shipped code by the `no-restricted-globals`
-  runtime-agnostic ban in `eslint/config.ts` instead.
+  itself, in es-x's **aggressive mode** (see `src/build-scripts/verify-es5-output.ts`). This is
+  the ONLY place ES5 compatibility is checked — deliberately not at source level, where covered
+  APIs would need exception lists and generated code (emitted helpers, toolchain output) is
+  invisible anyway. Aggressive mode is what makes the gate real: without type information,
+  es-x's prototype-method rules only fire on literal receivers, so a plain
+  `variable.includes(...)` — the shape every real escape takes — would otherwise pass
+  unreported. On the output the check is exceptionless: every covered API has already been
+  rewritten away, so anything modern that remains is a build-pipeline bug. The only exempt
+  regions are SWC's own compatibility helpers, matched by parsing each file against a closed
+  allowlist of exact helper names — an unknown helper name fails the build rather than being
+  silently exempted. Note the gate only understands ECMAScript — runtime-specific host APIs are
+  kept out of shipped code by the `no-restricted-globals` runtime-agnostic ban in
+  `eslint/config.ts` instead.
 - **Behavioral proof** — the functional replay tests (`tests/functional/`) execute the built
   artifacts on Node.js 0.4 in CI.
 
@@ -66,9 +70,11 @@ Two principles keep the transform small and provably correct:
   the operands needs to be validated, because nothing is duplicated or reordered.
 - **The simple-expression rule.** A rewrite whose inline output would reference an operand twice
   (e.g. `endsWith` → `s.slice(s.length - p.length) === p` uses both operands twice) only inlines
-  when the operands are side-effect-free (identifiers, `this`, dot-chains, literals). Otherwise
-  it emits a small typed **helper function** into the file (see `emitted-helpers.ts`) and calls
-  it — full support, single evaluation, no silent behavior change.
+  when the operands are guaranteed effect-free and idempotent: identifiers, `this`, and literals.
+  Property chains (`o.x`) are deliberately excluded — any link may be an accessor, and
+  duplication would change how many times the getter runs. Everything else falls back to a small
+  typed **helper function** emitted into the file (see `emitted-helpers.ts`) — full support,
+  single evaluation, no silent behavior change.
 
 Every emitted helper implements the exact ECMAScript semantics of the method it replaces —
 including argument clamping and `NaN` handling — and is tested for **runtime equivalence**
@@ -110,8 +116,12 @@ semantic reason.
 |                                               | at every boundary position); helper otherwise.                          |
 | `Number.parseInt` / `Number.parseFloat`       | Global `parseInt` / `parseFloat`.                                       |
 | `` String.raw`...` ``                         | Constant-folded literal; substitutions become concatenation.            |
-| `Array#entries` (in `for...of`)               | Index loop; non-simple receivers are hoisted to a local; the value      |
-|                                               | position may itself be a nested destructuring pattern.                  |
+| `Array#entries` (in `for...of`)               | Block-wrapped index loop: the receiver is captured once into a fresh    |
+|                                               | local, the loop counter is a fresh name the body cannot reach (so       |
+|                                               | assigning to the user's bindings never changes iteration, matching      |
+|                                               | native `for...of`), and the body is copied verbatim, comments included. |
+|                                               | The value position may itself be a nested destructuring pattern.        |
+|                                               | Labeled loops are refused (a label cannot target the wrapping block).   |
 | `String#at` / `Array#at`                      | Direct indexing for integer literals; helper for anything else.         |
 | `Number.isNaN`                                | `(x !== x)` for a simple number-typed operand; helper otherwise.        |
 | `Number.isFinite`                             | Global `isFinite(x)` for a number-typed operand; helper otherwise.      |

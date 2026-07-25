@@ -13,6 +13,10 @@
  * Every test builds an isolated in-memory ts-morph project (`useInMemoryFileSystem: true`) so
  * cases can't interfere with each other or touch the real filesystem.
  */
+import { execSync } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { runInNewContext } from 'node:vm'
 
 import { Project, ScriptTarget } from 'ts-morph'
@@ -160,6 +164,41 @@ describe('downlevel catalog #1 - String/Array#includes', () => {
     expect(text).toContain('const downlevelIncludesNaNSafe')
     expect(text).toContain('const matched = downlevelIncludesNaNSafe(getArray(), 1)')
   })
+
+  it('rewrites a literal `Number.NaN` chain element to a self-inequality check', () => {
+    const sourceFile = rewrite(
+      'declare const x: number\nconst matched = [1, Number.NaN, 3].includes(x)\n'
+    )
+    expect(sourceFile.getFullText()).toBe(
+      'declare const x: number\nconst matched = (x === 1 || x !== x || x === 3)\n'
+    )
+  })
+
+  it('routes a generic-element receiver to the exact helper (NaN is not statically excludable)', () => {
+    const sourceFile = rewrite('const has = <T>(arr: T[], v: T): boolean => arr.includes(v)\n')
+    expect(sourceFile.getFullText()).toContain('downlevelIncludesNaNSafe(arr, v)')
+  })
+
+  it('routes an unknown-element receiver to the exact helper', () => {
+    const sourceFile = rewrite(
+      'declare const arr: unknown[]\ndeclare const v: unknown\nconst has = arr.includes(v)\n'
+    )
+    expect(sourceFile.getFullText()).toContain('downlevelIncludesNaNSafe(arr, v)')
+  })
+
+  it('routes an element type including undefined to the exact helper (array holes read as undefined)', () => {
+    const sourceFile = rewrite(
+      'declare const arr: (string | undefined)[]\nconst has = arr.includes(undefined)\n'
+    )
+    expect(sourceFile.getFullText()).toContain('downlevelIncludesNaNSafe(arr, undefined)')
+  })
+
+  it('rewrites includes on a template-literal-typed receiver (a string primitive at runtime)', () => {
+    const sourceFile = rewrite('declare const s: `id-${string}`\ns.includes("x")\n')
+    expect(sourceFile.getFullText()).toBe(
+      'declare const s: `id-${string}`\n(s.indexOf("x") !== -1)\n'
+    )
+  })
 })
 
 describe('downlevel catalog #2 - String#startsWith', () => {
@@ -174,9 +213,26 @@ describe('downlevel catalog #2 - String#startsWith', () => {
     const sourceFile = rewrite("declare const s: string\nconst matched = s.startsWith('a', 2)\n")
     const text = sourceFile.getFullText()
     expect(text).toContain(
-      'const downlevelStartsWithAt = (s: string, p: string, position: number): boolean => {'
+      'const downlevelStartsWithAt = (s: string, p: string, position: number | undefined): boolean => {'
     )
     expect(text).toContain("const matched = downlevelStartsWithAt(s, 'a', 2)")
+  })
+
+  it('rewrites startsWith on a string-constrained generic receiver', () => {
+    const sourceFile = rewrite('const f = <T extends string>(s: T): boolean => s.startsWith("a")\n')
+    expect(sourceFile.getFullText()).toBe(
+      'const f = <T extends string>(s: T): boolean => (s.lastIndexOf("a", 0) === 0)\n'
+    )
+  })
+
+  it('refuses a spread argument (the arity dispatch cannot see a runtime position)', () => {
+    expectRefusal(
+      'declare const s: string\ndeclare const args: [string, number]\nconst matched = s.startsWith(...args)\n',
+      [
+        "a spread argument defeats the rewrite's positional argument handling",
+        'spell the arguments out positionally',
+      ]
+    )
   })
 })
 
@@ -238,6 +294,13 @@ describe('downlevel catalog #4 - Object.hasOwn', () => {
         'const has = Object.prototype.hasOwnProperty.call(getObj(), getKey())\n'
     )
   })
+
+  it('refuses a spread argument (positional destructuring would see no key node)', () => {
+    expectRefusal('declare const args: [object, string]\nconst has = Object.hasOwn(...args)\n', [
+      "a spread argument defeats the rewrite's positional argument handling",
+      'spell the arguments out positionally',
+    ])
+  })
 })
 
 describe('downlevel catalog #5 - Array#toSorted / Array#toReversed', () => {
@@ -274,6 +337,16 @@ describe('downlevel catalog #6 - String#replaceAll', () => {
   it('rewrites to split(a).join(b) for a non-empty literal search and a $-free literal replacement', () => {
     const sourceFile = rewrite("declare const s: string\ns.replaceAll('a', 'b')\n")
     expect(sourceFile.getFullText()).toBe("declare const s: string\ns.split('a').join('b')\n")
+  })
+
+  it('refuses a spread argument (positional destructuring would see no replacement node)', () => {
+    expectRefusal(
+      'declare const s: string\ndeclare const args: [string, string]\nconst out = s.replaceAll(...args)\n',
+      [
+        "a spread argument defeats the rewrite's positional argument handling",
+        'spell the arguments out positionally',
+      ]
+    )
   })
 
   // See the "(full coverage)" describe block below for the RegExp and function-replacer cases.
@@ -335,32 +408,41 @@ describe('downlevel catalog #8 - String.raw', () => {
         "const value = ('a' + (x) + 'mid\\\\t' + (y) + 'z')\n"
     )
   })
+
+  it('normalizes CRLF and lone CR line terminators to LF, matching the spec template raw value', () => {
+    // A CRLF working tree (Windows checkout) must fold the same bytes as an LF one: native
+    // String.raw normalizes \r\n and \r to \n when building the raw strings.
+    const crlfSource = rewrite('const value = String.raw`a\r\nb`\n')
+    expect(crlfSource.getFullText()).toContain(String.raw`'a\nb'`)
+    const crSource = rewrite('const value = String.raw`a\rb`\n')
+    expect(crSource.getFullText()).toContain(String.raw`'a\nb'`)
+  })
 })
 
 describe('downlevel catalog #9 - Array#entries (for...of)', () => {
-  it('rewrites the [index, value] destructured form to an index loop', () => {
+  it('rewrites the [index, value] destructured form to a block-wrapped index loop', () => {
     const sourceFile = rewrite(
       'declare const arr: string[]\nfor (const [index, value] of arr.entries()) {\n  console.log(index, value)\n}\n'
     )
     expect(sourceFile.getFullText()).toBe(
-      'declare const arr: string[]\n' +
-        'for (let index = 0; index < arr.length; index++) {\n' +
-        '  const value = arr[index]\n' +
-        '  console.log(index, value)\n' +
-        '}\n'
+      'declare const arr: string[]\n{\nconst downlevelValue = arr\n' +
+        'for (let downlevelValueIndex = 0; downlevelValueIndex < downlevelValue.length; downlevelValueIndex++) {\n' +
+        'const index = downlevelValueIndex\n' +
+        'const value = downlevelValue[downlevelValueIndex]\n' +
+        '\n  console.log(index, value)\n\n}\n}\n'
     )
   })
 
-  it('accepts any declaration kind for the [index, value] form', () => {
+  it('preserves the declaration kind, keeping a `let` binding assignable without affecting iteration', () => {
     const sourceFile = rewrite(
       'declare const arr: string[]\nfor (let [index, value] of arr.entries()) {\n  console.log(index, value)\n}\n'
     )
     expect(sourceFile.getFullText()).toBe(
-      'declare const arr: string[]\n' +
-        'for (let index = 0; index < arr.length; index++) {\n' +
-        '  const value = arr[index]\n' +
-        '  console.log(index, value)\n' +
-        '}\n'
+      'declare const arr: string[]\n{\nconst downlevelValue = arr\n' +
+        'for (let downlevelValueIndex = 0; downlevelValueIndex < downlevelValue.length; downlevelValueIndex++) {\n' +
+        'let index = downlevelValueIndex\n' +
+        'let value = downlevelValue[downlevelValueIndex]\n' +
+        '\n  console.log(index, value)\n\n}\n}\n'
     )
   })
 
@@ -369,12 +451,11 @@ describe('downlevel catalog #9 - Array#entries (for...of)', () => {
       'declare function getArr(): string[]\nfor (const [index, value] of getArr().entries()) {\n  console.log(index, value)\n}\n'
     )
     expect(sourceFile.getFullText()).toBe(
-      'declare function getArr(): string[]\n' +
-        'const downlevelValue = getArr()\n' +
-        'for (let index = 0; index < downlevelValue.length; index++) {\n' +
-        '  const value = downlevelValue[index]\n' +
-        '  console.log(index, value)\n' +
-        '}\n'
+      'declare function getArr(): string[]\n{\nconst downlevelValue = getArr()\n' +
+        'for (let downlevelValueIndex = 0; downlevelValueIndex < downlevelValue.length; downlevelValueIndex++) {\n' +
+        'const index = downlevelValueIndex\n' +
+        'const value = downlevelValue[downlevelValueIndex]\n' +
+        '\n  console.log(index, value)\n\n}\n}\n'
     )
   })
 
@@ -383,11 +464,10 @@ describe('downlevel catalog #9 - Array#entries (for...of)', () => {
       'declare const arr: string[]\nfor (const entry of arr.entries()) {\n  console.log(entry)\n}\n'
     )
     expect(sourceFile.getFullText()).toBe(
-      'declare const arr: string[]\n' +
-        'for (let downlevelIndex = 0; downlevelIndex < arr.length; downlevelIndex++) {\n' +
-        '  const entry = [downlevelIndex, arr[downlevelIndex]]\n' +
-        '  console.log(entry)\n' +
-        '}\n'
+      'declare const arr: string[]\n{\nconst downlevelEntry = arr\n' +
+        'for (let downlevelEntryIndex = 0; downlevelEntryIndex < downlevelEntry.length; downlevelEntryIndex++) {\n' +
+        'const entry = [downlevelEntryIndex, downlevelEntry[downlevelEntryIndex]]\n' +
+        '\n  console.log(entry)\n\n}\n}\n'
     )
   })
 
@@ -396,12 +476,10 @@ describe('downlevel catalog #9 - Array#entries (for...of)', () => {
       'declare function getArr(): string[]\nfor (const entry of getArr().entries()) {\n  console.log(entry)\n}\n'
     )
     expect(sourceFile.getFullText()).toBe(
-      'declare function getArr(): string[]\n' +
-        'const downlevelEntry = getArr()\n' +
-        'for (let downlevelIndex = 0; downlevelIndex < downlevelEntry.length; downlevelIndex++) {\n' +
-        '  const entry = [downlevelIndex, downlevelEntry[downlevelIndex]]\n' +
-        '  console.log(entry)\n' +
-        '}\n'
+      'declare function getArr(): string[]\n{\nconst downlevelEntry = getArr()\n' +
+        'for (let downlevelEntryIndex = 0; downlevelEntryIndex < downlevelEntry.length; downlevelEntryIndex++) {\n' +
+        'const entry = [downlevelEntryIndex, downlevelEntry[downlevelEntryIndex]]\n' +
+        '\n  console.log(entry)\n\n}\n}\n'
     )
   })
 
@@ -417,11 +495,11 @@ describe('downlevel catalog #9 - Array#entries (for...of)', () => {
       'declare const arr: [string, string][]\nfor (const [i, [a, b]] of arr.entries()) {\n  console.log(i, a, b)\n}\n'
     )
     expect(sourceFile.getFullText()).toBe(
-      'declare const arr: [string, string][]\n' +
-        'for (let i = 0; i < arr.length; i++) {\n' +
-        '  const [a, b] = arr[i]\n' +
-        '  console.log(i, a, b)\n' +
-        '}\n'
+      'declare const arr: [string, string][]\n{\nconst downlevelReceiver = arr\n' +
+        'for (let downlevelReceiverIndex = 0; downlevelReceiverIndex < downlevelReceiver.length; downlevelReceiverIndex++) {\n' +
+        'const i = downlevelReceiverIndex\n' +
+        'const [a, b] = downlevelReceiver[downlevelReceiverIndex]\n' +
+        '\n  console.log(i, a, b)\n\n}\n}\n'
     )
   })
 
@@ -443,6 +521,71 @@ describe('downlevel catalog #9 - Array#entries (for...of)', () => {
         'bind a plain `[index, value]` pair',
       ]
     )
+  })
+
+  it('refuses a labeled loop (a label cannot survive the block wrapping)', () => {
+    expectRefusal(
+      'declare const arr: string[]\nouter: for (const [index, value] of arr.entries()) {\n' +
+        '  if (index > 0) {\n    continue outer\n  }\n  console.log(value)\n}\n',
+      ['labeled `for...of`', 'restructure the loop so the label is not needed']
+    )
+  })
+
+  it('preserves body comments (including suppression directives) through the rewrite', () => {
+    const sourceFile = rewrite(
+      'declare const arr: string[]\nfor (const [index, value] of arr.entries()) {\n' +
+        '  // keep: body comment must survive into the shadow tree\n  console.log(index, value)\n}\n'
+    )
+    expect(sourceFile.getFullText()).toContain('// keep: body comment must survive')
+  })
+
+  it('a mutated let index binding stays local to its iteration, matching native for...of', () => {
+    const run = compileRewrittenFunction(
+      'const run = (input: string[]): [number, string][] => {\n' +
+        '  const out: [number, string][] = []\n' +
+        '  for (let [index, value] of input.entries()) {\n' +
+        '    index = index + 1\n' +
+        '    out.push([index, value])\n' +
+        '  }\n' +
+        '  return out\n' +
+        '}\n',
+      'run'
+    )
+    // Native for...of yields every element exactly once regardless of binding assignment.
+    expect(run(['a', 'b', 'c'])).toEqual([
+      [1, 'a'],
+      [2, 'b'],
+      [3, 'c'],
+    ])
+  })
+
+  it('a body binding shadowing the receiver identifier does not affect the iteration reads', () => {
+    const run = compileRewrittenFunction(
+      'const run = (input: string[]): string[] => {\n' +
+        '  const out: string[] = []\n' +
+        '  for (const [index, value] of input.entries()) {\n' +
+        '    const input = `${index}`\n' +
+        '    out.push(value + input)\n' +
+        '  }\n' +
+        '  return out\n' +
+        '}\n',
+      'run'
+    )
+    expect(run(['a', 'b'])).toEqual(['a0', 'b1'])
+  })
+
+  it('rewrites inside a braceless if body (the block replacement is a single statement)', () => {
+    const run = compileRewrittenFunction(
+      'const run = (input: string[]): string[] => {\n' +
+        '  const out: string[] = []\n' +
+        '  if (input.length > 0)\n' +
+        '    for (const [index, value] of input.entries()) out.push(`${index}:${value}`)\n' +
+        '  return out\n' +
+        '}\n',
+      'run'
+    )
+    expect(run(['a', 'b'])).toEqual(['0:a', '1:b'])
+    expect(run([])).toEqual([])
   })
 })
 
@@ -546,14 +689,17 @@ const functionGuard =
     typeof value === 'function'
 /* eslint-enable @typescript-eslint/no-unnecessary-type-parameters */
 
-const isStringPredicateHelper = functionGuard<(s: string, p: string, position: number) => boolean>()
+const isStringPredicateHelper =
+  functionGuard<(s: string, p: string, position: number | undefined) => boolean>()
 
 const isPlainEndsWithHelper = functionGuard<(s: string, p: string) => boolean>()
 
 const isAtHelper = functionGuard<(x: string | readonly unknown[], index: number) => unknown>()
 
 const isIncludesHelper =
-  functionGuard<(array: readonly number[], v: number, from?: number) => boolean>()
+  functionGuard<
+    (array: readonly (number | undefined)[], v: number | undefined, from?: number) => boolean
+  >()
 
 /**
  * Check whether a thrown value has a string `name` property (e.g. `'TypeError'`,
@@ -682,10 +828,35 @@ describe('downlevel emitted helpers - standalone strict type-checking', () => {
   })
 })
 
+/**
+ * Run a find-family implementation over an array whose predicate appends to that same array,
+ * and report how the iteration behaved. Native find/findIndex capture the length before
+ * iterating, so exactly the initial elements are visited — a per-iteration length re-read
+ * would visit the appended elements too (and never terminate).
+ *
+ * @param find - The find-family implementation to exercise (native or an emitted helper).
+ *
+ * @returns The number of predicate calls, the array's final length, and the find result.
+ */
+const runGrowingArrayFind = (
+  find: (array: number[], predicate: (value: unknown) => unknown) => unknown
+): { calls: number; length: number; result: unknown } => {
+  const array = [1, 2, 3]
+  let calls = 0
+  const result = find(array, () => {
+    calls++
+    array.push(0)
+    return false
+  })
+  return { calls, length: array.length, result }
+}
+
 describe('downlevel emitted helpers - runtime equivalence with the native methods', () => {
   const strings = ['', 'a', 'abc', 'aabc']
   const patterns = ['', 'a', 'ab', 'bc', 'abcd']
-  const positions = [-5, -1, 0, 1, 2, 3, 10]
+  // Includes the full ToIntegerOrInfinity surface: undefined, NaN, fractional, and negative
+  // positions all normalize per spec, not just plain integers.
+  const positions = [undefined, NaN, -5, -1.5, -1, -0.5, 0, 1, 1.5, 2, 2.9, 3, 10]
 
   it('downlevelStartsWithAt matches native String#startsWith for all position ranges', () => {
     const helper = compileHelper('downlevelStartsWithAt', isStringPredicateHelper)
@@ -728,11 +899,22 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
     }
   })
 
+  it('downlevelAt truncates fractional and NaN indexes per ToIntegerOrInfinity, matching native at()', () => {
+    const helper = compileHelper('downlevelAt', isAtHelper)
+    const array = ['x', 'y', 'z']
+    const text = 'xyz'
+    for (const index of [-3.5, -2.5, -1.5, -0.5, -0, 0.5, 1.5, 2.9, NaN, Infinity, -Infinity]) {
+      expect(helper(array, index)).toBe(array.at(index))
+      expect(helper(text, index)).toBe(text.at(index))
+    }
+  })
+
   it('downlevelIncludesNaNSafe matches native Array#includes, including NaN and negative from', () => {
     const helper = compileHelper('downlevelIncludesNaNSafe', isIncludesHelper)
     const arrays = [[NaN, 1], [1, NaN, 3], [1, 2, 3], []]
     const searchValues = [NaN, 1, 4]
-    const fromIndexes = [undefined, -10, -2, -1, 0, 1, 2, 5]
+    // Includes fractional and NaN start indexes: both normalize per ToIntegerOrInfinity.
+    const fromIndexes = [undefined, NaN, -10, -2, -1.5, -1, 0, 1, 1.5, 2, 5]
     for (const array of arrays) {
       for (const searchValue of searchValues) {
         for (const from of fromIndexes) {
@@ -740,6 +922,18 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
         }
       }
     }
+  })
+
+  it('downlevelIncludesNaNSafe reads array holes as undefined, matching native includes (indexOf skips them)', () => {
+    const helper = compileHelper('downlevelIncludesNaNSafe', isIncludesHelper)
+    // Extending the length creates genuine holes (an array-literal elision or Array.from would
+    // create dense undefined elements instead, which indexOf does NOT skip — no divergence).
+    const sparse: (number | undefined)[] = [1]
+    sparse.length = 3
+    expect(helper(sparse, undefined)).toBe(sparse.includes(undefined))
+    expect(helper(sparse, undefined)).toBe(true)
+    expect(helper(sparse, undefined, 1)).toBe(sparse.includes(undefined, 1))
+    expect(helper(sparse, 1)).toBe(sparse.includes(1))
   })
 
   // --- #0/#2 replaceAll helpers ------------------------------------------------------------
@@ -907,6 +1101,18 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
     )
   })
 
+  it('downlevelArrayFind/findIndex capture the length once — a self-growing predicate terminates like native', () => {
+    const findHelper = compileHelper('downlevelArrayFind', isFindFamilyHelper)
+    const findIndexHelper = compileHelper('downlevelArrayFindIndex', isFindFamilyHelper)
+
+    expect(runGrowingArrayFind((array, predicate) => findHelper(array, predicate))).toEqual(
+      runGrowingArrayFind((array, predicate) => array.find((v) => predicate(v)))
+    )
+    expect(runGrowingArrayFind((array, predicate) => findIndexHelper(array, predicate))).toEqual(
+      runGrowingArrayFind((array, predicate) => array.findIndex((v) => predicate(v)))
+    )
+  })
+
   // --- #13/#14 String#repeat / padStart / padEnd ---------------------------------------------
 
   it('downlevelStringRepeat matches native String#repeat, including the RangeError cases', () => {
@@ -986,6 +1192,20 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
     // The original array must be left untouched (non-mutating, like native toSpliced).
     expect(array).toEqual([1, 2, 3, 4])
   })
+
+  it('downlevelArrayToSpliced distinguishes an omitted deleteCount from an explicit undefined', () => {
+    const helper = compileHelper('downlevelArrayToSpliced', isToSplicedHelper)
+    const array = [1, 2, 3, 4, 5]
+    // Omitted: delete to the end. Explicit undefined: ToIntegerOrInfinity(undefined) is 0 —
+    // delete nothing. Native distinguishes the two by argument count.
+    expect(helper(array, 1)).toEqual(array.toSpliced(1))
+    expect(helper(array, 1, undefined)).toEqual(array.toSpliced(1, undefined))
+    expect(helper(array, 1, undefined)).toEqual([1, 2, 3, 4, 5])
+    // The with-items form is compared against a literal: TypeScript's 3-argument `toSpliced`
+    // overload requires a `number` deleteCount, so the native call is not type-expressible
+    // with an explicit `undefined` (at runtime it deletes nothing and inserts before index 1).
+    expect(helper(array, 1, undefined, 9)).toEqual([1, 9, 2, 3, 4, 5])
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1031,6 +1251,32 @@ const compileRewrittenExpression = (
   const evaluated: unknown = runInNewContext(`${transpiled}; rewrittenFunction`)
   if (!isCallable(evaluated)) {
     throw new Error('Compiled rewritten expression did not evaluate to a function.')
+  }
+  return evaluated
+}
+
+/**
+ * Run a whole source snippet through the catalog, transpile it, and return the function bound
+ * to `functionName` — the statement-level counterpart of {@link compileRewrittenExpression},
+ * for rewrites (like the `.entries()` for...of loop) that replace statements rather than
+ * expressions. The snippet must declare `functionName` as a top-level `const`.
+ *
+ * @param sourceText - The TypeScript source to rewrite and compile.
+ * @param functionName - The top-level `const` function to extract from the compiled snippet.
+ *
+ * @returns The compiled function, running the exact rewritten code the build would ship.
+ */
+const compileRewrittenFunction = (
+  sourceText: string,
+  functionName: string
+): ((...arguments_: unknown[]) => unknown) => {
+  const rewrittenText = rewrite(sourceText).getFullText()
+  const transpiled = transpileModule(rewrittenText, {
+    compilerOptions: { target: CompilerScriptTarget.ES2019 },
+  }).outputText
+  const evaluated: unknown = runInNewContext(`${transpiled}; ${functionName}`)
+  if (!isCallable(evaluated)) {
+    throw new Error(`Compiled snippet did not evaluate "${functionName}" to a function.`)
   }
   return evaluated
 }
@@ -1413,5 +1659,86 @@ describe('downlevel catalog #16 - Array#toSpliced', () => {
   it('always uses a helper, forwarding every argument, arbitrary operands', () => {
     const sourceFile = rewrite('declare const arr: number[]\nconst v = arr.toSpliced(1, 2, 9)\n')
     expect(sourceFile.getFullText()).toContain('const v = downlevelArrayToSpliced(arr, 1, 2, 9)')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The ES5 output gate itself (verify-es5-output.ts)
+// ---------------------------------------------------------------------------
+
+describe('ES5 output gate (verify-es5-output)', () => {
+  const temporaryDirectories: string[] = []
+
+  afterAll(() => {
+    for (const directory of temporaryDirectories) {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  /**
+   * Run the gate over a single-file probe directory and return a `GATE_PASSED` /
+   * `GATE_FAILED: <message>` verdict line. The gate runs in a `tsx` subprocess because
+   * `ESLint`'s flat-config machinery uses dynamic `import()`, which Jest's module sandbox
+   * rejects.
+   *
+   * @param content - The JavaScript content of the probe file.
+   *
+   * @returns The subprocess's verdict output.
+   */
+  const gateVerdictFor = (content: string): string => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'es5-gate-'))
+    temporaryDirectories.push(directory)
+    writeFileSync(path.join(directory, 'probe.js'), content)
+    const runnerPath = path.join(directory, 'runner.mts')
+    const verifierPath = path.resolve('src/build-scripts/verify-es5-output.ts')
+    const noThrowPath = path.resolve('utilities/no-throw.ts')
+    writeFileSync(
+      runnerPath,
+      `import { verifyEs5Output } from ${JSON.stringify(verifierPath)}\n` +
+        `import { isNormalizedError, noThrow } from ${JSON.stringify(noThrowPath)}\n` +
+        `const outcome = await noThrow(() => verifyEs5Output(${JSON.stringify(directory)}, 'script'))\n` +
+        'console.log(isNormalizedError(outcome) ? `GATE_FAILED: ${outcome.message}` : `GATE_PASSED`)\n'
+    )
+    return execSync(`npx tsx ${JSON.stringify(runnerPath)}`, { encoding: 'utf8', stdio: 'pipe' })
+  }
+
+  it('rejects a post-ES5 prototype-method call on a variable receiver (aggressive mode)', () => {
+    // Without aggressive mode, es-x only fires on literal receivers — this variable-receiver
+    // shape (the shape every real escape takes) would pass silently.
+    const verdict = gateVerdictFor('var value = "abc"\nvar found = value.includes("a")\n')
+    expect(verdict).toContain('GATE_FAILED')
+    expect(verdict).toContain('post-ES5 construct')
+  })
+
+  it('accepts ES5 code, including static-namespace calls and array methods whose names collide with post-ES5 rules', () => {
+    // `Object.keys` name-matches the ES2015 `Array#keys` rule and `.map`/`.filter` name-match
+    // the ES2025 iterator-helper rules; all are legitimate ES5 here.
+    const verdict = gateVerdictFor(
+      'var keys = Object.keys({ a: 1 })\n' +
+        'var mapped = keys.map(function (k) { return k })\n' +
+        'var filtered = mapped.filter(function (k) { return k })\n'
+    )
+    expect(verdict).toContain('GATE_PASSED')
+  })
+
+  it('exempts an allowlisted SWC helper but rejects the same body under a rogue name (fail-closed)', () => {
+    // The body must be UNGUARDED post-ES5 usage: es-x is guard-aware, so a
+    // `typeof Symbol !== "undefined"`-protected body produces no finding to exempt at all.
+    const unguardedBody = '  return Object.getOwnPropertySymbols(value)\n'
+    const allowlisted = `function _instanceof(value) {\n${unguardedBody}}\n`
+    expect(gateVerdictFor(allowlisted)).toContain('GATE_PASSED')
+
+    const rogue = `function _rogue_helper(value) {\n${unguardedBody}}\n`
+    const rogueVerdict = gateVerdictFor(rogue)
+    expect(rogueVerdict).toContain('GATE_FAILED')
+    expect(rogueVerdict).toContain('post-ES5 construct')
+  })
+
+  it('never skips genuine post-ES5 static APIs on ES5 global namespaces', () => {
+    // The static-global false-positive filter must apply to prototype-rule name collisions
+    // only — an escaped `Object.entries(...)` is a real ES2017 usage and must fail the gate.
+    const verdict = gateVerdictFor('var entries = Object.entries({ a: 1 })\n')
+    expect(verdict).toContain('GATE_FAILED')
+    expect(verdict).toContain('post-ES5 construct')
   })
 })
