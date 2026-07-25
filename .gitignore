@@ -16,6 +16,9 @@ node_modules
 # Distribution (compiled code)
 /dist
 
+# Downlevel transform shadow tree (see src/build-scripts/downlevel/)
+/.transformed-src
+
 # Performance generated files (results, caches, snapshots)
 /performance/**/.*
 
