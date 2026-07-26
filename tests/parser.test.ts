@@ -52,7 +52,7 @@ describe('Lossless round-trip (format() === input)', () => {
   it('round-trips empty key with = separator', () => expectRoundTrip('= no key'))
   it('round-trips CRLF line endings', () => expectRoundTrip('a = 1\r\nb = 2\r\n'))
   it('round-trips CR-only line endings', () => expectRoundTrip('a = 1\rb = 2\r'))
-  it('round-trips BOM prefix', () => expectRoundTrip('\uFEFFkey = value'))
+  it('round-trips BOM prefix', () => expectRoundTrip('\u{FEFF}key = value'))
   it('round-trips file with only comments', () => expectRoundTrip('# c1\n! c2\n# c3'))
   it('round-trips file with only blank lines', () => expectRoundTrip('\n\n   \n'))
   it('round-trips mixed content', () => expectRoundTrip('# h\n\nk1 = v1\n# c\nk2 = v2\n'))
@@ -134,7 +134,7 @@ describe('PropertyNode fields', () => {
 
   it('multi-space whitespace separator', () => {
     const node = expectFirstProperty('category    file format')
-    expect(node.separatorLeading).toBe('    ')
+    expect(node.separatorLeading).toBe(' '.repeat(4))
     expect(node.separatorChar).toBeUndefined()
   })
 
@@ -151,7 +151,7 @@ describe('PropertyNode fields', () => {
     const node = expectFirstProperty('keyonly   ')
     expect(node.key).toBe('keyonly')
     expect(node.value).toBe('')
-    expect(node.separatorLeading).toBe('   ')
+    expect(node.separatorLeading).toBe(' '.repeat(3))
     expect(node.separatorChar).toBeUndefined()
   })
 
@@ -172,7 +172,7 @@ describe('PropertyNode fields', () => {
 
   it('captures leadingWhitespace', () => {
     const node = expectFirstProperty('    key = value')
-    expect(node.leadingWhitespace).toBe('    ')
+    expect(node.leadingWhitespace).toBe(' '.repeat(4))
     expect(node.key).toBe('key')
   })
 
@@ -213,7 +213,7 @@ describe('PropertyNode fields', () => {
 
   it('empty key with : separator and leading whitespace', () => {
     const node = expectFirstProperty('    : value')
-    expect(node.leadingWhitespace).toBe('    ')
+    expect(node.leadingWhitespace).toBe(' '.repeat(4))
     expect(node.key).toBe('')
     expect(node.separatorChar).toBe(':')
   })
@@ -237,8 +237,8 @@ describe('PropertyNode fields', () => {
   })
 
   it('preserves non-breaking space in value', () => {
-    const node = expectFirstProperty('key = \u00A0value')
-    expect(node.value).toBe('\u00A0value')
+    const node = expectFirstProperty('key = \u{A0}value')
+    expect(node.value).toBe('\u{A0}value')
   })
 })
 
@@ -262,7 +262,7 @@ describe('CommentNode fields', () => {
 
   it('captures leadingWhitespace', () => {
     const comments = new Properties('    # indented comment').getComments()
-    expect(comments[0].leadingWhitespace).toBe('    ')
+    expect(comments[0].leadingWhitespace).toBe(' '.repeat(4))
     expect(comments[0].rawLine).toBe('    # indented comment')
   })
 
@@ -282,7 +282,7 @@ describe('BlankLineNode fields', () => {
 
   it('captures whitespace-only blank line', () => {
     const blanks = new Properties('key = value\n   \nkey2 = value2').getBlankLines()
-    expect(blanks[0].rawLine).toBe('   ')
+    expect(blanks[0].rawLine).toBe(' '.repeat(3))
   })
 })
 
@@ -484,9 +484,8 @@ describe('format() with normalization options', () => {
     expect(result).toBe('key =value')
   })
 
-  // eslint-disable-next-line unicorn/prefer-string-raw
-  it('escapeUnicode converts non-ASCII to \\uXXXX', () => {
-    const result = new Properties('key = \u00FC').format({ escapeUnicode: true })
+  it('escapeUnicode converts non-ASCII to unicode escape sequences', () => {
+    const result = new Properties('key = \u{FC}').format({ escapeUnicode: true })
     expect(result.toLowerCase()).toContain(String.raw`\u00fc`)
   })
 
@@ -527,8 +526,7 @@ describe('format() with normalization options', () => {
     })
   })
 
-  // eslint-disable-next-line unicorn/prefer-string-raw
-  it('wrapValuesAt does not split \\uXXXX sequences', () => {
+  it('wrapValuesAt does not split unicode escape sequences', () => {
     const result = new Properties(String.raw`key = abc\u0041def`).format({
       wrapValuesAt: 6,
     })
@@ -556,7 +554,7 @@ describe('format() with normalization options', () => {
   })
 
   it('preserves BOM if present', () => {
-    const result = new Properties('\uFEFFkey = value').format({})
+    const result = new Properties('\u{FEFF}key = value').format({})
     expect(result.codePointAt(0)).toBe(0xfeff)
   })
 
@@ -607,7 +605,7 @@ describe('PropertiesNodeType constants', () => {
 
 describe('Edge cases', () => {
   it('handles content with only whitespace', () => {
-    const properties = new Properties('   ')
+    const properties = new Properties(' '.repeat(3))
     expect(properties.toObject()).toEqual({})
     expect(properties.getBlankLines()).toHaveLength(1)
   })
@@ -616,8 +614,7 @@ describe('Edge cases', () => {
     expect(new Properties('a = 1\r\nb = 2\nc = 3').eolCharacter).toBe('\r\n')
   })
 
-  // eslint-disable-next-line unicorn/prefer-string-raw
-  it('defaults EOL to \\n when no line terminators present', () => {
+  it('defaults EOL to LF when no line terminators present', () => {
     expect(new Properties('key = value').eolCharacter).toBe('\n')
   })
 
@@ -625,8 +622,7 @@ describe('Edge cases', () => {
     expect(new Properties(String.raw`key\\ = value`).toObject()).toEqual({ 'key\\': 'value' })
   })
 
-  // eslint-disable-next-line unicorn/prefer-string-raw
-  it('handles continuation at end of file (no content after \\)', () => {
+  it('handles continuation at end of file (no content after the backslash)', () => {
     expect(new Properties('key = value\\').toObject()).toEqual({ key: 'value' })
   })
 
@@ -641,7 +637,7 @@ describe('Edge cases', () => {
   })
 
   it('handles BOM detection', () => {
-    expect(new Properties('\uFEFFkey = value').hasBom).toBe(true)
+    expect(new Properties('\u{FEFF}key = value').hasBom).toBe(true)
   })
 
   it('handles no BOM', () => {

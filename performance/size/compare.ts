@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { gzipSync } from 'node:zlib'
 
+import { isNormalizedError, noThrow } from '../../utilities/no-throw'
 import { resolveBaseline } from '../utilities'
 
 const rootDirectory = path.resolve(import.meta.dirname, '..', '..')
@@ -141,25 +142,26 @@ const formatBytes = (bytes: number): string =>
  * @throws Error if esbuild fails to bundle the code.
  */
 const bundle = (code: string): { bundled: string; minified: string } => {
-  try {
-    const bundled = execSync('npx esbuild --bundle --format=esm --tree-shaking=true', {
+  const result = noThrow(() => ({
+    bundled: execSync('npx esbuild --bundle --format=esm --tree-shaking=true', {
       input: code,
       cwd: rootDirectory,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
-    })
-    const minified = execSync('npx esbuild --bundle --format=esm --minify --tree-shaking=true', {
+    }),
+    minified: execSync('npx esbuild --bundle --format=esm --minify --tree-shaking=true', {
       input: code,
       cwd: rootDirectory,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
-    })
-    return { bundled, minified }
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Unknown error occurred during bundling.'
-    throw new Error(`esbuild failed to bundle entry point.\n\nCode: ${code}\n\nDetails: ${message}`)
+    }),
+  }))
+  if (isNormalizedError(result)) {
+    throw new Error(
+      `esbuild failed to bundle entry point.\n\nCode: ${code}\n\nDetails: ${result.message}`
+    )
   }
+  return result
 }
 
 /**
@@ -175,7 +177,7 @@ const measureEntryPoint = (
   distributionEsmPath: string
 ): SizeResult | null => {
   const code = entryPoint.code(distributionEsmPath)
-  try {
+  const measurement = noThrow(() => {
     const { bundled, minified } = bundle(code)
     const gzipped = gzipSync(minified)
     return {
@@ -184,10 +186,9 @@ const measureEntryPoint = (
       minified: Buffer.byteLength(minified),
       gzipped: gzipped.length,
     }
-  } catch {
-    // Entry point may not exist in this distribution (e.g. baseline vs current).
-    return null
-  }
+  })
+  // Entry point may not exist in this distribution (e.g. baseline vs current).
+  return isNormalizedError(measurement) ? null : measurement
 }
 
 /**
@@ -374,12 +375,12 @@ const buildSizeMarkdownReport = (label: string, rows: SizeComparisonRow[]): stri
  * @param results - The measured size results for the current build.
  */
 const updateReadmeBadge = (results: SizeResult[]): void => {
-  const getPropertiesResult = results.find((result) => result.name === 'getProperties')
-  if (!getPropertiesResult) {
+  const sizeResultForGetProperties = results.find((result) => result.name === 'getProperties')
+  if (!sizeResultForGetProperties) {
     return
   }
 
-  const sizeLabel = formatBytes(getPropertiesResult.gzipped).replace(' ', '%20')
+  const sizeLabel = formatBytes(sizeResultForGetProperties.gzipped).replace(' ', '%20')
   const newBadge = `![Package Size](https://img.shields.io/badge/min%2Bgzip-${sizeLabel}-brightgreen)`
 
   const readme = readFileSync(readmePath, 'utf8')
@@ -389,11 +390,11 @@ const updateReadmeBadge = (results: SizeResult[]): void => {
     return
   }
 
-  const sizeText = formatBytes(getPropertiesResult.gzipped)
+  const sizeText = formatBytes(sizeResultForGetProperties.gzipped)
   const inlinePattern = /`getProperties` is only [\d.]+ (?:kB|B) min\+gzip/
   const updatedReadme = readme
-    .replace(badgePattern, newBadge)
-    .replace(inlinePattern, `\`getProperties\` is only ${sizeText} min+gzip`)
+    .replace(badgePattern, () => newBadge)
+    .replace(inlinePattern, () => `\`getProperties\` is only ${sizeText} min+gzip`)
   if (updatedReadme !== readme) {
     writeFileSync(readmePath, updatedReadme)
     console.log(`README.md updated: ${sizeText}`)

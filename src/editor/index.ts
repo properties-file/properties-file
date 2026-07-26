@@ -130,6 +130,14 @@ export type DeleteOptions = {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Formatting options for {@link buildPropertyNode}. */
+type BuildPropertyNodeOptions = {
+  /** If `true`, escape non-ASCII characters as `\\uXXXX` sequences. Default: `false`. */
+  escapeUnicode?: boolean
+  /** Separator character to use between key and value. Default: `'='`. */
+  separator?: KeyValuePairSeparator
+}
+
 /**
  * Build a {@link PropertyNode} from key, value, and formatting options.
  *
@@ -143,15 +151,12 @@ export type DeleteOptions = {
 const buildPropertyNode = (
   key: string,
   value: string,
-  options: {
-    escapeUnicode?: boolean
-    separator?: KeyValuePairSeparator
-  },
+  options: BuildPropertyNodeOptions,
   lineNumber: number
 ): PropertyNode => {
-  const escUnicode = options.escapeUnicode === true
-  const escapedKey = escapeKey(key, escUnicode)
-  const escapedValue = escapeValue(value, escUnicode)
+  const shouldEscapeUnicode = options.escapeUnicode === true
+  const escapedKey = escapeKey(key, shouldEscapeUnicode)
+  const escapedValue = escapeValue(value, shouldEscapeUnicode)
 
   const separatorChar =
     options.separator === ' ' ? undefined : (options.separator ?? DEFAULT_SEPARATOR)
@@ -422,13 +427,13 @@ export class PropertiesEditor extends Properties {
     // Determine new key/value.
     const newKey = options.newKey ?? existing.key
     const newValue = options.newValue ?? existing.value
-    const escUnicode = options.escapeUnicode === true
-    const escapedKey = escUnicode
+    const shouldEscapeUnicode = options.escapeUnicode === true
+    const escapedKey = shouldEscapeUnicode
       ? escapeKey(newKey, true)
       : options.newKey !== undefined
         ? escapeKey(newKey)
         : existing.escapedKey
-    const escapedValue = escUnicode
+    const escapedValue = shouldEscapeUnicode
       ? escapeValue(newValue, true)
       : options.newValue !== undefined
         ? escapeValue(newValue)
@@ -476,18 +481,23 @@ export class PropertiesEditor extends Properties {
     // Handle comment replacement.
     if (options.newComment !== undefined) {
       // Remove leading comment/blank nodes.
-      let removeStart = index
+      let removalStartIndex = index
       for (let search = index - 1; search >= 0; search--) {
         if (this.nodes[search].type === 'property') {
           break
         }
-        removeStart = search
+        removalStartIndex = search
       }
 
       const delimiter = options.commentDelimiter ?? DEFAULT_COMMENT_DELIMITER
       const commentNodes = buildCommentNodes(options.newComment, delimiter, 0)
 
-      this.nodes.splice(removeStart, index - removeStart + 1, ...commentNodes, updatedNode)
+      this.nodes.splice(
+        removalStartIndex,
+        index - removalStartIndex + 1,
+        ...commentNodes,
+        updatedNode
+      )
     } else {
       this.nodes[index] = updatedNode
     }
@@ -537,18 +547,18 @@ export class PropertiesEditor extends Properties {
     }
 
     const { index, node: deleted } = found
-    const deleteLeading = options?.deleteLeadingNodes !== false
+    const shouldDeleteLeadingNodes = options?.deleteLeadingNodes !== false
 
-    if (deleteLeading) {
+    if (shouldDeleteLeadingNodes) {
       // Remove leading comment/blank nodes up to the previous property.
-      let removeStart = index
+      let removalStartIndex = index
       for (let search = index - 1; search >= 0; search--) {
         if (this.nodes[search].type === 'property') {
           break
         }
-        removeStart = search
+        removalStartIndex = search
       }
-      this.nodes.splice(removeStart, index - removeStart + 1)
+      this.nodes.splice(removalStartIndex, index - removalStartIndex + 1)
     } else {
       this.nodes.splice(index, 1)
     }
@@ -576,6 +586,9 @@ export class PropertiesEditor extends Properties {
     if (deleted.length > 0) {
       recalculateLineNumbers(this.nodes)
     }
+    // In-place reverse of a function-local array this method exclusively owns — `toReversed()`
+    // would add a pointless copy.
+    // eslint-disable-next-line unicorn/no-array-reverse
     return deleted.reverse()
   }
 }

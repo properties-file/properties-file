@@ -40,8 +40,8 @@ describe('The property ISO-8859-1 compatible encoding key escaping', () => {
     ['foo11\n', String.raw`foo11\n`],
     ['f\r\f\n\too12', String.raw`f\r\f\n\too12`],
     ['\\foo13\\', '\\\\foo13\\\\'],
-    ['\0\u0001', String.raw`\u0000\u0001`],
-    ['\u3053\u3093\u306B\u3061\u306F', String.raw`\u3053\u3093\u306b\u3061\u306f`],
+    ['\0\u{1}', String.raw`\u0000\u0001`],
+    ['\u{3053}\u{3093}\u{306B}\u{3061}\u{306F}', String.raw`\u3053\u3093\u306b\u3061\u306f`],
     ['こんにちは', String.raw`\u3053\u3093\u306b\u3061\u306f`],
   ])('should escape key "%s" as "%s"', (key: string, expected: string) => {
     const result = escapeKey(key, true)
@@ -84,8 +84,8 @@ describe('The property ISO-8859-1 compatible encoding value escaping', () => {
     ['foo11\n', String.raw`foo11\n`],
     ['f\r\f\n\too12', String.raw`f\r\f\n\too12`],
     ['\\foo13\\', '\\\\foo13\\\\'],
-    ['\0\u0001', String.raw`\u0000\u0001`],
-    ['\u3053\u3093\u306B\u3061\u306F', String.raw`\u3053\u3093\u306b\u3061\u306f`],
+    ['\0\u{1}', String.raw`\u0000\u0001`],
+    ['\u{3053}\u{3093}\u{306B}\u{3061}\u{306F}', String.raw`\u3053\u3093\u306b\u3061\u306f`],
     ['こんにちは', String.raw`\u3053\u3093\u306b\u3061\u306f`],
   ])('should escape value "%s" as "%s"', (key: string, expected: string) => {
     const result = escapeValue(key, true)

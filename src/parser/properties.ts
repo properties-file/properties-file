@@ -11,7 +11,7 @@ import type {
   PropertyNode,
 } from './nodes'
 
-const BOM = '\uFEFF'
+const BOM = '\u{FEFF}'
 
 /**
  * A lossless, ordered representation of a `.properties` file.
@@ -125,17 +125,23 @@ export class Properties {
     // available in shipped ES5 output.
     const nodesByKey: Record<string, PropertyNode[] | undefined> = {}
     for (const node of this.nodes) {
-      if (node.type === 'property') {
-        const existing = nodesByKey[node.key]
-        if (existing === undefined) {
-          nodesByKey[node.key] = [node]
-        } else {
-          existing.push(node)
-        }
+      if (node.type !== 'property') {
+        continue
+      }
+
+      const existing = nodesByKey[node.key]
+      if (existing === undefined) {
+        nodesByKey[node.key] = [node]
+      } else {
+        existing.push(node)
       }
     }
 
     const collisions: KeyCollisions[] = []
+    // Keyed lookup instead of `Object.entries()`: the downleveled `entries()` form would emit a
+    // helper that allocates a `[key, value]` pair array per key into the shipped bundle; this
+    // form keeps the ES5 output allocation-free.
+    // eslint-disable-next-line unicorn/prefer-object-iterable-methods
     for (const key of Object.keys(nodesByKey)) {
       const nodes = nodesByKey[key]
       if (nodes !== undefined && nodes.length > 1) {

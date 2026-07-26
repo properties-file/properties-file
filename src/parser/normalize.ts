@@ -2,7 +2,7 @@ import { escapeKey, escapeValue } from '../escape'
 
 import type { NormalizeOptions, PropertiesNode, PropertyNode } from './nodes'
 
-const BOM = '\uFEFF'
+const BOM = '\u{FEFF}'
 
 /**
  * Wrap an escaped string at a target width using `\` line continuations.
@@ -59,36 +59,32 @@ const wrapAtWidth = (escaped: string, width: number): string => {
  * @returns The reconstructed property line(s) as a single string.
  */
 const rebuildPropertyLine = (node: PropertyNode, options: NormalizeOptions): string => {
-  const useEscapeUnicode = options.escapeUnicode === true
+  const shouldEscapeUnicode = options.escapeUnicode === true
 
   // Determine leading whitespace.
   const leading = options.removeLeadingWhitespace ? '' : node.leadingWhitespace
 
   // Determine key content.
-  let keyContent = useEscapeUnicode ? escapeKey(node.key, true) : node.escapedKey
+  let keyContent = shouldEscapeUnicode ? escapeKey(node.key, true) : node.escapedKey
 
   // Determine separator.
-  let separatorLeading: string
+  let separatorLeading = options.separatorLeading ?? node.separatorLeading
   let separatorCharacter: string
-  let separatorTrailing: string
+  const separatorTrailing = options.separatorTrailing ?? node.separatorTrailing
 
   if (options.separatorChar !== undefined) {
-    separatorLeading = options.separatorLeading ?? node.separatorLeading
     separatorCharacter = options.separatorChar === ' ' ? '' : options.separatorChar
-    separatorTrailing = options.separatorTrailing ?? node.separatorTrailing
 
     // When separatorChar is ' ', the leading whitespace IS the separator.
     if (options.separatorChar === ' ') {
       separatorLeading = options.separatorLeading ?? ' '
     }
   } else {
-    separatorLeading = options.separatorLeading ?? node.separatorLeading
     separatorCharacter = node.separatorChar ?? ''
-    separatorTrailing = options.separatorTrailing ?? node.separatorTrailing
   }
 
   // Determine value content.
-  let valueContent = useEscapeUnicode ? escapeValue(node.value, true) : node.escapedValue
+  let valueContent = shouldEscapeUnicode ? escapeValue(node.value, true) : node.escapedValue
 
   // Apply key wrapping.
   if (options.wrapKeysAt !== undefined && options.wrapKeysAt > 0) {
@@ -120,7 +116,7 @@ export const formatNormalized = (
   options: NormalizeOptions
 ): string => {
   const eol = options.endOfLineCharacter ?? eolCharacter
-  const needsPropertyRebuild =
+  const requiresPropertyRebuild =
     options.separatorChar !== undefined ||
     options.separatorLeading !== undefined ||
     options.separatorTrailing !== undefined ||
@@ -165,9 +161,13 @@ export const formatNormalized = (
 
   const parts: string[] = []
 
-  // eslint-disable-next-line unicorn/no-for-loop -- need index for keepIndices lookup, entries() is ES2015
+  // eslint-disable-next-line unicorn/no-for-loop -- the element is read only after the skipIndices check below; an entries()-style loop would read it eagerly for skipped nodes too
   for (let nodeIndex = 0; nodeIndex < nodes.length; nodeIndex++) {
     // Skip nodes marked for removal by deduplication (property + its leading comments/blanks).
+    // Intentional truthiness check, not an existence check: `skipIndices` values are only ever
+    // `true` when present, so a plain read is equivalent to an own-property check here, without
+    // the extra method-call overhead of one in this per-node loop.
+    // eslint-disable-next-line unicorn/no-computed-property-existence-check
     if (skipIndices?.[nodeIndex]) {
       continue
     }
@@ -189,7 +189,7 @@ export const formatNormalized = (
         break
       }
       case 'property': {
-        if (needsPropertyRebuild) {
+        if (requiresPropertyRebuild) {
           parts.push(rebuildPropertyLine(node, options))
         } else {
           parts.push(node.rawLines.join(eol))

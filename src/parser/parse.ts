@@ -19,9 +19,15 @@ import type { BlankLineNode, CommentNode, PropertiesNode, PropertyNode } from '.
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Characters that count as whitespace in .properties files (space, tab, formfeed). */
-const isWhitespace = (charCode: number): boolean =>
-  charCode === CH_SPACE || charCode === CH_TAB || charCode === CH_FF
+/**
+ * Check whether a character code counts as whitespace in `.properties` files (space, tab,
+ * formfeed).
+ *
+ * @param charCode - The character code to test.
+ *
+ * @returns `true` if the character code is a `.properties` whitespace character.
+ */
+const isWhitespace = (charCode: number): boolean => [CH_SPACE, CH_TAB, CH_FF].includes(charCode)
 
 /**
  * Count trailing backslashes in a string up to (but not including) `end`.
@@ -173,13 +179,13 @@ export const parseDocument = (content: string | Buffer): ParseResult => {
     // - Strip leading whitespace from continuation lines (not the first line).
     // If the file ended mid-continuation, the last line still has its trailing
     // backslash which needs to be stripped.
-    const endsWithDanglingContinuation = isContinuation
+    const hasDanglingContinuation = isContinuation
 
     let logicalLine: string
     if (rawLines.length === 1) {
       // Single-line property: use content after leading whitespace.
       const sliced = firstNonWs > 0 ? line.slice(firstNonWs) : line
-      logicalLine = endsWithDanglingContinuation ? sliced.slice(0, -1) : sliced
+      logicalLine = hasDanglingContinuation ? sliced.slice(0, -1) : sliced
     } else {
       const segments: string[] = []
       for (let index = 0; index < rawLines.length; index++) {
@@ -201,7 +207,7 @@ export const parseDocument = (content: string | Buffer): ParseResult => {
           // Strip trailing continuation backslash if this line also continues
           // (or if the file ended mid-continuation on this line).
           const isLastLine = index === rawLines.length - 1
-          segEnd = isLastLine && !endsWithDanglingContinuation ? segLength : segLength - 1
+          segEnd = isLastLine && !hasDanglingContinuation ? segLength : segLength - 1
         }
 
         segments.push(rawLine.slice(segStart, segEnd))
@@ -277,8 +283,8 @@ export const parseDocument = (content: string | Buffer): ParseResult => {
     const escapedValue = logicalLine.slice(valueStart)
 
     // Unescape key and value.
-    const key = escapedKey.indexOf('\\') !== -1 ? unescapeContent(escapedKey) : escapedKey
-    const value = escapedValue.indexOf('\\') !== -1 ? unescapeContent(escapedValue) : escapedValue
+    const key = escapedKey.includes('\\') ? unescapeContent(escapedKey) : escapedKey
+    const value = escapedValue.includes('\\') ? unescapeContent(escapedValue) : escapedValue
 
     const propertyNode: PropertyNode = {
       type: 'property',

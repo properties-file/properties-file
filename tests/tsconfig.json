@@ -2,8 +2,9 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "lib": ["ESNext"],
+    "target": "ESNext",
     "types": ["jest", "node"],
     "rootDir": ".."
   },
-  "include": ["**/*.ts", "../src/**/*.ts"]
+  "include": ["**/*.ts", "**/*.mts", "../src/**/*.ts"]
 }

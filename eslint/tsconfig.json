@@ -5,10 +5,7 @@
     "types": ["node"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "strict": true,
-    "paths": {
-      "@package-json/types": ["./package-json-types.d.ts"]
-    }
+    "strict": true
   },
   "include": ["./**/*.ts", "../eslint.config.ts"]
 }

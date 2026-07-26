@@ -1,10 +1,12 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
+import { isNormalizedError, noThrow } from '../../utilities/no-throw'
 import {
   averageBenchmarkResults,
   buildComparison,
   buildMarkdownReport,
+  CliError,
   hasRegressions,
   printComparison,
   resolveBaseline,
@@ -143,7 +145,7 @@ const isUnescapeModule = (value: unknown): value is UnescapeModule =>
  * type. Throws if the loaded module is missing any required export.
  *
  * @param specifier - The module specifier to import.
- * @param guard - A type guard that validates the module's runtime shape.
+ * @param isExpectedModule - A type guard that validates the module's runtime shape.
  * @param expectedShape - Human-readable name of the expected shape, used in error messages.
  *
  * @returns The imported module, typed as `T`.
@@ -152,11 +154,11 @@ const isUnescapeModule = (value: unknown): value is UnescapeModule =>
  */
 const loadModule = async <T>(
   specifier: string,
-  guard: (value: unknown) => value is T,
+  isExpectedModule: (value: unknown) => value is T,
   expectedShape: string
 ): Promise<T> => {
   const loaded = await dynamicImport(specifier)
-  if (!guard(loaded)) {
+  if (!isExpectedModule(loaded)) {
     throw new Error(`Module at ${specifier} does not expose the expected ${expectedShape} shape.`)
   }
   return loaded
@@ -268,7 +270,7 @@ const extractResults = (bench: Bench): BenchmarkResult[] =>
  */
 const printResultsTable = (label: string, results: BenchmarkResult[]): void => {
   const nameWidth = Math.max(12, ...results.map((result) => result.name.length))
-  const header = `${'Benchmark'.padEnd(nameWidth)}  ${'ops/sec'.padStart(12)}  ${'median (ns)'.padStart(14)}  ${'\u00B1%'.padStart(8)}`
+  const header = `${'Benchmark'.padEnd(nameWidth)}  ${'ops/sec'.padStart(12)}  ${'median (ns)'.padStart(14)}  ${'\u{B1}%'.padStart(8)}`
   const separator = '-'.repeat(header.length)
 
   console.log(`\n${label}:`)
@@ -278,7 +280,7 @@ const printResultsTable = (label: string, results: BenchmarkResult[]): void => {
 
   for (const result of results) {
     console.log(
-      `${result.name.padEnd(nameWidth)}  ${result.opsPerSecond.toLocaleString().padStart(12)}  ${result.medianNs.toLocaleString().padStart(14)}  ${`\u00B1${result.marginOfError}%`.padStart(8)}`
+      `${result.name.padEnd(nameWidth)}  ${result.opsPerSecond.toLocaleString().padStart(12)}  ${result.medianNs.toLocaleString().padStart(14)}  ${`\u{B1}${result.marginOfError}%`.padStart(8)}`
     )
   }
 
@@ -353,10 +355,8 @@ const parseRunsFlag = (arguments_: string[]): number => {
     return 1
   }
   const runsValue = Number(arguments_[runsIndex + 1])
-  if (!Number.isInteger(runsValue) || runsValue < 1) {
-    console.error(`\n  Invalid value for '--runs'. Must be a positive integer.\n\n${USAGE}\n`)
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(1)
+  if (!Number.isSafeInteger(runsValue) || runsValue < 1) {
+    throw new CliError(`Invalid value for '--runs'. Must be a positive integer.`)
   }
   return runsValue
 }
@@ -386,17 +386,14 @@ const main = async (): Promise<void> => {
 
   // Validate the current build exists.
   if (!existsSync(currentDistributionEsmDirectory)) {
-    console.error(
-      'Error: ./dist/esm/ not found. Run `npm run build` first to compile the current code.'
+    throw new CliError(
+      './dist/esm/ not found. Run `npm run build` first to compile the current code.'
     )
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(1)
   }
 
   const runs = parseRunsFlag(arguments_)
   const suiteIndex = arguments_.indexOf('--suite')
-  const suiteFilter =
-    suiteIndex !== -1 && arguments_[suiteIndex + 1] ? arguments_[suiteIndex + 1] : undefined
+  const suiteFilter = suiteIndex === -1 ? undefined : arguments_[suiteIndex + 1]
   const baseline = resolveBaseline(arguments_)
 
   console.log(`Comparing current build against baseline: ${baseline.label}`)
@@ -475,4 +472,12 @@ const main = async (): Promise<void> => {
   }
 }
 
-void main()
+const outcome = await noThrow(main)
+if (isNormalizedError(outcome)) {
+  if (outcome.originalValue instanceof CliError) {
+    console.error(`\n  ${outcome.message}\n\n${USAGE}\n`)
+    process.exitCode = 1
+  } else {
+    throw outcome
+  }
+}

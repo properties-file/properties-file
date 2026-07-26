@@ -14,6 +14,8 @@ import path from 'node:path'
 import { transformSync } from '@swc/core'
 import { minify_sync as minify } from 'terser'
 
+import { verifyEs5Output } from './verify-es5-output'
+
 /** Matches ESM/CJS build files (`.js` and `.d.ts`). */
 const REGEX_ESM_BUILD_FILES = /\.(d\.ts|js)$/
 
@@ -88,7 +90,8 @@ const getFilePaths = (directoryPath: string, filePattern: RegExp): string[] =>
     const relativeEntryPath = path.relative(process.cwd(), absoluteEntryPath)
     if (entry.isDirectory()) {
       return [...files, ...getFilePaths(absoluteEntryPath, filePattern)]
-    } else if (entry.isFile() && filePattern.test(absoluteEntryPath)) {
+    }
+    if (entry.isFile() && filePattern.test(absoluteEntryPath)) {
       return [...files, relativeEntryPath]
     }
     return files
@@ -99,7 +102,8 @@ const getFilePaths = (directoryPath: string, filePattern: RegExp): string[] =>
  * |         Bundle getProperties entry with esbuild                 |
  * +-----------------------------------------------------------------+
  *
- * The main entry (src/index.ts) imports unescapeContent and character
+ * The main entry (src/index.ts, downleveled to .transformed-src/index.ts by
+ * src/build-scripts/downlevel/transform.ts) imports unescapeContent and character
  * constants from shared modules. This step uses esbuild to bundle it
  * from TypeScript source into a single self-contained file with
  * optimal minification. The existing SWC + terser pipeline then
@@ -111,7 +115,7 @@ console.log(`${EOL}🏃 Running build step: bundle getProperties entry with esbu
 
 {
   const indexPath = path.resolve('dist/esm/index.js')
-  const sourcePath = path.resolve('src/index.ts')
+  const sourcePath = path.resolve('.transformed-src/index.ts')
   const { execSync } = await import('node:child_process')
   execSync(
     `npx esbuild ${sourcePath} --bundle --format=esm --platform=neutral --target=es2015 --minify --outfile=${indexPath}`,
@@ -137,24 +141,24 @@ for (const filePath of getFilePaths('dist/esm', REGEX_ESM_BUILD_FILES)) {
       const importPath = path.resolve(path.join(path.dirname(filePath), modulePath))
 
       // If the path exists without any extensions then it should be a directory.
-      const importPathIsDirectory = existsSync(importPath)
+      const isImportPathDirectory = existsSync(importPath)
 
-      if (importPathIsDirectory && !statSync(importPath).isDirectory()) {
-        throw new Error(`🚨 Expected ${importPathIsDirectory} to be a directory`)
+      if (isImportPathDirectory && !statSync(importPath).isDirectory()) {
+        throw new Error(`🚨 Expected ${isImportPathDirectory} to be a directory`)
       }
 
       // Add the missing extension or `/index` to the path to make it ESM compatible.
-      const esmPath = importPathIsDirectory ? `${importPath}/index.js` : `${importPath}.js`
+      const esmPath = isImportPathDirectory ? `${importPath}/index.js` : `${importPath}.js`
 
       if (!existsSync(esmPath)) {
         throw new Error(`🚨 File not found: ${esmPath}`)
       }
 
       if (!statSync(esmPath).isFile()) {
-        throw new Error(`🚨 Expected ${importPathIsDirectory} to be a file`)
+        throw new Error(`🚨 Expected ${isImportPathDirectory} to be a file`)
       }
 
-      const newPath = `${modulePath}${importPathIsDirectory ? '/index' : ''}.js`
+      const newPath = `${modulePath}${isImportPathDirectory ? '/index' : ''}.js`
       console.log(`   ➕ ${filePath}: replacing "${modulePath}" by "${newPath}"`)
       return `${importClause}${quote}${newPath}${quote}`
     }
@@ -173,7 +177,17 @@ console.log(`${EOL}🏃 Running build step: downlevel ESM ES2015 → ES5 via SWC
 
 for (const filePath of getFilePaths('dist/esm', REGEX_JS_FILES)) {
   const result = transformSync(readFileSync(filePath, 'utf8'), {
-    jsc: { target: 'es5', parser: { syntax: 'ecmascript' } },
+    jsc: {
+      target: 'es5',
+      parser: { syntax: 'ecmascript' },
+      /**
+       * Lower `for...of` to plain index loops instead of the iterator protocol. Without this,
+       * SWC emits an unguarded `Symbol.iterator` call that throws on pre-ES2015 runtimes
+       * (caught by the Node.js 0.4 functional replay test). Safe because shipped code only
+       * iterates arrays — enforced by the local `array-iteration-only` ESLint rule.
+       */
+      assumptions: { iterableIsArray: true },
+    },
     module: { type: 'es6' },
   })
   console.log(`   ⬇️  Downleveling: ${filePath}`)
@@ -206,6 +220,21 @@ for (const filePath of getFilePaths('dist/cjs', REGEX_JS_FILES)) {
 writeFileSync('dist/cjs/package.json', '{ "type": "commonjs" }')
 
 /**
+ * +------------------------------------------------------------------+
+ * |             Verify ES5 output (es-x on the built files)          |
+ * +------------------------------------------------------------------+
+ *
+ * Authoritative artifact-level compatibility gate — see `verify-es5-output.ts` for the full
+ * design (aggressive-mode es-x, the SWC-helper allowlist exemption, and the static-global
+ * false-positive filter). Extracted into its own module so the gate itself is unit-testable.
+ */
+
+console.log(`${EOL}🏃 Running build step: verify ES5 output via es-x.${EOL}`)
+
+await verifyEs5Output('dist/esm', 'module')
+await verifyEs5Output('dist/cjs', 'script')
+
+/**
  * +----------------------------------------------------------------+
  * |                          Minify build                          |
  * +----------------------------------------------------------------+
@@ -235,3 +264,13 @@ for (const buildDirectoryPath of minifyBuildDirectoryPaths) {
 console.log(`${EOL}🏃 Running build script: delete build scripts.${EOL}`)
 
 rmSync('dist/build-scripts', { recursive: true, force: true })
+
+/**
+ * +------------------------------------------------------------------+
+ * |               Delete the downlevel transform shadow tree          |
+ * +------------------------------------------------------------------+
+ */
+
+console.log(`${EOL}🏃 Running build script: delete .transformed-src/.${EOL}`)
+
+rmSync('.transformed-src', { recursive: true, force: true })

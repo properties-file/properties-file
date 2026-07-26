@@ -43,7 +43,7 @@ const hexValue = (charCode: number): number => {
  */
 export const unescapeContent = (content: string): string => {
   // Fast path: no backslashes means nothing to unescape.
-  if (content.indexOf('\\') === -1) {
+  if (!content.includes('\\')) {
     return content
   }
 
