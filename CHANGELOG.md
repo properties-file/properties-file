@@ -1,5 +1,20 @@
 # Changelog
 
+## [5.0.6](https://github.com/properties-file/properties-file/compare/v5.0.5...v5.0.6) (2026-07-26)
+
+### Bug Fixes
+
+- **build:** close the gate filter's Global.prototype hole; add coverage meta-guard ([37fe075](https://github.com/properties-file/properties-file/commit/37fe075976c5564b467400a36f5cb8a312e3193c))
+- **downlevel:** close every defect from the adversarial subsystem audit ([858209b](https://github.com/properties-file/properties-file/commit/858209b6448432f8fb38f397d7782b05591d84d1))
+- **lint:** close array-iteration-only destructuring holes; review fixes ([1bc837b](https://github.com/properties-file/properties-file/commit/1bc837b582c78f226abd46026d1c3693c807f241)), closes [String#replace](https://github.com/String/issues/replace)
+
+### Features
+
+- **build:** type-aware ES5 downlevel transform and output verification ([f54d1c8](https://github.com/properties-file/properties-file/commit/f54d1c85dd3ed97ba570c9e099f079b4f5ef8a0f))
+- **lint:** enforce TSDoc completeness with eslint-plugin-jsdoc ([5b97c66](https://github.com/properties-file/properties-file/commit/5b97c6636f652528add06cd0c68fd47d25d08242))
+- **lint:** typed error handling via noThrow — try/catch banned repo-wide ([78b790f](https://github.com/properties-file/properties-file/commit/78b790f10e8233102a14f53995e14d2c5995e596))
+- **test:** golden-file functional replay harness (source -> dist -> Node 0.4) ([baa0c33](https://github.com/properties-file/properties-file/commit/baa0c33481ddbd28f2010e4210d88497075d69f5))
+
 ## [5.0.5](https://github.com/properties-file/properties-file/compare/v5.0.4...v5.0.5) (2026-05-19)
 
 ## [5.0.4](https://github.com/properties-file/properties-file/compare/v5.0.3...v5.0.4) (2026-04-12)
