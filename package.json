@@ -173,7 +173,7 @@
     "jest": "30.4.2",
     "jiti": "2.7.0",
     "jsonc-eslint-parser": "3.1.0",
-    "npm-check-updates": "22.2.9",
+    "npm-check-updates": "23.0.0",
     "prettier": "3.9.6",
     "release-it": "20.2.1",
     "rollup": "4.62.2",
