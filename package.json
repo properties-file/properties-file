@@ -175,7 +175,7 @@
     "jsonc-eslint-parser": "3.1.0",
     "npm-check-updates": "22.2.9",
     "prettier": "3.9.6",
-    "release-it": "20.2.1",
+    "release-it": "21.0.0",
     "rollup": "4.62.2",
     "terser": "5.49.0",
     "tinybench": "6.1.2",
