@@ -1717,6 +1717,51 @@ describe('ES5 output gate (verify-es5-output)', () => {
     expect(verdict).toContain('GATE_PASSED')
   })
 
+  it.each(['script', 'module'] as const)(
+    'accepts every ES5 static member of the ES5 global namespaces (%s)',
+    (sourceType) => {
+      // The gate filters no finding after the fact, so this relies on es-x's type tracer
+      // knowing each namespace's type: an aggressive-mode name match against a post-ES5
+      // prototype rule (`Object.keys` vs `Array#keys`) would otherwise fail the build here.
+      const es5StaticMembers: Record<string, string[]> = {
+        Object: [
+          'getPrototypeOf',
+          'getOwnPropertyDescriptor',
+          'getOwnPropertyNames',
+          'create',
+          'defineProperty',
+          'defineProperties',
+          'seal',
+          'freeze',
+          'preventExtensions',
+          'isSealed',
+          'isFrozen',
+          'isExtensible',
+          'keys',
+        ],
+        Array: ['isArray'],
+        String: ['fromCharCode'],
+        Date: ['parse', 'UTC', 'now'],
+        JSON: ['parse', 'stringify'],
+        Math: 'abs acos asin atan atan2 ceil cos exp floor log max min pow random round sin sqrt tan'.split(
+          ' '
+        ),
+      }
+      const lines = Object.entries(es5StaticMembers).flatMap(([namespace, members]) =>
+        members.map((member) => `${namespace}.${member}(value)`)
+      )
+      const verdict = gateVerdictFor(
+        `var value = {}\n${lines.join('\n')}\n` +
+          // ES5 prototype methods borrowed through a global's `prototype` are ES5 as well.
+          'Object.prototype.hasOwnProperty.call(value, "a")\n' +
+          'Object.prototype.toString.call(value)\n' +
+          'Array.prototype.slice.call([value])\n',
+        sourceType
+      )
+      expect(verdict).toContain('GATE_PASSED')
+    }
+  )
+
   it('exempts an allowlisted SWC helper but rejects the same body under a rogue name (fail-closed)', () => {
     // The body must be UNGUARDED post-ES5 usage: es-x is guard-aware, so a
     // `typeof Symbol !== "undefined"`-protected body produces no finding to exempt at all.
@@ -1765,20 +1810,23 @@ describe('ES5 output gate (verify-es5-output)', () => {
   })
 
   it('never skips genuine post-ES5 static APIs on ES5 global namespaces', () => {
-    // The static-global false-positive filter must apply to prototype-rule name collisions
-    // only — an escaped `Object.entries(...)` is a real ES2017 usage and must fail the gate.
+    // A static member on an ES5 namespace is not ES5 by virtue of its namespace — an escaped
+    // `Object.entries(...)` is a real ES2017 usage and must fail the gate.
     const verdict = gateVerdictFor('var entries = Object.entries({ a: 1 })\n')
     expect(verdict).toContain('GATE_FAILED')
     expect(verdict).toContain('post-ES5 construct')
   })
 
-  it('never skips a direct prototype-method call spelled through a global (Array.prototype.includes(...))', () => {
-    // The receiver text starts with an ES5 global's name AND the finding comes from a
-    // prototype-named rule — the exact shape the static-global filter skips — but a
-    // `Global.prototype.…` receiver is a genuine prototype-method usage, not a static call.
-    const verdict = gateVerdictFor('var found = Array.prototype.includes([1])\n')
-    expect(verdict).toContain('GATE_FAILED')
-    expect(verdict).toContain('post-ES5 construct')
+  it('never skips a post-ES5 prototype method spelled through a global (Array.prototype.includes)', () => {
+    // The member expression's text starts with an ES5 global's name, but a
+    // `Global.prototype.…` receiver is a genuine prototype-method usage, not a static call —
+    // whether called directly or borrowed through `.call`.
+    const lines = [
+      'var found = Array.prototype.includes([1])',
+      'var borrowed = Array.prototype.includes.call([1], 1)',
+    ]
+    const verdict = gateVerdictFor(`${lines.join('\n')}\n`)
+    expect(verdict).toContain(`contains ${lines.length} post-ES5 construct(s)`)
   })
 
   it.each(['script', 'module'] as const)(
@@ -1812,4 +1860,15 @@ describe('ES5 output gate (verify-es5-output)', () => {
       expect(verdict).toContain(`contains ${lines.length} post-ES5 construct(s)`)
     }
   )
+
+  it('reports a post-ES5 prototype call chained onto an ES5 global call (Object.keys(o).includes(k))', () => {
+    // The flagged member expression's text starts with an ES5 global's name, but its receiver
+    // is the call's RESULT (an array, a string), not the global namespace itself.
+    const lines = [
+      'var hasKey = Object.keys({ a: 1 }).includes("a")',
+      'var padded = String.fromCharCode(65).padStart(2)',
+    ]
+    const verdict = gateVerdictFor(`${lines.join('\n')}\n`)
+    expect(verdict).toContain(`contains ${lines.length} post-ES5 construct(s)`)
+  })
 })

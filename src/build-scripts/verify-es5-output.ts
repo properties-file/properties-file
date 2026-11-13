@@ -8,13 +8,16 @@
  * Source linting can never see generated code; this can.
  *
  * The es-x rules run in `aggressive` mode: without type information, es-x's prototype-method
- * rules only fire on literal receivers (`"x".includes(...)`), so a non-aggressive pass would
- * let `variable.includes(...)` — the shape every real escape takes — sail through unreported.
- * Aggressive mode matches by method name on any receiver, which is exactly right for built
- * output that is supposed to contain no post-ES5 method call at all. The one class of
- * aggressive false positives — ES5 *static* namespace calls whose method name collides with a
- * post-ES5 prototype method (e.g. `Object.keys(...)` vs `Array#keys`) — is filtered by
- * checking the flagged receiver against the fixed set of ES5 global namespaces.
+ * rules only fire on receivers whose type its type tracer can infer (literals, built-in globals
+ * and the results of built-in calls), so a non-aggressive pass would let
+ * `variable.includes(...)` — the shape every real escape takes — sail through unreported.
+ * Aggressive mode additionally matches by method name on every receiver of unknown type, which
+ * is exactly right for built output that is supposed to contain no post-ES5 method call at all.
+ * Receivers of known type are still checked by type in this mode, so an ES5 *static* call
+ * whose method name collides with a post-ES5 prototype method (e.g. `Object.keys(...)` vs
+ * `Array#keys`) is not reported, while a post-ES5 call on its result
+ * (`Object.keys(o).includes(k)`, an array receiver) is. No finding is filtered after the fact:
+ * every es-x finding outside the SWC helpers below fails the build.
  *
  * The one allowed location is inside SWC's own emitted compatibility helpers: those reference
  * modern globals deliberately, behind `typeof` guards and try/catch feature detection, to use
@@ -103,23 +106,6 @@ const getSwcHelperRanges = (filePath: string, fileContent: string): [number, num
 }
 
 /**
- * Matches a call whose receiver is one of the fixed ES5 global namespaces. Used to filter the
- * one class of aggressive-mode es-x false positives: a *static* ES5 call like `Object.keys(o)`
- * name-matches a post-ES5 *prototype* rule (`Array#keys`), but a static namespace call can
- * never be a prototype-method call. The receiver is checked from the flagged position's own
- * text, which is reliable because the gate runs before minification renames identifiers.
- *
- * The negative lookahead keeps `X.prototype.…` receivers OUT of the filter: a direct
- * `Array.prototype.includes(...)` call is a genuine post-ES5 prototype-method usage that
- * happens to start with a global's name, and must stay reported. (Indirected calls like
- * `Array.prototype.includes.call(arr, x)` are a known blind spot of es-x itself — a
- * property-access-then-`.call` shape is not a method call es-x can attribute — and are covered
- * only by the Node.js 0.4 behavioral replay.)
- */
-const ES5_STATIC_GLOBAL_CALL_PATTERN =
-  /^(?:Object|Math|JSON|Date|String|Number|Boolean|RegExp|Array|Function|Error)\s*\.(?!\s*prototype\s*[.[])/
-
-/**
  * Lint every built JavaScript file in a directory against the full es-x ES5 restriction set
  * (see the module documentation for the aggressive-mode and SWC-helper-exemption design).
  *
@@ -164,10 +150,10 @@ export const verifyEs5Output = async (
           globals: globals.builtin,
         },
         plugins: { 'es-x': esXPlugin },
-        // Aggressive mode: prototype-method rules match by method name on ANY receiver — the
-        // only way an untyped lint of built output can see `variable.includes(...)`-shaped
-        // calls (without it, only literal receivers are reported and real escapes pass
-        // silently). See the module documentation above.
+        // Aggressive mode: prototype-method rules match by method name on every receiver of
+        // unknown type — the only way an untyped lint of built output can see
+        // `variable.includes(...)`-shaped calls (without it, only receivers of inferable type
+        // are reported and real escapes pass silently). See the module documentation above.
         settings: { 'es-x': { aggressive: true } },
         rules: {
           ...esXPlugin.configs['flat/restrict-to-es5'].rules,
@@ -218,18 +204,6 @@ export const verifyEs5Output = async (
         continue
       }
       const offset = (lineStartOffsets[message.line - 1] ?? 0) + message.column - 1
-      // Aggressive-mode false positive: a static call on an ES5 global namespace (e.g.
-      // `Object.keys(...)`) name-matching a post-ES5 *prototype* rule — see
-      // ES5_STATIC_GLOBAL_CALL_PATTERN. Restricted to prototype rules so genuine post-ES5
-      // *static* APIs on the same namespaces (e.g. `Object.entries(...)`, flagged by a
-      // non-prototype rule) are never skipped.
-      if (
-        message.ruleId !== null &&
-        message.ruleId.includes('-prototype-') &&
-        ES5_STATIC_GLOBAL_CALL_PATTERN.test(fileContent.slice(offset, offset + 24))
-      ) {
-        continue
-      }
       const isInsideSwcHelper = swcHelperRanges.some(
         ([start, end]) => offset >= start && offset < end
       )
