@@ -184,9 +184,9 @@ export default defineConfig(
     languageOptions: {
       parserOptions: {
         projectService: {
-          // The root `eslint.config.ts` sits outside every directory-level project (its nearest
-          // `tsconfig.json` is the root one, which only covers src/), so it is checked with the
-          // eslint/ project's compiler options instead.
+          // The project service only looks for a `tsconfig.json` in a file's own directory and
+          // its ancestors. For the root `eslint.config.ts` that is the root one, which only
+          // covers src/, so the file is checked with the eslint/ project's compiler options.
           allowDefaultProject: ['eslint.config.ts'],
           defaultProject: 'eslint/tsconfig.json',
         },

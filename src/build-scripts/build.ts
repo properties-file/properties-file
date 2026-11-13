@@ -37,8 +37,8 @@ console.log(`${EOL}🏃 Running build step: add file type declarations.${EOL}`)
 /**
  * Append a type declaration to another type file.
  *
- * @param targetTypeFilePath - The `.d.ts` file that receives the reference directive.
- * @param typeDeclarationFilePath - The declaration file to reference, relative to the target.
+ * @param targetTypeFilePath - The `.d.ts` file the import statement is appended to.
+ * @param typeDeclarationFilePath - The declaration file to import, relative to the target.
  */
 const appendFileTypeDeclaration = (
   targetTypeFilePath: string,

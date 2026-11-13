@@ -401,7 +401,7 @@ describe('Query methods', () => {
 // ---------------------------------------------------------------------------
 
 describe('format() with normalization options', () => {
-  it('removes comments and blank lines, deduplicates and strips whitespace for any truthy option value (untyped JavaScript callers)', () => {
+  it('applies the truthiness-tested boolean options for any truthy value (untyped JavaScript callers)', () => {
     const properties = new Properties('  # note\n\n  a = 1\na = 2\n# lead\nb = 3')
 
     expect(properties.format(untypedNormalizeOptions({ removeComments: 1 }))).toBe(
@@ -418,6 +418,11 @@ describe('format() with normalization options', () => {
         untypedNormalizeOptions({ deduplicateKeys: 1, deduplicateKeysKeepLeadingNodes: 'yes' })
       )
     ).toBe('  # note\n\na = 2\n# lead\nb = 3')
+    // On its own, a truthy non-`true` `removeLeadingWhitespace` strips comment lines only:
+    // property lines are rebuilt when another option requires it (here, `separatorChar`).
+    expect(properties.format(untypedNormalizeOptions({ removeLeadingWhitespace: 1 }))).toBe(
+      '# note\n\n  a = 1\na = 2\n# lead\nb = 3'
+    )
     expect(
       properties.format(untypedNormalizeOptions({ removeLeadingWhitespace: 1, separatorChar: ':' }))
     ).toBe('# note\n\na : 1\na : 2\n# lead\nb : 3')
