@@ -65,6 +65,15 @@ The library compiles to both ESM (`dist/esm/`) and CJS (`dist/cjs/`) via two sep
 `tsconfig` files. The custom build script (`src/build-scripts/build.ts`) handles ESM file
 extension rewriting, `.properties` type declarations, and minification.
 
+Subpath entry points are declared in the `exports` map of `package.json`. For resolvers that
+predate `exports` (Node.js before 12.7, webpack 4, TypeScript's legacy `node10` resolution),
+the build also generates one stub `package.json` per subpath at the package root (e.g.
+`editor/package.json`, whose `main` points to `../dist/cjs/editor/index.js`), derived from the
+`exports` map (`src/build-scripts/generate-subpath-stubs.ts`). The stubs are git-ignored and
+shipped through `files`, which the build checks contains exactly `dist` plus each stub directory:
+a new subpath only needs its `exports` entry and its directory added to `files` and the ignore
+lists (`.gitignore`, `.prettierignore`, `eslint/config.ts`).
+
 ### Parser design
 
 There are two parsing paths:
@@ -95,10 +104,11 @@ npm run benchmark         # Compare benchmarks against latest published version
 npm run size              # Compare bundle sizes against latest published version
 ```
 
-`check-package` runs `publint` and `attw` against the packed tarball. `attw` runs with
-`--profile node16`, which skips TypeScript's legacy `node10` module resolution: the subpath
-entry points (`properties-file/editor`, `properties-file/parser`, …) are exposed through the
-`exports` map only, which that resolution mode cannot read.
+`check-package` runs `publint` and `attw` against the packed tarball, in every resolution mode
+`attw` knows, including TypeScript's legacy `node10`. That mode cannot read the `exports` map:
+it resolves the subpath entry points (`properties-file/editor`, …) through the generated stub
+`package.json` files described under [Dual output](#dual-output-esm--cjs), so a missing or
+broken stub fails the check.
 
 ## Pull Request Checklist
 

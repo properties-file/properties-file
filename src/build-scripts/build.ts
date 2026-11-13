@@ -14,6 +14,7 @@ import path from 'node:path'
 import { transformSync } from '@swc/core'
 import { minify_sync as minify } from 'terser'
 
+import { generateSubpathStubs } from './generate-subpath-stubs'
 import { verifyEs5Output } from './verify-es5-output'
 
 /** Matches ESM/CJS build files (`.js` and `.d.ts`). */
@@ -254,6 +255,21 @@ for (const buildDirectoryPath of minifyBuildDirectoryPaths) {
     writeFileSync(filePath, result.code)
   }
 }
+
+/**
+ * +------------------------------------------------------------------+
+ * |              Generate legacy subpath resolution stubs            |
+ * +------------------------------------------------------------------+
+ *
+ * One stub `package.json` per `exports` subpath at the package root (e.g.
+ * `editor/package.json` → `../dist/cjs/editor/index.js`), so resolvers that predate `exports`
+ * (Node.js before 12.7, webpack 4, TypeScript's `node10` resolution) still find every entry point.
+ * Derived from the `exports` map on every build — see `generate-subpath-stubs.ts`.
+ */
+
+console.log(`${EOL}🏃 Running build step: generate legacy subpath resolution stubs.${EOL}`)
+
+generateSubpathStubs('package.json')
 
 /**
  * +------------------------------------------------------------------+
