@@ -1787,6 +1787,35 @@
     "expected": "# Header comment\napp.name = MyApp\n\napp.version = 1.0.0\napp.version = 3.0.0\n\n# Feature flags\nfeature.enabled = true\nfeature.isDisabled = true\n# Author info\napp.author = Team"
   },
   {
+    "id": "editor-insert-empty-reference-key",
+    "kind": "editor",
+    "input": "first=1\n=empty key\nlast=2",
+    "ops": [
+      {
+        "method": "insert",
+        "args": [
+          "inserted.before",
+          "X",
+          {
+            "referenceKey": "",
+            "position": "before"
+          }
+        ]
+      },
+      {
+        "method": "insert",
+        "args": [
+          "inserted.after",
+          "Y",
+          {
+            "referenceKey": ""
+          }
+        ]
+      }
+    ],
+    "expected": "first=1\ninserted.before = X\n=empty key\ninserted.after = Y\nlast=2"
+  },
+  {
     "id": "escape-key-ascii",
     "kind": "escape",
     "fn": "escapeKey",

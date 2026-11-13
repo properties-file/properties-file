@@ -281,6 +281,19 @@ const editorScenarios: EditorScenario[] = [
       args: ['feature.disabled', { newValue: 'true', newKey: 'feature.isDisabled' }],
     },
   ]),
+  // An empty string is a valid key (`=value`), so it must work as a reference key.
+  {
+    id: 'editor-insert-empty-reference-key',
+    kind: 'editor',
+    input: 'first=1\n=empty key\nlast=2',
+    ops: [
+      {
+        method: 'insert',
+        args: ['inserted.before', 'X', { referenceKey: '', position: 'before' }],
+      },
+      { method: 'insert', args: ['inserted.after', 'Y', { referenceKey: '' }] },
+    ],
+  },
 ]
 
 // ---------------------------------------------------------------------------

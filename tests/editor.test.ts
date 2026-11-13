@@ -4,6 +4,33 @@
 import { PropertiesEditor } from '../src/editor'
 import { Properties } from '../src/parser'
 
+import type { InsertOptions, UpdateOptions } from '../src/editor'
+
+/**
+ * Minimal runtime check backing {@link untypedOptions}: all a JavaScript caller guarantees.
+ *
+ * @param value - The value to check.
+ *
+ * @returns `true` if the value is a non-null object.
+ */
+const isEditorOptions = (value: unknown): value is InsertOptions & UpdateOptions =>
+  typeof value === 'object' && value !== null
+
+/**
+ * Pass options the way an untyped JavaScript caller can, including values the TypeScript types
+ * exclude.
+ *
+ * @param options - The options object, with any property values.
+ *
+ * @returns The same object, typed as the options of every editor method.
+ */
+const untypedOptions = (options: unknown): InsertOptions & UpdateOptions => {
+  if (!isEditorOptions(options)) {
+    throw new Error('Editor options must be an object.')
+  }
+  return options
+}
+
 describe('PropertiesEditor', () => {
   // ─── insert ───────────────────────────────────────────────────────
 
@@ -154,21 +181,56 @@ describe('PropertiesEditor', () => {
   // An empty string is a valid `.properties` key (`=value`), so it must work as a reference.
 
   it('insert honors an empty-string reference key', () => {
-    const editor = new PropertiesEditor('a=1\n=empty\nb=2')
-    editor.insert('x', '9', { referenceKey: '', position: 'before' })
-    expect(editor.format()).toBe('a=1\nx = 9\n=empty\nb=2')
+    const before = new PropertiesEditor('a=1\n=empty\nb=2')
+    before.insert('x', '9', { referenceKey: '', position: 'before' })
+    expect(before.format()).toBe('a=1\nx = 9\n=empty\nb=2')
+
+    const after = new PropertiesEditor('a=1\n=empty\nb=2')
+    after.insert('x', '9', { referenceKey: '' })
+    expect(after.format()).toBe('a=1\n=empty\nx = 9\nb=2')
   })
 
   it('insertComment honors an empty-string reference key', () => {
-    const editor = new PropertiesEditor('a=1\n=empty\nb=2')
-    editor.insertComment('note', { referenceKey: '', position: 'before' })
-    expect(editor.format()).toBe('a=1\n# note\n=empty\nb=2')
+    const before = new PropertiesEditor('a=1\n=empty\nb=2')
+    before.insertComment('note', { referenceKey: '', position: 'before' })
+    expect(before.format()).toBe('a=1\n# note\n=empty\nb=2')
+
+    const after = new PropertiesEditor('a=1\n=empty\nb=2')
+    after.insertComment('note', { referenceKey: '' })
+    expect(after.format()).toBe('a=1\n=empty\n# note\nb=2')
   })
 
   it('insertBlankLine honors an empty-string reference key', () => {
-    const editor = new PropertiesEditor('a=1\n=empty\nb=2')
-    editor.insertBlankLine({ referenceKey: '' })
-    expect(editor.format()).toBe('a=1\n=empty\n\nb=2')
+    const before = new PropertiesEditor('a=1\n=empty\nb=2')
+    before.insertBlankLine({ referenceKey: '', position: 'before' })
+    expect(before.format()).toBe('a=1\n\n=empty\nb=2')
+
+    const after = new PropertiesEditor('a=1\n=empty\nb=2')
+    after.insertBlankLine({ referenceKey: '' })
+    expect(after.format()).toBe('a=1\n=empty\n\nb=2')
+  })
+
+  // Untyped JavaScript callers can pass values the TypeScript types exclude. A `null` or empty
+  // separator has always meant "not set" and must never be written into the file.
+
+  it('insert treats an out-of-type empty or null separator as not set', () => {
+    const emptySeparator = new PropertiesEditor('a=1')
+    emptySeparator.insert('x', 'y', untypedOptions({ separator: '' }))
+    expect(emptySeparator.format()).toBe('a=1\nx y')
+
+    const nullSeparator = new PropertiesEditor('a=1')
+    nullSeparator.insert('x', 'y', untypedOptions({ separator: null }))
+    expect(nullSeparator.format()).toBe('a=1\nx = y')
+  })
+
+  it('update keeps the original separator for an out-of-type empty or null separator', () => {
+    for (const separator of ['', null]) {
+      for (const content of ['a=1', 'a : 1', 'a 1']) {
+        const editor = new PropertiesEditor(content)
+        editor.update('a', untypedOptions({ separator }))
+        expect(editor.format()).toBe(content)
+      }
+    }
   })
 
   // ─── update ───────────────────────────────────────────────────────

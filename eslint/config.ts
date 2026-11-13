@@ -337,14 +337,15 @@ export default defineConfig(
       // Allow numbers in template literals (predictable coercion); still catches objects/null/undefined.
       // @see https://typescript-eslint.io/rules/restrict-template-expressions/
       '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
-      // No implicit truthiness on strings or numbers (nullable or not). An empty string is a valid
-      // `.properties` key and value and `0` is a valid index, so `if (key)` style checks are a
-      // correctness hazard in this codebase, not a style preference. Optional booleans stay
-      // allowed: `undefined` can only mean `false` there (e.g. `options.removeComments`).
+      // No implicit truthiness on strings, numbers or optional booleans. An empty string is a
+      // valid `.properties` key and value and `0` is a valid index, so `if (key)` style checks
+      // are a correctness hazard in this codebase, not a style preference. Optional booleans
+      // must be compared explicitly as well, because their default is not always `false`
+      // (`deleteLeadingNodes` defaults to `true`, hence `!== false`).
       // @see https://typescript-eslint.io/rules/strict-boolean-expressions/
       '@typescript-eslint/strict-boolean-expressions': [
         'error',
-        { allowString: false, allowNumber: false, allowNullableBoolean: true },
+        { allowString: false, allowNumber: false },
       ],
       // Every `switch` over a union (e.g. node `type`) must handle all of its members.
       // @see https://typescript-eslint.io/rules/switch-exhaustiveness-check/
@@ -445,6 +446,7 @@ export default defineConfig(
        */
       'unicorn/no-asterisk-prefix-in-documentation-comments': 'off',
       // `unshift`/`shift` re-index the whole array on every call (quadratic inside a loop).
+      // @see https://github.com/sindresorhus/eslint-plugin-unicorn/blob/main/docs/rules/no-array-front-mutation.md
       'unicorn/no-array-front-mutation': 'error',
       // Block comments whose content fits on one line stay on one line.
       // @see https://github.com/sindresorhus/eslint-plugin-unicorn/blob/main/docs/rules/single-line-block-comment-style.md

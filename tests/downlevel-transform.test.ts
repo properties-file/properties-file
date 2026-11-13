@@ -1105,12 +1105,12 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
     const findHelper = compileHelper('downlevelArrayFind', isFindFamilyHelper)
     const findIndexHelper = compileHelper('downlevelArrayFindIndex', isFindFamilyHelper)
 
-    expect(runGrowingArrayFind((array, predicate) => findHelper(array, predicate))).toStrictEqual(
-      runGrowingArrayFind((array, predicate) => array.find((v) => predicate(v)))
+    expect(runGrowingArrayFind((array, isMatch) => findHelper(array, isMatch))).toStrictEqual(
+      runGrowingArrayFind((array, isMatch) => array.find((v) => isMatch(v)))
     )
-    expect(
-      runGrowingArrayFind((array, predicate) => findIndexHelper(array, predicate))
-    ).toStrictEqual(runGrowingArrayFind((array, predicate) => array.findIndex((v) => predicate(v))))
+    expect(runGrowingArrayFind((array, isMatch) => findIndexHelper(array, isMatch))).toStrictEqual(
+      runGrowingArrayFind((array, isMatch) => array.findIndex((v) => isMatch(v)))
+    )
   })
 
   // --- #13/#14 String#repeat / padStart / padEnd ---------------------------------------------

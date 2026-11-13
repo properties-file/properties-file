@@ -160,13 +160,15 @@ const buildPropertyNode = (
 
   const separatorChar =
     options.separator === ' ' ? undefined : (options.separator ?? DEFAULT_SEPARATOR)
+  // `Boolean()` on top of the `undefined` check, on purpose: an untyped JavaScript caller can
+  // pass an out-of-type `''`, which must keep meaning "no separator character".
+  const hasSeparatorChar = separatorChar !== undefined && Boolean(separatorChar)
   const separatorLeading = ' '
-  const separatorTrailing = separatorChar === undefined ? '' : ' '
+  const separatorTrailing = hasSeparatorChar ? ' ' : ''
 
-  const separatorString =
-    separatorChar === undefined
-      ? separatorLeading
-      : `${separatorLeading}${separatorChar}${separatorTrailing}`
+  const separatorString = hasSeparatorChar
+    ? `${separatorLeading}${separatorChar}${separatorTrailing}`
+    : separatorLeading
 
   const rawLine = `${escapedKey}${separatorString}${escapedValue}`
   const rawLines = rawLine.split(REGEX_NEWLINE)
@@ -442,20 +444,22 @@ export class PropertiesEditor extends Properties {
         : existing.escapedValue
 
     // Determine separator.
+    // `Boolean()` rather than an `undefined` comparison, on purpose: an untyped JavaScript caller
+    // can pass an out-of-type `null` or `''`, which must keep meaning "keep the original
+    // separator" instead of being written into the file.
     const newSeparator = options.separator
-    const separatorChar =
-      newSeparator === undefined
-        ? existing.separatorChar
-        : newSeparator === ' '
-          ? undefined
-          : newSeparator
-    const separatorLeading = newSeparator === undefined ? existing.separatorLeading : ' '
-    const separatorTrailing =
-      newSeparator === undefined
-        ? existing.separatorTrailing
-        : separatorChar === undefined
-          ? ''
-          : ' '
+    const hasNewSeparator = Boolean(newSeparator)
+    const separatorChar = hasNewSeparator
+      ? newSeparator === ' '
+        ? undefined
+        : newSeparator
+      : existing.separatorChar
+    const separatorLeading = hasNewSeparator ? ' ' : existing.separatorLeading
+    const separatorTrailing = hasNewSeparator
+      ? separatorChar === undefined
+        ? ''
+        : ' '
+      : existing.separatorTrailing
 
     const separatorString =
       separatorChar === undefined
