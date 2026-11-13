@@ -17,13 +17,17 @@ When in doubt, verify against the Java [test sandbox](https://codehs.com/sandbox
 
 ### ES5 runtime compatibility
 
-All shipped code must restrict runtime APIs to ES5. TypeScript handles syntax transpilation, but
-ES2015+ runtime APIs (e.g., `String.prototype.includes`, `Array.from`, `Object.entries`) must
-not appear in shipped code. The `eslint-plugin-es-x` `restrict-to-es5` ruleset enforces most of
-this, but be aware of subtle cases like `String.prototype.codePointAt` that the linter may not
-catch in all contexts.
+Shipped artifacts must run on ES5 runtimes (down to Node.js 0.4), but shipped source may use
+modern syntax and APIs. Syntax is transpiled by the compilers. Runtime APIs cannot be: the
+downlevel transform (`src/build-scripts/downlevel/`) rewrites each supported API (e.g.
+`String.prototype.includes`, `Object.entries`) into an exact ES5 equivalent before compilation.
+The build then runs every `eslint-plugin-es-x` `restrict-to-es5` rule against the built output
+(`src/build-scripts/verify-es5-output.ts`): an API the transform does not cover fails the build
+there, and has to be added to the transform's catalog or written in ES5 (see its `README.md`).
+The functional replay tests on Node.js 0.4 (`tests/node-compat/`) are the behavioral backstop.
 
-Non-shipped code (tests, build scripts, performance tooling, bundler integrations) is exempt.
+Non-shipped code (tests, build scripts, performance tooling) only runs on the development
+Node.js version and is exempt.
 
 ### Zero runtime dependencies
 
@@ -61,9 +65,11 @@ does not fully enforce:
 
 ### Dual output (ESM + CJS)
 
-The library compiles to both ESM (`dist/esm/`) and CJS (`dist/cjs/`) via two separate
-`tsconfig` files. The custom build script (`src/build-scripts/build.ts`) handles ESM file
-extension rewriting, `.properties` type declarations, and minification.
+The library ships both ESM (`dist/esm/`) and CJS (`dist/cjs/`) from a single `tsc` pass
+(`tsconfig.build.json`, over the downlevel transform's output) into `dist/esm/`. The custom
+build script (`src/build-scripts/build.ts`) then adds the `.properties` type declarations,
+bundles the main entry with esbuild, adds ESM file extensions, downlevels to ES5 with SWC, derives
+`dist/cjs/` from `dist/esm/` with SWC, runs the ES5 output gate, and minifies.
 
 Subpath entry points are declared in the `exports` map of `package.json`. For resolvers that
 predate `exports` (Node.js before 12.7, webpack 4, TypeScript's legacy `node10` resolution),
@@ -78,20 +84,22 @@ lists (`.gitignore`, `.prettierignore`, `eslint/config.ts`).
 
 There are two parsing paths:
 
-- **`getProperties()`** — a fast, functional single-pass parser (`src/parse-properties.ts`) that
-  returns a plain key-value object. This is the most common use case and is optimized for
-  throughput. It has zero imports and is fully tree-shakeable.
+- **`getProperties()`** — a fast, functional single-pass parser (`src/index.ts`) that returns a
+  plain key-value object. This is the most common use case and is optimized for throughput. It
+  only imports the shared character constants (`src/characters.ts`) and `unescapeContent`
+  (`src/unescape/`), and is bundled into a single self-contained file.
 - **`Properties` class** — a lossless object-oriented parser (`src/parser/`) that preserves
   every element (properties, comments, blank lines) as typed nodes. Supports normalization
   via `format()` options. Extended by `PropertiesEditor` (`src/editor/`) for editing operations.
 
-These two paths must remain independent — `parse-properties.ts` must not import from
-`src/parser/` or vice versa.
+These two paths must remain independent — `src/index.ts` must not import from `src/parser/` or
+vice versa.
 
 ### Bundler integrations
 
 Thin wrappers under `src/bundler/` for Webpack/Rspack, Rollup/Vite/Rolldown, esbuild, and Bun.
-These are shipped but exempt from ES5 restrictions since they run in bundler contexts.
+These are shipped and built like the rest of the library, but since they run inside Node.js-based
+build tools they are exempt from the runtime-agnostic ban on Node.js APIs (`eslint/config.ts`).
 
 ## Development Commands
 
