@@ -548,8 +548,7 @@ describe('downlevel catalog #9 - Array#entries (for...of)', () => {
         '    out.push([index, value])\n' +
         '  }\n' +
         '  return out\n' +
-        '}\n',
-      'run'
+        '}\n'
     )
     // Native for...of yields every element exactly once regardless of binding assignment.
     expect(run(['a', 'b', 'c'])).toEqual([
@@ -568,8 +567,7 @@ describe('downlevel catalog #9 - Array#entries (for...of)', () => {
         '    out.push(value + input)\n' +
         '  }\n' +
         '  return out\n' +
-        '}\n',
-      'run'
+        '}\n'
     )
     expect(run(['a', 'b'])).toEqual(['a0', 'b1'])
   })
@@ -581,8 +579,7 @@ describe('downlevel catalog #9 - Array#entries (for...of)', () => {
         '  if (input.length > 0)\n' +
         '    for (const [index, value] of input.entries()) out.push(`${index}:${value}`)\n' +
         '  return out\n' +
-        '}\n',
-      'run'
+        '}\n'
     )
     expect(run(['a', 'b'])).toEqual(['0:a', '1:b'])
     expect(run([])).toEqual([])
@@ -859,32 +856,32 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
   const positions = [undefined, NaN, -5, -1.5, -1, -0.5, 0, 1, 1.5, 2, 2.9, 3, 10]
 
   it('downlevelStartsWithAt matches native String#startsWith for all position ranges', () => {
-    const helper = compileHelper('downlevelStartsWithAt', isStringPredicateHelper)
+    const doesStartWithAt = compileHelper('downlevelStartsWithAt', isStringPredicateHelper)
     for (const s of strings) {
       for (const p of patterns) {
         for (const position of positions) {
-          expect(helper(s, p, position)).toBe(s.startsWith(p, position))
+          expect(doesStartWithAt(s, p, position)).toBe(s.startsWith(p, position))
         }
       }
     }
   })
 
   it('downlevelEndsWithAt matches native String#endsWith for all end-position ranges', () => {
-    const helper = compileHelper('downlevelEndsWithAt', isStringPredicateHelper)
+    const doesEndWithAt = compileHelper('downlevelEndsWithAt', isStringPredicateHelper)
     for (const s of strings) {
       for (const p of patterns) {
         for (const end of positions) {
-          expect(helper(s, p, end)).toBe(s.endsWith(p, end))
+          expect(doesEndWithAt(s, p, end)).toBe(s.endsWith(p, end))
         }
       }
     }
   })
 
   it('downlevelEndsWith matches native String#endsWith', () => {
-    const helper = compileHelper('downlevelEndsWith', isPlainEndsWithHelper)
+    const doesEndWith = compileHelper('downlevelEndsWith', isPlainEndsWithHelper)
     for (const s of strings) {
       for (const p of patterns) {
-        expect(helper(s, p)).toBe(s.endsWith(p))
+        expect(doesEndWith(s, p)).toBe(s.endsWith(p))
       }
     }
   })
@@ -910,7 +907,7 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
   })
 
   it('downlevelIncludesNaNSafe matches native Array#includes, including NaN and negative from', () => {
-    const helper = compileHelper('downlevelIncludesNaNSafe', isIncludesHelper)
+    const doesInclude = compileHelper('downlevelIncludesNaNSafe', isIncludesHelper)
     const arrays = [[NaN, 1], [1, NaN, 3], [1, 2, 3], []]
     const searchValues = [NaN, 1, 4]
     // Includes fractional and NaN start indexes: both normalize per ToIntegerOrInfinity.
@@ -918,22 +915,22 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
     for (const array of arrays) {
       for (const searchValue of searchValues) {
         for (const from of fromIndexes) {
-          expect(helper(array, searchValue, from)).toBe(array.includes(searchValue, from))
+          expect(doesInclude(array, searchValue, from)).toBe(array.includes(searchValue, from))
         }
       }
     }
   })
 
   it('downlevelIncludesNaNSafe reads array holes as undefined, matching native includes (indexOf skips them)', () => {
-    const helper = compileHelper('downlevelIncludesNaNSafe', isIncludesHelper)
+    const doesInclude = compileHelper('downlevelIncludesNaNSafe', isIncludesHelper)
     // Extending the length creates genuine holes (an array-literal elision or Array.from would
     // create dense undefined elements instead, which indexOf does NOT skip — no divergence).
     const sparse: (number | undefined)[] = [1]
     sparse.length = 3
-    expect(helper(sparse, undefined)).toBe(sparse.includes(undefined))
-    expect(helper(sparse, undefined)).toBe(true)
-    expect(helper(sparse, undefined, 1)).toBe(sparse.includes(undefined, 1))
-    expect(helper(sparse, 1)).toBe(sparse.includes(1))
+    expect(doesInclude(sparse, undefined)).toBe(sparse.includes(undefined))
+    expect(doesInclude(sparse, undefined)).toBe(true)
+    expect(doesInclude(sparse, undefined, 1)).toBe(sparse.includes(undefined, 1))
+    expect(doesInclude(sparse, 1)).toBe(sparse.includes(1))
   })
 
   // --- #0/#2 replaceAll helpers ------------------------------------------------------------
@@ -1008,23 +1005,23 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
   // --- #11 Number statics --------------------------------------------------------------------
 
   it('downlevelNumberIsNaN matches native Number.isNaN for every value type', () => {
-    const helper = compileHelper('downlevelNumberIsNaN', isUnaryPredicateHelper)
+    const isNumberNaN = compileHelper('downlevelNumberIsNaN', isUnaryPredicateHelper)
     const values: unknown[] = [NaN, 0, -0, 1, Infinity, -Infinity, '5', 'NaN', null, undefined, {}]
     for (const value of values) {
-      expect(helper(value)).toBe(Number.isNaN(value))
+      expect(isNumberNaN(value)).toBe(Number.isNaN(value))
     }
   })
 
   it('downlevelNumberIsFinite matches native Number.isFinite for every value type', () => {
-    const helper = compileHelper('downlevelNumberIsFinite', isUnaryPredicateHelper)
+    const isNumberFinite = compileHelper('downlevelNumberIsFinite', isUnaryPredicateHelper)
     const values: unknown[] = [NaN, 0, 1, Infinity, -Infinity, '5', null, undefined, {}]
     for (const value of values) {
-      expect(helper(value)).toBe(Number.isFinite(value))
+      expect(isNumberFinite(value)).toBe(Number.isFinite(value))
     }
   })
 
   it('downlevelNumberIsInteger matches native Number.isInteger for every value type', () => {
-    const helper = compileHelper('downlevelNumberIsInteger', isUnaryPredicateHelper)
+    const isNumberInteger = compileHelper('downlevelNumberIsInteger', isUnaryPredicateHelper)
     const values: unknown[] = [
       NaN,
       Infinity,
@@ -1043,12 +1040,15 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
     // Testing Number.isInteger specifically (not Number.isSafeInteger) is the point of this test.
     for (const value of values) {
       // eslint-disable-next-line unicorn/prefer-number-is-safe-integer
-      expect(helper(value)).toBe(Number.isInteger(value))
+      expect(isNumberInteger(value)).toBe(Number.isInteger(value))
     }
   })
 
   it('downlevelNumberIsSafeInteger matches native Number.isSafeInteger for every value type', () => {
-    const helper = compileHelper('downlevelNumberIsSafeInteger', isUnaryPredicateHelper)
+    const isNumberSafeInteger = compileHelper(
+      'downlevelNumberIsSafeInteger',
+      isUnaryPredicateHelper
+    )
     const values: unknown[] = [
       NaN,
       Infinity,
@@ -1063,7 +1063,7 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
       {},
     ]
     for (const value of values) {
-      expect(helper(value)).toBe(Number.isSafeInteger(value))
+      expect(isNumberSafeInteger(value)).toBe(Number.isSafeInteger(value))
     }
   })
 
@@ -1213,17 +1213,16 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
 // ---------------------------------------------------------------------------
 
 /**
- * Extract the initializer text of `const <variableName> = ...` from an already-rewritten source
+ * Extract the initializer text of `const result = ...` from an already-rewritten source
  * file — the exact rewritten expression the build would ship, used verbatim (not
  * re-implemented) as the equivalence-test subject.
  *
  * @param sourceFile - An already-rewritten source file (see {@link rewrite}).
- * @param variableName - The name of the `const` declaration whose initializer to extract.
  *
  * @returns The initializer's exact source text.
  */
-const extractRewrittenExpression = (sourceFile: SourceFile, variableName: string): string =>
-  sourceFile.getVariableDeclarationOrThrow(variableName).getInitializerOrThrow().getText()
+const extractRewrittenExpression = (sourceFile: SourceFile): string =>
+  sourceFile.getVariableDeclarationOrThrow('result').getInitializerOrThrow().getText()
 
 const isCallable = functionGuard<(...arguments_: unknown[]) => unknown>()
 
@@ -1257,26 +1256,22 @@ const compileRewrittenExpression = (
 
 /**
  * Run a whole source snippet through the catalog, transpile it, and return the function bound
- * to `functionName` — the statement-level counterpart of {@link compileRewrittenExpression},
- * for rewrites (like the `.entries()` for...of loop) that replace statements rather than
- * expressions. The snippet must declare `functionName` as a top-level `const`.
+ * to `run` — the statement-level counterpart of {@link compileRewrittenExpression}, for
+ * rewrites (like the `.entries()` for...of loop) that replace statements rather than
+ * expressions. The snippet must declare `run` as a top-level `const`.
  *
  * @param sourceText - The TypeScript source to rewrite and compile.
- * @param functionName - The top-level `const` function to extract from the compiled snippet.
  *
  * @returns The compiled function, running the exact rewritten code the build would ship.
  */
-const compileRewrittenFunction = (
-  sourceText: string,
-  functionName: string
-): ((...arguments_: unknown[]) => unknown) => {
+const compileRewrittenFunction = (sourceText: string): ((...arguments_: unknown[]) => unknown) => {
   const rewrittenText = rewrite(sourceText).getFullText()
   const transpiled = transpileModule(rewrittenText, {
     compilerOptions: { target: CompilerScriptTarget.ES2019 },
   }).outputText
-  const evaluated: unknown = runInNewContext(`${transpiled}; ${functionName}`)
+  const evaluated: unknown = runInNewContext(`${transpiled}; run`)
   if (!isCallable(evaluated)) {
-    throw new Error(`Compiled snippet did not evaluate "${functionName}" to a function.`)
+    throw new Error('Compiled snippet did not evaluate "run" to a function.')
   }
   return evaluated
 }
@@ -1284,10 +1279,7 @@ const compileRewrittenFunction = (
 describe('downlevel inline rewrites - runtime equivalence with the native methods', () => {
   it('#1 literal-array comparison chain matches native Array#includes, including a NaN element', () => {
     const sourceFile = rewrite('declare const x: number\nconst result = [1, NaN, 3].includes(x)\n')
-    const rewritten = compileRewrittenExpression(
-      ['x'],
-      extractRewrittenExpression(sourceFile, 'result')
-    )
+    const rewritten = compileRewrittenExpression(['x'], extractRewrittenExpression(sourceFile))
     for (const x of [1, 2, 3, NaN, -1, 0]) {
       expect(rewritten(x)).toBe([1, NaN, 3].includes(x))
     }
@@ -1297,10 +1289,7 @@ describe('downlevel inline rewrites - runtime equivalence with the native method
     const sourceFile = rewrite(
       'declare const s: string\ndeclare const y: string\nconst result = s.includes(y)\n'
     )
-    const rewritten = compileRewrittenExpression(
-      ['s', 'y'],
-      extractRewrittenExpression(sourceFile, 'result')
-    )
+    const rewritten = compileRewrittenExpression(['s', 'y'], extractRewrittenExpression(sourceFile))
     const strings = ['', 'a', 'abc', 'aabc']
     const patterns = ['', 'a', 'ab', 'bc', 'abcd']
     for (const s of strings) {
@@ -1314,10 +1303,7 @@ describe('downlevel inline rewrites - runtime equivalence with the native method
     const sourceFile = rewrite(
       'declare const s: string\ndeclare const p: string\nconst result = s.startsWith(p)\n'
     )
-    const rewritten = compileRewrittenExpression(
-      ['s', 'p'],
-      extractRewrittenExpression(sourceFile, 'result')
-    )
+    const rewritten = compileRewrittenExpression(['s', 'p'], extractRewrittenExpression(sourceFile))
     const strings = ['', 'a', 'abc', 'aabc']
     const patterns = ['', 'a', 'ab', 'bc', 'abcd']
     for (const s of strings) {
@@ -1331,10 +1317,7 @@ describe('downlevel inline rewrites - runtime equivalence with the native method
     const sourceFile = rewrite(
       'declare const s: string\ndeclare const p: string\nconst result = s.endsWith(p)\n'
     )
-    const rewritten = compileRewrittenExpression(
-      ['s', 'p'],
-      extractRewrittenExpression(sourceFile, 'result')
-    )
+    const rewritten = compileRewrittenExpression(['s', 'p'], extractRewrittenExpression(sourceFile))
     const strings = ['', 'a', 'abc', 'aabc']
     const patterns = ['', 'a', 'ab', 'bc', 'abcd']
     for (const s of strings) {
@@ -1346,10 +1329,7 @@ describe('downlevel inline rewrites - runtime equivalence with the native method
 
   it('#5 slice().sort() matches native Array#toSorted without mutating the receiver', () => {
     const sourceFile = rewrite('declare const arr: number[]\nconst result = arr.toSorted()\n')
-    const rewritten = compileRewrittenExpression(
-      ['arr'],
-      extractRewrittenExpression(sourceFile, 'result')
-    )
+    const rewritten = compileRewrittenExpression(['arr'], extractRewrittenExpression(sourceFile))
     const array = [3, 1, 2]
     // No comparator, matching the no-comparator rewrite form under test.
     // eslint-disable-next-line unicorn/require-array-sort-compare
@@ -1359,10 +1339,7 @@ describe('downlevel inline rewrites - runtime equivalence with the native method
 
   it('#5 slice().reverse() matches native Array#toReversed without mutating the receiver', () => {
     const sourceFile = rewrite('declare const arr: number[]\nconst result = arr.toReversed()\n')
-    const rewritten = compileRewrittenExpression(
-      ['arr'],
-      extractRewrittenExpression(sourceFile, 'result')
-    )
+    const rewritten = compileRewrittenExpression(['arr'], extractRewrittenExpression(sourceFile))
     const array = [3, 1, 2]
     expect(rewritten(array)).toEqual([3, 1, 2].toReversed())
     expect(array).toEqual([3, 1, 2])
@@ -1374,10 +1351,7 @@ describe('downlevel inline rewrites - runtime equivalence with the native method
       const sourceFile = rewrite(
         `declare const s: string\nconst result = s.replaceAll('${search}', 'X')\n`
       )
-      const rewritten = compileRewrittenExpression(
-        ['s'],
-        extractRewrittenExpression(sourceFile, 'result')
-      )
+      const rewritten = compileRewrittenExpression(['s'], extractRewrittenExpression(sourceFile))
       for (const s of strings) {
         expect(rewritten(s)).toBe(s.replaceAll(search, 'X'))
       }
@@ -1388,10 +1362,7 @@ describe('downlevel inline rewrites - runtime equivalence with the native method
     const sourceFile = rewrite(
       'declare const o: object\ndeclare const k: string\nconst result = Object.hasOwn(o, k)\n'
     )
-    const rewritten = compileRewrittenExpression(
-      ['o', 'k'],
-      extractRewrittenExpression(sourceFile, 'result')
-    )
+    const rewritten = compileRewrittenExpression(['o', 'k'], extractRewrittenExpression(sourceFile))
     expect(rewritten({ a: 1 }, 'a')).toBe(Object.hasOwn({ a: 1 }, 'a'))
     expect(rewritten({ a: 1 }, 'b')).toBe(Object.hasOwn({ a: 1 }, 'b'))
     expect(rewritten({}, 'toString')).toBe(Object.hasOwn({}, 'toString'))
@@ -1401,10 +1372,7 @@ describe('downlevel inline rewrites - runtime equivalence with the native method
     const array = ['x', 'y', 'z']
     for (let index = -4; index <= 4; index++) {
       const sourceFile = rewrite(`declare const arr: string[]\nconst result = arr.at(${index})\n`)
-      const rewritten = compileRewrittenExpression(
-        ['arr'],
-        extractRewrittenExpression(sourceFile, 'result')
-      )
+      const rewritten = compileRewrittenExpression(['arr'], extractRewrittenExpression(sourceFile))
       expect(rewritten(array)).toBe(array.at(index))
     }
   })
@@ -1413,27 +1381,21 @@ describe('downlevel inline rewrites - runtime equivalence with the native method
     const text = 'xyz'
     for (let index = -4; index <= 4; index++) {
       const sourceFile = rewrite(`declare const s: string\nconst result = s.at(${index})\n`)
-      const rewritten = compileRewrittenExpression(
-        ['s'],
-        extractRewrittenExpression(sourceFile, 'result')
-      )
+      const rewritten = compileRewrittenExpression(['s'], extractRewrittenExpression(sourceFile))
       expect(rewritten(text)).toBe(text.at(index))
     }
   })
 
   it('#8 String.raw constant fold matches the native tagged-template value', () => {
     const sourceFile = rewrite('const result = String.raw`a\\nb\\\\c`\n')
-    const rewritten = extractRewrittenExpression(sourceFile, 'result')
+    const rewritten = extractRewrittenExpression(sourceFile)
     const evaluated: unknown = runInNewContext(rewritten)
     expect(evaluated).toBe(String.raw`a\nb\\c`)
   })
 
   it('#11 (x !== x) matches native Number.isNaN for a number-typed simple operand', () => {
     const sourceFile = rewrite('declare const x: number\nconst result = Number.isNaN(x)\n')
-    const rewritten = compileRewrittenExpression(
-      ['x'],
-      extractRewrittenExpression(sourceFile, 'result')
-    )
+    const rewritten = compileRewrittenExpression(['x'], extractRewrittenExpression(sourceFile))
     for (const x of [NaN, 0, 1, -1, Infinity, -Infinity]) {
       expect(rewritten(x)).toBe(Number.isNaN(x))
     }
@@ -1441,10 +1403,7 @@ describe('downlevel inline rewrites - runtime equivalence with the native method
 
   it('#11 global isFinite(x) matches native Number.isFinite for a number-typed operand', () => {
     const sourceFile = rewrite('declare const x: number\nconst result = Number.isFinite(x)\n')
-    const rewritten = compileRewrittenExpression(
-      ['x'],
-      extractRewrittenExpression(sourceFile, 'result')
-    )
+    const rewritten = compileRewrittenExpression(['x'], extractRewrittenExpression(sourceFile))
     for (const x of [NaN, 0, 1, -1, Infinity, -Infinity]) {
       expect(rewritten(x)).toBe(Number.isFinite(x))
     }
@@ -1452,17 +1411,13 @@ describe('downlevel inline rewrites - runtime equivalence with the native method
 
   it('#11 constant folds match the native Number static values exactly', () => {
     const epsilon = rewrite('const result = Number.EPSILON\n')
-    expect(runInNewContext(extractRewrittenExpression(epsilon, 'result'))).toBe(Number.EPSILON)
+    expect(runInNewContext(extractRewrittenExpression(epsilon))).toBe(Number.EPSILON)
 
     const maxSafe = rewrite('const result = Number.MAX_SAFE_INTEGER\n')
-    expect(runInNewContext(extractRewrittenExpression(maxSafe, 'result'))).toBe(
-      Number.MAX_SAFE_INTEGER
-    )
+    expect(runInNewContext(extractRewrittenExpression(maxSafe))).toBe(Number.MAX_SAFE_INTEGER)
 
     const minSafe = rewrite('const result = Number.MIN_SAFE_INTEGER\n')
-    expect(runInNewContext(extractRewrittenExpression(minSafe, 'result'))).toBe(
-      Number.MIN_SAFE_INTEGER
-    )
+    expect(runInNewContext(extractRewrittenExpression(minSafe))).toBe(Number.MIN_SAFE_INTEGER)
   })
 })
 

@@ -36,7 +36,7 @@ export type KeyValuePairObject = Record<string, string>
 const skipWhitespace = (string: string, pos: number, limit: number): number => {
   while (pos < limit) {
     const charCode = string.charCodeAt(pos)
-    if (charCode !== CH_SPACE && charCode !== CH_TAB && charCode !== CH_FF) {
+    if (![CH_SPACE, CH_TAB, CH_FF].includes(charCode)) {
       break
     }
     pos++

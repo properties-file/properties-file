@@ -389,8 +389,9 @@ export default defineConfig(
        *
        * The `escapeKey`/`escapeValue` parameters named `escapeUnicode` mirror the option key of
        * the same name, so prefixing them would break vocabulary consistency with the options
-       * they feed. The rule only checks variables and parameters (`checkProperties` defaults to
-       * `false`), so renaming the parameters would not make the option keys lint-enforced anyway.
+       * they feed. The rule only checks variables, parameters and functions (`checkFields` and
+       * `checkMethods` default to `never`), so renaming the parameters would not make the option
+       * keys lint-enforced anyway.
        */
       'unicorn/consistent-boolean-name': ['error', { ignore: ['^escape(Unicode|Space)$'] }],
       /**
@@ -399,6 +400,12 @@ export default defineConfig(
        * @see https://github.com/sindresorhus/eslint-plugin-unicorn/issues/2285
        */
       'unicorn/number-literal-case': 'off',
+      /**
+       * Documentation comments keep their leading ` * ` on every line: it is the JSDoc/TSDoc
+       * convention this codebase (and the `jsdoc`/`tsdoc` plugins, Prettier and editors) is
+       * built around, and the comments ship verbatim in the published `.d.ts` files.
+       */
+      'unicorn/no-asterisk-prefix-in-documentation-comments': 'off',
       // Block comments whose content fits on one line stay on one line.
       // @see https://github.com/sindresorhus/eslint-plugin-unicorn/blob/main/docs/rules/single-line-block-comment-style.md
       'unicorn/single-line-block-comment-style': ['error', 'single-line'],

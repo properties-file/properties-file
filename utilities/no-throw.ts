@@ -157,10 +157,7 @@ export function noThrow<Result>(action: () => Result): Result | NormalizedError
 export function noThrow(action: () => unknown): unknown {
   try {
     const result = action()
-    if (isPromise(result)) {
-      return result.catch((error: unknown) => toNormalizedError(error))
-    }
-    return result
+    return isPromise(result) ? result.catch((error: unknown) => toNormalizedError(error)) : result
   } catch (error) {
     return toNormalizedError(error)
   }

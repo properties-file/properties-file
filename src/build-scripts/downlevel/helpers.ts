@@ -189,10 +189,9 @@ export const isStringLikeType = (type: Type): boolean => {
  * @returns `true` if `type` is a number (or number literal) type.
  */
 export const isNumberLikeType = (type: Type): boolean => {
-  if (type.isUnion()) {
-    return type.getUnionTypes().every((constituent) => isNumberLikeType(constituent))
-  }
-  return type.isNumber() || type.isNumberLiteral()
+  return type.isUnion()
+    ? type.getUnionTypes().every((constituent) => isNumberLikeType(constituent))
+    : type.isNumber() || type.isNumberLiteral()
 }
 
 /**
@@ -203,10 +202,9 @@ export const isNumberLikeType = (type: Type): boolean => {
  * @returns `true` if `type` is a `RegExp` type.
  */
 export const isRegExpLikeType = (type: Type): boolean => {
-  if (type.isUnion()) {
-    return type.getUnionTypes().every((constituent) => isRegExpLikeType(constituent))
-  }
-  return type.getSymbol()?.getName() === 'RegExp'
+  return type.isUnion()
+    ? type.getUnionTypes().every((constituent) => isRegExpLikeType(constituent))
+    : type.getSymbol()?.getName() === 'RegExp'
 }
 
 /**
@@ -218,10 +216,9 @@ export const isRegExpLikeType = (type: Type): boolean => {
  * @returns `true` if `type` is safe to treat as an array for catalog rewrite purposes.
  */
 export const isArrayLikeType = (type: Type): boolean => {
-  if (type.isUnion()) {
-    return type.getUnionTypes().every((constituent) => isArrayLikeType(constituent))
-  }
-  return type.isArray() || type.isReadonlyArray() || type.isTuple()
+  return type.isUnion()
+    ? type.getUnionTypes().every((constituent) => isArrayLikeType(constituent))
+    : type.isArray() || type.isReadonlyArray() || type.isTuple()
 }
 
 /**

@@ -395,10 +395,12 @@ const updateReadmeBadge = (results: SizeResult[]): void => {
   const updatedReadme = readme
     .replace(badgePattern, () => newBadge)
     .replace(inlinePattern, () => `\`getProperties\` is only ${sizeText} min+gzip`)
-  if (updatedReadme !== readme) {
-    writeFileSync(readmePath, updatedReadme)
-    console.log(`README.md updated: ${sizeText}`)
+  if (updatedReadme === readme) {
+    return
   }
+
+  writeFileSync(readmePath, updatedReadme)
+  console.log(`README.md updated: ${sizeText}`)
 }
 
 // ─── Regression Check ──────────────────────────────────────────────────────

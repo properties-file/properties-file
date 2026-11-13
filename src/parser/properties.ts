@@ -207,15 +207,9 @@ export class Properties {
   format(options?: NormalizeOptions): string {
     if (!options) {
       const eol = this.eolCharacter
-      const parts: string[] = []
-
-      for (const node of this.nodes) {
-        if (node.type === 'property') {
-          parts.push(node.rawLines.join(eol))
-        } else {
-          parts.push(node.rawLine)
-        }
-      }
+      const parts = this.nodes.map((node) =>
+        node.type === 'property' ? node.rawLines.join(eol) : node.rawLine
+      )
 
       return (this.hasBom ? BOM : '') + parts.join(eol)
     }

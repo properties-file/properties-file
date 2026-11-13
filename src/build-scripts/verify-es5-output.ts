@@ -215,13 +215,15 @@ export const verifyEs5Output = async (
       const isInsideSwcHelper = swcHelperRanges.some(
         ([start, end]) => offset >= start && offset < end
       )
-      if (!isInsideSwcHelper) {
-        violationCount++
-        console.error(
-          `   ✖ ${result.filePath}:${message.line}:${message.column} ${message.message} ` +
-            `(${message.ruleId ?? 'parsing error'})`
-        )
+      if (isInsideSwcHelper) {
+        continue
       }
+
+      violationCount++
+      console.error(
+        `   ✖ ${result.filePath}:${message.line}:${message.column} ${message.message} ` +
+          `(${message.ruleId ?? 'parsing error'})`
+      )
     }
   }
   if (violationCount > 0) {
