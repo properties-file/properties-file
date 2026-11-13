@@ -129,7 +129,8 @@ export const formatNormalized = (
 
   // The optional boolean options tested by truthiness below, read once. `Boolean()` rather than
   // `=== true`: for these checks any truthy value counts, including out-of-type ones from
-  // untyped JavaScript callers (`1`).
+  // untyped JavaScript callers (`1`). `requiresPropertyRebuild` above is stricter (`=== true`),
+  // so a truthy non-`true` `removeLeadingWhitespace` on its own only strips comment lines.
   const shouldDeduplicateKeys = Boolean(options.deduplicateKeys)
   const shouldKeepLeadingNodes = Boolean(options.deduplicateKeysKeepLeadingNodes)
   const shouldRemoveComments = Boolean(options.removeComments)
