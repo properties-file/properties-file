@@ -1763,8 +1763,10 @@ describe('ES5 output gate (verify-es5-output)', () => {
   )
 
   it('exempts an allowlisted SWC helper but rejects the same body under a rogue name (fail-closed)', () => {
-    // The body must be UNGUARDED post-ES5 usage: es-x is guard-aware, so a
-    // `typeof Symbol !== "undefined"`-protected body produces no finding to exempt at all.
+    // The body is post-ES5 usage es-x reports. (A `typeof Symbol !== "undefined"` or
+    // `if (Object.getOwnPropertySymbols)` guard would not change that: with the rules' default
+    // options, es-x reports feature-detected usage too — which is why SWC's guarded helpers
+    // need this exemption at all.)
     const unguardedBody = '  return Object.getOwnPropertySymbols(value)\n'
     const allowlisted = `function _instanceof(value) {\n${unguardedBody}}\n`
     expect(gateVerdictFor(allowlisted)).toContain('GATE_PASSED')
