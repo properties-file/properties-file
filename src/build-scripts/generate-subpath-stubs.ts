@@ -21,9 +21,25 @@
  * condition. They are generated files: git-ignored, ESLint/Prettier-ignored, and shipped through
  * the `files` list of `package.json` — which this step verifies, since a stub directory missing
  * from `files` would silently not be published.
+ *
+ * This step runs once `dist/` is complete (after minification in `build.ts`), so it also verifies
+ * that every `main`, `module` and `types` path it is about to write names an existing file. That
+ * is the only check on `main` and `module`: `attw` (`npm run check-package`) resolves the stubs'
+ * `types` through TypeScript's `node10` resolution, but neither it nor `publint` follows a stub's
+ * `main` or `module`.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import path from 'node:path'
+
+import { isNormalizedError, noThrow } from '../../utilities/no-throw'
 
 /**
  * A subpath key the stubs can be generated for: `./` followed by one or more lowercase
@@ -34,6 +50,15 @@ const REGEX_STUB_SUBPATH = /^\.\/[a-z]+(?:\/[a-z]+)*$/
 
 /** The one directory every package ships besides the stubs (the compiled output). */
 const DIST_DIRECTORY = 'dist'
+
+/** The keys an `exports` entry may have: one condition per module format, nothing else. */
+const ENTRY_KEYS = ['import', 'require']
+
+/** The keys an `import`/`require` condition may have. */
+const CONDITION_KEYS = ['types', 'default']
+
+/** The keys of a generated stub `package.json`, sorted (see {@link StubManifest}). */
+const STUB_MANIFEST_KEYS = ['main', 'module', 'types']
 
 /** The resolved files of one `exports` condition (`import` or `require`). */
 type ConditionTarget = {
@@ -84,25 +109,80 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /**
+ * Reject an object with any key outside an allowed set. An unknown key is a condition (`node`,
+ * `browser`, a top-level `default`, …) or a field the stub would silently drop, so a new shape
+ * needs a deliberate decision on what its stub should contain.
+ *
+ * @param value - The object to check.
+ * @param allowedKeys - The keys the object may have.
+ * @param location - Where the object sits in `package.json`, for the error message (e.g.
+ * `exports["./editor"].require`).
+ *
+ * @throws An error naming the location and the first unexpected key.
+ */
+const rejectUnexpectedKeys = (
+  value: Record<string, unknown>,
+  allowedKeys: readonly string[],
+  location: string
+): void => {
+  const unexpectedKey = Object.keys(value).find((key) => !allowedKeys.includes(key))
+  if (unexpectedKey !== undefined) {
+    throw new Error(
+      `🚨 ${location} has an unexpected key "${unexpectedKey}": a legacy resolution stub can ` +
+        `only be derived from ${allowedKeys.map((key) => `"${key}"`).join(' and ')}`
+    )
+  }
+}
+
+/**
+ * Check that an `exports` target is a file inside `dist/`: the stubs point back into the build
+ * output, and a target outside it (e.g. `../outside.js`) would make a stub point outside the
+ * package. Both the written form and the normalized one are checked, so a `./dist/../…` target
+ * cannot escape either.
+ *
+ * @param target - The target as written in the `exports` map.
+ *
+ * @returns `true` if the target starts with `./dist/` and stays inside `dist/` once normalized.
+ */
+const isBuildOutputTarget = (target: string): boolean =>
+  target.startsWith(`./${DIST_DIRECTORY}/`) &&
+  path.posix.normalize(target).startsWith(`${DIST_DIRECTORY}/`)
+
+/**
  * Read the `types`/`default` targets of one condition of an `exports` entry, failing loudly on
- * any other shape (a new shape needs a deliberate decision on what its stub should contain).
+ * any other shape (a new shape needs a deliberate decision on what its stub should contain): the
+ * condition must be an object with exactly the string keys `types` and `default`, each pointing
+ * inside `./dist/`.
  *
  * @param subpath - The `exports` key, for error messages.
- * @param entry - The `exports` value for that key.
+ * @param entry - The `exports` value for that key (already checked to have no key besides
+ * `import` and `require`).
  * @param condition - The condition to read.
  *
  * @returns The condition's declaration and JavaScript files.
+ *
+ * @throws An error naming the subpath and condition if the condition has any other shape.
  */
 const getConditionTarget = (
   subpath: string,
-  entry: unknown,
+  entry: Record<string, unknown>,
   condition: 'import' | 'require'
 ): ConditionTarget => {
-  const target = isRecord(entry) ? entry[condition] : undefined
-  if (!isRecord(target) || typeof target.types !== 'string' || typeof target.default !== 'string') {
-    throw new Error(
-      `🚨 exports["${subpath}"].${condition} must be { "types": string, "default": string }`
-    )
+  const location = `exports["${subpath}"].${condition}`
+  const target = entry[condition]
+  if (!isRecord(target)) {
+    throw new Error(`🚨 ${location} must be { "types": string, "default": string }`)
+  }
+  rejectUnexpectedKeys(target, CONDITION_KEYS, location)
+  if (typeof target.types !== 'string' || typeof target.default !== 'string') {
+    throw new Error(`🚨 ${location} must be { "types": string, "default": string }`)
+  }
+  for (const targetPath of [target.types, target.default]) {
+    if (!isBuildOutputTarget(targetPath)) {
+      throw new Error(
+        `🚨 ${location} target "${targetPath}" must point inside "./${DIST_DIRECTORY}/"`
+      )
+    }
   }
   return { types: target.types, default: target.default }
 }
@@ -114,11 +194,20 @@ const getConditionTarget = (
  * @param entry - The `exports` value for that key.
  *
  * @returns The stub directory and the `package.json` content pointing back into `dist/`.
+ *
+ * @throws An error if the key or the entry has a shape the stub cannot be derived from.
  */
 const getSubpathStub = (subpath: string, entry: unknown): SubpathStub => {
   if (!REGEX_STUB_SUBPATH.test(subpath)) {
     throw new Error(`🚨 Unsupported exports key for a legacy resolution stub: "${subpath}"`)
   }
+  if (!isRecord(entry)) {
+    throw new Error(
+      `🚨 exports["${subpath}"] must be { "import": { … }, "require": { … } } for a legacy ` +
+        `resolution stub`
+    )
+  }
+  rejectUnexpectedKeys(entry, ENTRY_KEYS, `exports["${subpath}"]`)
   const directoryPath = subpath.slice('./'.length)
   const requireTarget = getConditionTarget(subpath, entry, 'require')
   const importTarget = getConditionTarget(subpath, entry, 'import')
@@ -145,19 +234,43 @@ const getSubpathStub = (subpath: string, entry: unknown): SubpathStub => {
 }
 
 /**
- * Check that a directory holds nothing but (possibly nested) `package.json` files, i.e. that it
- * is a previously generated stub tree and is safe to delete.
+ * Check whether a file is a stub this step generated: valid JSON for an object with exactly the
+ * {@link StubManifest} keys, each a string. Any other content, unparseable JSON included, is
+ * someone else's file.
+ *
+ * @param filePath - The `package.json` file to inspect.
+ *
+ * @returns `true` if the file has the exact shape of a generated stub.
+ */
+const isStubManifestFile = (filePath: string): boolean => {
+  const manifest = noThrow((): unknown => JSON.parse(readFileSync(filePath, 'utf8')))
+  return (
+    !isNormalizedError(manifest) &&
+    isRecord(manifest) &&
+    JSON.stringify(Object.keys(manifest).toSorted(compareStrings)) ===
+      JSON.stringify(STUB_MANIFEST_KEYS) &&
+    Object.values(manifest).every((value) => typeof value === 'string')
+  )
+}
+
+/**
+ * Check that a directory holds nothing but (possibly nested) generated stubs, i.e. that it is a
+ * previously generated stub tree and is safe to delete. Every entry must be either a directory
+ * (checked recursively) or a regular file named `package.json` with the exact shape of a stub
+ * (see {@link isStubManifestFile}), so an unrelated `package.json` (e.g. a test fixture), a
+ * symbolic link or any other file makes the whole tree "not ours".
  *
  * @param directoryPath - The directory to inspect.
  *
- * @returns `true` if every file under the directory is named `package.json`.
+ * @returns `true` if every entry under the directory is a directory or a generated stub.
  */
 const hasOnlyStubFiles = (directoryPath: string): boolean =>
-  readdirSync(directoryPath, { withFileTypes: true }).every((entry) =>
-    entry.isDirectory()
-      ? hasOnlyStubFiles(path.join(directoryPath, entry.name))
-      : entry.name === 'package.json'
-  )
+  readdirSync(directoryPath, { withFileTypes: true }).every((entry) => {
+    const entryPath = path.join(directoryPath, entry.name)
+    return entry.isDirectory()
+      ? hasOnlyStubFiles(entryPath)
+      : entry.isFile() && entry.name === 'package.json' && isStubManifestFile(entryPath)
+  })
 
 /**
  * Generate the legacy resolution stubs for every subpath of the `exports` map in
@@ -166,6 +279,10 @@ const hasOnlyStubFiles = (directoryPath: string): boolean =>
  *
  * @param packageJsonPath - The path to the package's `package.json`; the stubs are written
  * next to it.
+ *
+ * @throws An error, before anything is deleted or written, if an `exports` entry has a shape the
+ * stubs cannot be derived from, `files` does not match, a stub would point to a missing file, or
+ * an existing stub directory holds anything but previously generated stubs.
  */
 export const generateSubpathStubs = (packageJsonPath: string): void => {
   const packageRootPath = path.dirname(packageJsonPath)
@@ -179,8 +296,13 @@ export const generateSubpathStubs = (packageJsonPath: string): void => {
     .map(([subpath, entry]) => getSubpathStub(subpath, entry))
 
   /**
-   * The top-level stub directories (`bundler`, `editor`, …): what `files` must list, and what is
-   * cleared before writing, so a stub whose subpath was removed from `exports` does not linger.
+   * The top-level stub directories (`bundler`, `editor`, …) of the current `exports` map: what
+   * `files` must list, and what is cleared before writing. Clearing them removes a stale nested
+   * stub under a directory that is still exported (e.g. `bundler/x/` once `./bundler/x` is
+   * removed). A whole top-level subpath removed from `exports` (e.g. `./escape`) is not in this
+   * list, so its stub directory stays on disk until deleted by hand. It is not published (the
+   * `files` check below forces its entry out of `files` too) and it is git-ignored, so it is
+   * only a local leftover.
    */
   const stubRootDirectories = [
     ...new Set(stubs.map(({ directoryPath }) => directoryPath.split('/', 1)[0])),
@@ -200,13 +322,29 @@ export const generateSubpathStubs = (packageJsonPath: string): void => {
     )
   }
 
+  // Every path a stub is about to point to must name an existing file now (`dist/` is complete
+  // when this runs): nothing downstream checks a stub's `main` or `module` (see the header).
+  // Each path is resolved from the stub directory, exactly as a resolver reads it.
+  for (const { directoryPath, manifest } of stubs) {
+    for (const [field, relativePath] of Object.entries(manifest)) {
+      const targetPath = path.join(packageRootPath, directoryPath, relativePath)
+      if (statSync(targetPath, { throwIfNoEntry: false })?.isFile() !== true) {
+        throw new Error(
+          `🚨 Legacy resolution stub ${directoryPath}/package.json: "${field}" ` +
+            `(${relativePath}) is not a file: ${targetPath}`
+        )
+      }
+    }
+  }
+
   const existingStubRootPaths = stubRootDirectories
     .map((stubRootDirectory) => path.join(packageRootPath, stubRootDirectory))
     .filter((stubRootPath) => existsSync(stubRootPath))
 
   // Never delete a directory this step did not create (e.g. an exports key colliding with a
-  // source directory): a previously generated stub tree holds `package.json` files only. All
-  // directories are checked before any is deleted, so a refusal leaves the tree untouched.
+  // source directory): a previously generated stub tree holds stub-shaped `package.json` files
+  // only (see `hasOnlyStubFiles`). All directories are checked before any is deleted, so a
+  // refusal leaves the tree untouched.
   for (const stubRootPath of existingStubRootPaths) {
     if (!hasOnlyStubFiles(stubRootPath)) {
       throw new Error(
