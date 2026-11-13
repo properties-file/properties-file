@@ -27,7 +27,8 @@ there, and has to be added to the transform's catalog or written in ES5 (see its
 The functional replay tests on Node.js 0.4 (`tests/node-compat/`) are the behavioral backstop.
 
 Non-shipped code (tests, build scripts, performance tooling) only runs on the development
-Node.js version and is exempt.
+Node.js version and is exempt, with one exception: `tests/functional/run-cjs.js` also runs on
+Node.js 0.4 and must stay strict ES5 (see `tests/functional/README.md`).
 
 ### Zero runtime dependencies
 
@@ -76,9 +77,20 @@ predate `exports` (Node.js before 12.7, webpack 4, TypeScript's legacy `node10` 
 the build also generates one stub `package.json` per subpath at the package root (e.g.
 `editor/package.json`, whose `main` points to `../dist/cjs/editor/index.js`), derived from the
 `exports` map (`src/build-scripts/generate-subpath-stubs.ts`). The stubs are git-ignored and
-shipped through `files`, which the build checks contains exactly `dist` plus each stub directory:
-a new subpath only needs its `exports` entry and its directory added to `files` and the ignore
-lists (`.gitignore`, `.prettierignore`, `eslint/config.ts`).
+shipped through `files`, which the build checks contains exactly `dist` plus each stub directory.
+The generator only accepts subpath keys made of lowercase segments (`./editor`,
+`./bundler/webpack`; no dots, digits, `*` patterns or trailing slash), and entries of exactly the
+shape `{ "import": { "types", "default" }, "require": { "types", "default" } }` with every target
+inside `./dist/`; any other key or condition fails the build. A new subpath needs:
+
+- its `exports` entry;
+- its top-level directory added to `files` and to the ignore lists (`.gitignore`,
+  `.prettierignore`, `eslint/config.ts`), unless that directory is already there (e.g. a new
+  `./bundler/…` subpath);
+- for a new top-level subpath that runs outside bundlers, a `COPY` line for its stub directory
+  in `tests/node-compat/Dockerfile.node-0.4` and a `loadEntryPoint` call in
+  `tests/functional/run-cjs.js`, whose entry points are hard-coded, so the Node.js 0.4 check
+  loads it.
 
 ### Parser design
 
@@ -115,8 +127,11 @@ npm run size              # Compare bundle sizes against latest published versio
 `check-package` runs `publint` and `attw` against the packed tarball, in every resolution mode
 `attw` knows, including TypeScript's legacy `node10`. That mode cannot read the `exports` map:
 it resolves the subpath entry points (`properties-file/editor`, …) through the generated stub
-`package.json` files described under [Dual output](#dual-output-esm--cjs), so a missing or
-broken stub fails the check.
+`package.json` files described under [Dual output](#dual-output-esm--cjs), so a missing stub or
+a wrong stub `types` fails the check. Neither tool follows a stub's `main` or `module`; the
+generator itself fails the build if any stub's `main`, `module` or `types` does not point to an
+existing file, and the Node.js 0.4 check (`tests/node-compat/`) loads the non-bundler entry
+points through their stubs' `main`.
 
 ## Pull Request Checklist
 
