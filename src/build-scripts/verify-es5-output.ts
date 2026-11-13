@@ -140,15 +140,19 @@ const getSwcHelperRanges = (program: AST.Program): [number, number][] => {
 }
 
 /**
- * Lint every built JavaScript file in a directory against the full es-x ES5 restriction set
- * (see the module documentation for the aggressive-mode and SWC-helper-exemption design).
+ * Lint every built JavaScript file in a directory against the full es-x ES5 restriction set and
+ * the post-ES5 global ban (see the module documentation for the aggressive-mode and
+ * SWC-helper-exemption design).
  *
  * @param buildDirectoryPath - The built output directory to verify (e.g. `dist/esm`).
  * @param sourceType - How to parse the files: `module` for the ESM build (its `import`/`export`
  *   statements are the one post-ES5 construct consumers' module loaders handle natively),
  *   `script` for the CJS build.
  *
- * @throws Error if any file uses post-ES5 syntax or a post-ES5 runtime API.
+ * @throws Error if any file uses post-ES5 syntax or a post-ES5 runtime API, or cannot be fully
+ *   linted (a parse error, or a file under a directory ESLint ignores by default); if the
+ *   directory contains no `.js` file; or if it contains an entry that is neither a regular file
+ *   nor a directory (e.g. a symbolic link).
  */
 export const verifyEs5Output = async (
   buildDirectoryPath: string,
