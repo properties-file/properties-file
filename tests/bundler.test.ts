@@ -219,8 +219,43 @@ describe('Emitted code', () => {
 
   it('is parsed from JSON at run time for a file with a `__proto__` key', () => {
     expect(webpackLoader('hello = world\n__proto__ = kept')).toBe(
-      String.raw`exports.properties = JSON.parse("{\"hello\":\"world\",\"__proto__\":\"kept\"}");`
+      String.raw`exports.properties = /* @__PURE__ */ JSON.parse("{\"hello\":\"world\",\"__proto__\":\"kept\"}");`
     )
+  })
+
+  it('can still be dropped by Rollup when the import is unused', async () => {
+    const entryPath = path.join(projectDirectory, 'unused-import.rollup.js')
+    writeFileSync(
+      entryPath,
+      "import { properties } from './prototype-accessor-key.properties'\nexport const used = 'yes'\n"
+    )
+
+    const bundle = await rollup({ input: entryPath, plugins: [rollupPlugin()] })
+    const { output } = await bundle.generate({ format: 'cjs' })
+    await bundle.close()
+
+    expect(output[0].code).not.toContain('JSON.parse')
+    expect(evaluateCommonJs(output[0].code)).toStrictEqual({ used: 'yes' })
+  })
+
+  it('can still be dropped by esbuild when the import is unused', async () => {
+    const entryPath = path.join(projectDirectory, 'unused-import.esbuild.js')
+    writeFileSync(
+      entryPath,
+      "import { properties } from './prototype-accessor-key.properties'\nexport const used = 'yes'\n"
+    )
+
+    const { outputFiles } = await build({
+      entryPoints: [entryPath],
+      bundle: true,
+      write: false,
+      format: 'cjs',
+      plugins: [esbuildPlugin()],
+      logLevel: 'silent',
+    })
+
+    expect(outputFiles[0].text).not.toContain('JSON.parse')
+    expect(evaluateCommonJs(outputFiles[0].text)).toMatchObject({ used: 'yes' })
   })
 
   it('leaves files that are not `.properties` to the bundler', async () => {
