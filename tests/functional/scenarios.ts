@@ -138,6 +138,17 @@ const prototypeMemberKeysInput = [
   'hasOwnProperty = six',
 ].join('\n')
 
+// The same without `__proto__`, for scenarios that return the parsed object. These scenarios
+// are also replayed on Node.js 0.4, whose engine treats `__proto__` as built into every object
+// rather than as a property an object can own, so `getProperties()` cannot return that key
+// there.
+const storablePrototypeMemberKeysInput = [
+  'constructor = one',
+  'toString = two',
+  'constructor = four',
+  'hasOwnProperty = six',
+].join('\n')
+
 const parseScenarios: ParseScenario[] = [
   parseScenario('parse-fixture', fixture),
   parseScenario('parse-fixture-bom', fixtureWithBom),
@@ -147,6 +158,7 @@ const parseScenarios: ParseScenario[] = [
   parseScenario('parse-comment-only', '# just a comment\n! another comment\n   # indented comment'),
   parseScenario('parse-continuation-heavy', continuationHeavyInput),
   parseScenario('parse-duplicate-keys', duplicateKeysInput),
+  parseScenario('parse-prototype-member-keys', storablePrototypeMemberKeysInput),
   // Astral (outside-BMP) characters are represented as UTF-16 surrogate pairs, per the Java
   // .properties format (a \uXXXX escape is one code unit; astral characters take two escapes).
   parseScenario(

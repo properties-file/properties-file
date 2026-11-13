@@ -77,7 +77,23 @@ export class Properties {
   toObject(): KeyValuePairObject {
     const result: KeyValuePairObject = {}
     for (const node of this.nodes) {
-      if (node.type === 'property') {
+      if (node.type !== 'property') {
+        continue
+      }
+
+      if (node.key === '__proto__') {
+        // A plain assignment to `__proto__` goes through the setter inherited from
+        // `Object.prototype`, which ignores a string: the key would be silently dropped.
+        // Defining it creates a regular own property instead, as `JSON.parse` does on the
+        // same engines. On Node.js 0.4, where `__proto__` is built into every object, the key
+        // still does not appear in the result.
+        Object.defineProperty(result, node.key, {
+          value: node.value,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        })
+      } else {
         result[node.key] = node.value
       }
     }

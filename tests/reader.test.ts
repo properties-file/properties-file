@@ -30,6 +30,12 @@ const readUsingGetProperties = (content: string | Buffer): KeyValuePairObject =>
 const readUsingToObject = (content: string | Buffer): KeyValuePairObject =>
   new Properties(content).toObject()
 
+/**
+ * Every name a plain object inherits from `Object.prototype` (`constructor`, `toString`,
+ * `__proto__`…), as provided by the engine running the tests.
+ */
+const OBJECT_PROTOTYPE_MEMBER_NAMES = Object.getOwnPropertyNames(Object.prototype)
+
 /** Two readers that must produce identical results. */
 const readers: [string, (content: string | Buffer) => KeyValuePairObject][] = [
   ['getProperties()', readUsingGetProperties],
@@ -113,6 +119,30 @@ describe.each(readers)('%s', (_name, read) => {
 
   it('handles key collisions (last value wins)', () => {
     expect(read('key = first\nkey = second')).toStrictEqual({ key: 'second' })
+  })
+
+  it.each(OBJECT_PROTOTYPE_MEMBER_NAMES)(
+    'stores the `Object.prototype` member name `%s` as a regular key',
+    (key) => {
+      const result = read(`${key} = value`)
+
+      expect(Object.keys(result)).toStrictEqual([key])
+      expect(Object.getOwnPropertyDescriptor(result, key)).toStrictEqual({
+        value: 'value',
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      })
+      expect(Object.getPrototypeOf(result)).toBe(Object.prototype)
+    }
+  )
+
+  it('handles collisions on a `__proto__` key, escaped or not (last value wins)', () => {
+    const result = read(String.raw`__proto__ = first
+\u005F_proto__ = second`)
+
+    expect(Object.keys(result)).toStrictEqual(['__proto__'])
+    expect(Object.getOwnPropertyDescriptor(result, '__proto__')?.value).toBe('second')
   })
 
   it('handles line continuations', () => {

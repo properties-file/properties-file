@@ -1364,6 +1364,45 @@
     }
   },
   {
+    "id": "parse-prototype-member-keys",
+    "kind": "parse",
+    "input": "constructor = one\ntoString = two\nconstructor = four\nhasOwnProperty = six",
+    "expected": {
+      "object": {
+        "constructor": "four",
+        "toString": "two",
+        "hasOwnProperty": "six"
+      },
+      "nodes": [
+        {
+          "type": "property",
+          "key": "constructor",
+          "value": "one",
+          "startingLineNumber": 1
+        },
+        {
+          "type": "property",
+          "key": "toString",
+          "value": "two",
+          "startingLineNumber": 2
+        },
+        {
+          "type": "property",
+          "key": "constructor",
+          "value": "four",
+          "startingLineNumber": 3
+        },
+        {
+          "type": "property",
+          "key": "hasOwnProperty",
+          "value": "six",
+          "startingLineNumber": 4
+        }
+      ],
+      "hasBom": false
+    }
+  },
+  {
     "id": "parse-astral-characters",
     "kind": "parse",
     "input": "emoji = raw \ud83d\ude00 and escaped \\uD83D\\uDE00\nkey\ud83d\ude80 = value",

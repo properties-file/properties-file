@@ -191,9 +191,23 @@ export const getProperties = (content: string | Buffer): KeyValuePairObject => {
     // Unescape and store (last-wins for duplicate keys).
     const escapedKey = logicalLine.slice(0, keyEnd)
     const escapedValue = logicalLine.slice(valueStart)
-    result[hasBackslash ? unescapeContent(escapedKey) : escapedKey] = hasBackslash
-      ? unescapeContent(escapedValue)
-      : escapedValue
+    const key = hasBackslash ? unescapeContent(escapedKey) : escapedKey
+    const value = hasBackslash ? unescapeContent(escapedValue) : escapedValue
+    if (key === '__proto__') {
+      // A plain assignment to `__proto__` goes through the setter inherited from
+      // `Object.prototype`, which ignores a string: the key would be silently dropped.
+      // Defining it creates a regular own property instead, as `JSON.parse` does on the
+      // same engines. On Node.js 0.4, where `__proto__` is built into every object, the key
+      // still does not appear in the result.
+      Object.defineProperty(result, key, {
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      })
+    } else {
+      result[key] = value
+    }
 
     lineIndex++
   }
