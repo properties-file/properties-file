@@ -77,7 +77,7 @@ describe.each(scenarios)('$kind: $id', (scenario) => {
 
     const actual = executeScenario(scenario)
 
-    const comparison = noThrow(() => expect(actual).toEqual(goldenEntry.expected))
+    const comparison = noThrow(() => expect(actual).toStrictEqual(goldenEntry.expected))
     if (isNormalizedError(comparison)) {
       throw new Error(`${STALENESS_HINT}\n\n${comparison.message}`)
     }
@@ -88,5 +88,5 @@ it('golden.json has no entries for scenarios that no longer exist', () => {
   const scenarioIds = new Set(scenarios.map((scenario) => scenario.id))
   const orphanedIds = golden.map((entry) => entry.id).filter((id) => !scenarioIds.has(id))
 
-  expect(orphanedIds).toEqual([])
+  expect(orphanedIds).toStrictEqual([])
 })

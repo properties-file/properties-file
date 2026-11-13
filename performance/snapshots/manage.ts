@@ -57,7 +57,7 @@ const getGitBranch = (): string => {
 /**
  * Resolve the directory for a named snapshot.
  *
- * @param name - The snapshot name.
+ * @param name - The name the snapshot was saved under (its directory name).
  *
  * @returns The absolute directory path.
  */
@@ -194,7 +194,7 @@ const list = (): void => {
     const seconds = String(dateObject.getSeconds()).padStart(2, '0')
     const date = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
     console.log(
-      `${metadata.name.padEnd(nameWidth)}  ${date}  ${metadata.commit.padEnd(8)}  ${metadata.branch.padEnd(20)}  ${metadata.description || '-'}`
+      `${metadata.name.padEnd(nameWidth)}  ${date}  ${metadata.commit.padEnd(8)}  ${metadata.branch.padEnd(20)}  ${metadata.description === '' ? '-' : metadata.description}`
     )
   }
 }
@@ -249,7 +249,7 @@ const restore = (name: string): void => {
       stdio: 'pipe',
     }).trim()
   )
-  if (status && !isNormalizedError(status)) {
+  if (status !== '' && !isNormalizedError(status)) {
     throw new CliError(
       `Working tree has uncommitted changes in src/ or dist/. Commit or stash them before restoring.\n\n${status}`
     )
@@ -283,7 +283,7 @@ const restore = (name: string): void => {
   console.log(`Snapshot "${name}" restored.`)
   console.log(`  Original commit: ${metadata.commit} (${metadata.branch})`)
   console.log(`  Saved on: ${metadata.date.slice(0, 19).replace('T', ' ')}`)
-  if (metadata.description) {
+  if (metadata.description !== '') {
     console.log(`  Description: ${metadata.description}`)
   }
   console.log(
@@ -336,13 +336,14 @@ const requireName = (name: string | undefined, command: string): string => {
 
 /** Parse the CLI command and dispatch it to the matching snapshot operation. */
 const main = (): void => {
-  const [command, ...arguments_] = process.argv.slice(2)
+  const command = process.argv.at(2)
+  const arguments_ = process.argv.slice(3)
 
   switch (command) {
     case 'save': {
       const saveName = requireName(arguments_[0], 'save')
       const saveDescription = arguments_.slice(1).join(' ')
-      if (!saveDescription) {
+      if (saveDescription === '') {
         fail(`Missing description for 'save'. Describe what this snapshot represents.`)
       }
       save(saveName, saveDescription)
@@ -360,8 +361,12 @@ const main = (): void => {
       deleteSnapshot(requireName(arguments_[0], 'delete'))
       break
     }
+    case undefined: {
+      fail('No command provided.')
+      break
+    }
     default: {
-      fail(command ? `Unknown command: ${command}` : 'No command provided.')
+      fail(`Unknown command: ${command}`)
     }
   }
 }

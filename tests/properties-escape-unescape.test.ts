@@ -21,7 +21,7 @@ describe('The property unicode key escaping', () => {
     ['\\こんにちは12\\', '\\\\こんにちは12\\\\'],
   ])('should escape key "%s" as "%s"', (key: string, expected: string) => {
     const result = escapeKey(key)
-    expect(result).toEqual(expected)
+    expect(result).toStrictEqual(expected)
   })
 })
 
@@ -45,7 +45,7 @@ describe('The property ISO-8859-1 compatible encoding key escaping', () => {
     ['こんにちは', String.raw`\u3053\u3093\u306b\u3061\u306f`],
   ])('should escape key "%s" as "%s"', (key: string, expected: string) => {
     const result = escapeKey(key, true)
-    expect(result).toEqual(expected)
+    expect(result).toStrictEqual(expected)
   })
 })
 
@@ -65,7 +65,7 @@ describe('The property unicode value escaping', () => {
     ['\\こんにちは12\\', '\\\\こんにちは12\\\\'],
   ])('should escape key "%s" as "%s"', (key: string, expected: string) => {
     const result = escapeValue(key)
-    expect(result).toEqual(expected)
+    expect(result).toStrictEqual(expected)
   })
 })
 
@@ -89,7 +89,7 @@ describe('The property ISO-8859-1 compatible encoding value escaping', () => {
     ['こんにちは', String.raw`\u3053\u3093\u306b\u3061\u306f`],
   ])('should escape value "%s" as "%s"', (key: string, expected: string) => {
     const result = escapeValue(key, true)
-    expect(result).toEqual(expected)
+    expect(result).toStrictEqual(expected)
   })
 })
 

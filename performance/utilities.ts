@@ -53,16 +53,16 @@ export const resolveBaseline = (arguments_: string[]): ResolvedBaseline => {
   }
 
   if (hasSnapshotFlag) {
-    const snapshotName = arguments_[snapshotFlagIndex + 1]
-    if (!snapshotName || snapshotName.startsWith('--')) {
+    const snapshotName = arguments_.at(snapshotFlagIndex + 1)
+    if (snapshotName === undefined || snapshotName === '' || snapshotName.startsWith('--')) {
       throw new Error('The --snapshot flag requires a snapshot name (e.g. --snapshot approach-a).')
     }
     return resolveSnapshotBaseline(snapshotName)
   }
 
   if (hasVersionFlag) {
-    const version = arguments_[versionFlagIndex + 1]
-    if (!version || version.startsWith('--')) {
+    const version = arguments_.at(versionFlagIndex + 1)
+    if (version === undefined || version === '' || version.startsWith('--')) {
       throw new Error('The --version flag requires a version number (e.g. --version 3.7.0).')
     }
     return resolvePublishedVersionBaseline(version)
@@ -170,44 +170,6 @@ export type BenchmarkResult = {
   marginOfError: number
 }
 
-// ─── Type Guard ─────────────────────────────────────────────────────────────
-
-/**
- * Check if a value conforms to the {@link BenchmarkResult} shape.
- *
- * @param value - The value to validate.
- *
- * @returns `true` if the value is a valid benchmark result.
- */
-const isBenchmarkResult = (value: unknown): value is BenchmarkResult =>
-  typeof value === 'object' &&
-  value !== null &&
-  'name' in value &&
-  typeof value.name === 'string' &&
-  'opsPerSecond' in value &&
-  typeof value.opsPerSecond === 'number' &&
-  'medianNs' in value &&
-  typeof value.medianNs === 'number' &&
-  'marginOfError' in value &&
-  typeof value.marginOfError === 'number'
-
-/**
- * Parse and validate a JSON string as an array of benchmark results.
- *
- * @param json - Raw JSON string (expected to be a `BenchmarkResult[]`).
- *
- * @returns The parsed and validated benchmark results.
- *
- * @throws Error if the JSON is not a valid array of {@link BenchmarkResult} objects.
- */
-export const parseBenchmarkResults = (json: string): BenchmarkResult[] => {
-  const parsed: unknown = JSON.parse(json)
-  if (Array.isArray(parsed) && parsed.every((item) => isBenchmarkResult(item))) {
-    return parsed
-  }
-  throw new Error('Invalid benchmark results JSON')
-}
-
 // ─── Averaging Logic ────────────────────────────────────────────────────────
 
 /**
@@ -268,25 +230,12 @@ export const averageBenchmarkResults = (runs: BenchmarkResult[][]): BenchmarkRes
 // ─── Threshold Logic ────────────────────────────────────────────────────────
 
 /** Regression threshold percentage. Changes beyond this value are flagged. */
-export const THRESHOLD_PERCENT = 20
-
-/**
- * Determine whether a percentage change exceeds the regression threshold.
- *
- * A regression is detected when the change is a negative value whose absolute
- * magnitude exceeds {@link THRESHOLD_PERCENT}.
- *
- * @param changePercent - The percentage change (negative means slower / larger).
- *
- * @returns `true` if the change represents a regression beyond the threshold.
- */
-export const isAboveRegressionThreshold = (changePercent: number): boolean =>
-  changePercent <= -THRESHOLD_PERCENT
+const THRESHOLD_PERCENT = 20
 
 // ─── Comparison Types ───────────────────────────────────────────────────────
 
 /** Status label for a benchmark comparison row. Empty string indicates a new benchmark with no baseline. */
-export type ComparisonStatus = 'REGR' | 'FAST' | 'OK' | ''
+type ComparisonStatus = 'REGR' | 'FAST' | 'OK' | ''
 
 /** A single row in the benchmark comparison table. */
 export type ComparisonRow = {
@@ -366,7 +315,7 @@ export const buildComparison = (
 // ─── Formatting Helpers ─────────────────────────────────────────────────────
 
 /** Map a {@link ComparisonStatus} to a human-readable icon and label for terminal output. */
-export const STATUS_ICONS: Record<ComparisonStatus, string> = {
+const STATUS_ICONS: Record<ComparisonStatus, string> = {
   REGR: '⚠️  REGR',
   FAST: '🚀 FAST',
   OK: '✅ OK',
@@ -380,7 +329,7 @@ export const STATUS_ICONS: Record<ComparisonStatus, string> = {
  *
  * @returns The formatted percentage string, or `"N/A"` for null values.
  */
-export const formatChange = (changePercent: number | null): string =>
+const formatChange = (changePercent: number | null): string =>
   changePercent === null ? 'N/A' : `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(1)}%`
 
 /**
@@ -390,8 +339,7 @@ export const formatChange = (changePercent: number | null): string =>
  *
  * @returns The formatted ops/sec string, or `"(new)"` for null values.
  */
-export const formatOps = (ops: number | null): string =>
-  ops === null ? '(new)' : ops.toLocaleString()
+const formatOps = (ops: number | null): string => (ops === null ? '(new)' : ops.toLocaleString())
 
 /**
  * Print a comparison table to stdout.

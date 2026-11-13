@@ -53,7 +53,7 @@ const wrapAtWidth = (escaped: string, width: number): string => {
 /**
  * Rebuild a property line from its parsed fields.
  *
- * @param node - The property node.
+ * @param node - The parsed property whose key, separator and value are re-serialized.
  * @param options - Normalization options.
  *
  * @returns The reconstructed property line(s) as a single string.

@@ -160,12 +160,13 @@ const buildPropertyNode = (
 
   const separatorChar =
     options.separator === ' ' ? undefined : (options.separator ?? DEFAULT_SEPARATOR)
-  const separatorLeading = separatorChar ? ' ' : ' '
-  const separatorTrailing = separatorChar ? ' ' : ''
+  const separatorLeading = ' '
+  const separatorTrailing = separatorChar === undefined ? '' : ' '
 
-  const separatorString = separatorChar
-    ? `${separatorLeading}${separatorChar}${separatorTrailing}`
-    : separatorLeading
+  const separatorString =
+    separatorChar === undefined
+      ? separatorLeading
+      : `${separatorLeading}${separatorChar}${separatorTrailing}`
 
   const rawLine = `${escapedKey}${separatorString}${escapedValue}`
   const rawLines = rawLine.split(REGEX_NEWLINE)
@@ -317,7 +318,8 @@ export class PropertiesEditor extends Properties {
    *
    * @param key - The unescaped key.
    * @param value - The unescaped value.
-   * @param options - Insert options.
+   * @param options - Where to insert (reference key and position), plus the separator, Unicode
+   *   escaping and optional leading comment of the new property.
    */
   insert(key: string, value: string, options?: InsertOptions): void {
     const newNodes: PropertiesNode[] = []
@@ -361,7 +363,7 @@ export class PropertiesEditor extends Properties {
    * Insert a comment.
    *
    * @param comment - The comment text (may contain newlines).
-   * @param options - Insert comment options.
+   * @param options - Where to insert (reference key and position) and the comment delimiter.
    */
   insertComment(comment: string, options?: InsertCommentOptions): void {
     const delimiter = options?.commentDelimiter ?? DEFAULT_COMMENT_DELIMITER
@@ -384,7 +386,7 @@ export class PropertiesEditor extends Properties {
   /**
    * Insert a blank line.
    *
-   * @param options - Insert blank line options.
+   * @param options - Where to insert (reference key and position).
    */
   insertBlankLine(options?: InsertBlankLineOptions): void {
     const blankNode: BlankLineNode = {
@@ -411,7 +413,8 @@ export class PropertiesEditor extends Properties {
    * Update an existing property.
    *
    * @param key - The unescaped key to update (uses last occurrence).
-   * @param options - Update options.
+   * @param options - What to change: value, key, separator, Unicode escaping or leading comment.
+   *   Anything left unset keeps its original form.
    *
    * @returns `true` if the property was found and updated, `false` otherwise.
    */
@@ -439,25 +442,25 @@ export class PropertiesEditor extends Properties {
         : existing.escapedValue
 
     // Determine separator.
-    const separatorChar = options.separator
-      ? options.separator === ' '
-        ? undefined
-        : options.separator
-      : existing.separatorChar
-    const separatorLeading = options.separator
-      ? separatorChar
-        ? ' '
-        : ' '
-      : existing.separatorLeading
-    const separatorTrailing = options.separator
-      ? separatorChar
-        ? ' '
-        : ''
-      : existing.separatorTrailing
+    const newSeparator = options.separator
+    const separatorChar =
+      newSeparator === undefined
+        ? existing.separatorChar
+        : newSeparator === ' '
+          ? undefined
+          : newSeparator
+    const separatorLeading = newSeparator === undefined ? existing.separatorLeading : ' '
+    const separatorTrailing =
+      newSeparator === undefined
+        ? existing.separatorTrailing
+        : separatorChar === undefined
+          ? ''
+          : ' '
 
-    const separatorString = separatorChar
-      ? `${separatorLeading}${separatorChar}${separatorTrailing}`
-      : separatorLeading
+    const separatorString =
+      separatorChar === undefined
+        ? separatorLeading
+        : `${separatorLeading}${separatorChar}${separatorTrailing}`
 
     const rawLine = `${escapedKey}${separatorString}${escapedValue}`
     const rawLines = rawLine.split(REGEX_NEWLINE)
@@ -510,7 +513,8 @@ export class PropertiesEditor extends Properties {
    *
    * @param key - The unescaped key.
    * @param value - The unescaped value.
-   * @param options - Upsert options.
+   * @param options - Separator, Unicode escaping and leading comment, applied whether the
+   *   property is inserted or updated.
    */
   upsert(key: string, value: string, options?: UpsertOptions): void {
     if (this.findLastProperty(key) !== undefined) {
@@ -534,7 +538,7 @@ export class PropertiesEditor extends Properties {
    * which is useful for cleaning up duplicate keys while keeping the effective value.
    *
    * @param key - The unescaped key to delete.
-   * @param options - Delete options.
+   * @param options - Which occurrence to delete and whether its leading comments go with it.
    *
    * @returns The deleted {@link PropertyNode}, or `undefined` if the key was not found.
    */

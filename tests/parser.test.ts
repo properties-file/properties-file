@@ -178,17 +178,17 @@ describe('PropertyNode fields', () => {
 
   it('rawLines for single-line property', () => {
     const node = expectFirstProperty('key = value')
-    expect(node.rawLines).toEqual(['key = value'])
+    expect(node.rawLines).toStrictEqual(['key = value'])
   })
 
   it('rawLines for multiline value', () => {
     const node = expectFirstProperty('key = value\\\n  continues')
-    expect(node.rawLines).toEqual(['key = value\\', '  continues'])
+    expect(node.rawLines).toStrictEqual(['key = value\\', '  continues'])
   })
 
   it('rawLines for multiline key', () => {
     const node = expectFirstProperty('multiline\\\nKey = value')
-    expect(node.rawLines).toEqual(['multiline\\', 'Key = value'])
+    expect(node.rawLines).toStrictEqual(['multiline\\', 'Key = value'])
   })
 
   it('line numbers for single line', () => {
@@ -318,7 +318,7 @@ describe('Query methods', () => {
   })
 
   it('getPropertyNodes(key) returns empty array for missing key', () => {
-    expect(new Properties('a = 1').getPropertyNodes('missing')).toEqual([])
+    expect(new Properties('a = 1').getPropertyNodes('missing')).toStrictEqual([])
   })
 
   it('getEffectiveProperty(key) returns last occurrence', () => {
@@ -344,7 +344,7 @@ describe('Query methods', () => {
   })
 
   it('getKeyCollisions() returns empty for no duplicates', () => {
-    expect(new Properties('# comment\na = 1\nb = 2').getKeyCollisions()).toEqual([])
+    expect(new Properties('# comment\na = 1\nb = 2').getKeyCollisions()).toStrictEqual([])
   })
 
   it('getLeadingNodes(key) returns comment + blank nodes before a property', () => {
@@ -361,7 +361,7 @@ describe('Query methods', () => {
   })
 
   it('getLeadingNodes(key) returns empty array when property is first node', () => {
-    expect(new Properties('a = 1\nb = 2').getLeadingNodes('a')).toEqual([])
+    expect(new Properties('a = 1\nb = 2').getLeadingNodes('a')).toStrictEqual([])
   })
 
   it('getLeadingNodes(key) includes blank lines between comments', () => {
@@ -499,7 +499,7 @@ describe('format() with normalization options', () => {
   it('wrapKeysAt wraps long keys', () => {
     const result = new Properties('verylongkeyname = value').format({ wrapKeysAt: 8 })
     expect(result).toContain('\\\n')
-    expect(new Properties(result).toObject()).toEqual({ verylongkeyname: 'value' })
+    expect(new Properties(result).toObject()).toStrictEqual({ verylongkeyname: 'value' })
   })
 
   it('wrapValuesAt wraps long values', () => {
@@ -507,7 +507,7 @@ describe('format() with normalization options', () => {
       wrapValuesAt: 20,
     })
     expect(result).toContain('\\\n')
-    expect(new Properties(result).toObject()).toEqual({
+    expect(new Properties(result).toObject()).toStrictEqual({
       key: 'this is a very long value that should wrap',
     })
   })
@@ -521,7 +521,7 @@ describe('format() with normalization options', () => {
       wrapKeysAt: 8,
       wrapValuesAt: 15,
     })
-    expect(new Properties(result).toObject()).toEqual({
+    expect(new Properties(result).toObject()).toStrictEqual({
       verylongkeyname: 'this is a very long value',
     })
   })
@@ -531,7 +531,7 @@ describe('format() with normalization options', () => {
       wrapValuesAt: 6,
     })
     expect(result).not.toMatch(/\\u\d{0,3}\\\n/)
-    expect(new Properties(result).toObject()).toEqual({ key: 'abcAdef' })
+    expect(new Properties(result).toObject()).toStrictEqual({ key: 'abcAdef' })
   })
 
   it('combines multiple options', () => {
@@ -578,7 +578,7 @@ describe('format() with normalization options', () => {
   it('separatorChar space without explicit separatorLeading defaults to single space', () => {
     const result = new Properties('key=value').format({ separatorChar: ' ' })
     expect(result).toBe('key value')
-    expect(new Properties(result).toObject()).toEqual({ key: 'value' })
+    expect(new Properties(result).toObject()).toStrictEqual({ key: 'value' })
   })
 
   it('normalizes whitespace-only separator property preserving node separatorChar', () => {
@@ -606,7 +606,7 @@ describe('PropertiesNodeType constants', () => {
 describe('Edge cases', () => {
   it('handles content with only whitespace', () => {
     const properties = new Properties(' '.repeat(3))
-    expect(properties.toObject()).toEqual({})
+    expect(properties.toObject()).toStrictEqual({})
     expect(properties.getBlankLines()).toHaveLength(1)
   })
 
@@ -619,20 +619,20 @@ describe('Edge cases', () => {
   })
 
   it('handles property with escaped backslash before separator', () => {
-    expect(new Properties(String.raw`key\\ = value`).toObject()).toEqual({ 'key\\': 'value' })
+    expect(new Properties(String.raw`key\\ = value`).toObject()).toStrictEqual({ 'key\\': 'value' })
   })
 
   it('handles continuation at end of file (no content after the backslash)', () => {
-    expect(new Properties('key = value\\').toObject()).toEqual({ key: 'value' })
+    expect(new Properties('key = value\\').toObject()).toStrictEqual({ key: 'value' })
   })
 
   it('handles empty continuation line', () => {
-    expect(new Properties('key = value\\\n\\\nnext').toObject()).toEqual({ key: 'valuenext' })
+    expect(new Properties('key = value\\\n\\\nnext').toObject()).toStrictEqual({ key: 'valuenext' })
   })
 
   it('comment-like line after continuation becomes part of value', () => {
     const properties = new Properties('key = value\\\n# not a comment')
-    expect(properties.toObject()).toEqual({ key: 'value# not a comment' })
+    expect(properties.toObject()).toStrictEqual({ key: 'value# not a comment' })
     expect(properties.getComments()).toHaveLength(0)
   })
 
@@ -645,7 +645,7 @@ describe('Edge cases', () => {
   })
 
   it('handles Buffer input', () => {
-    expect(new Properties(Buffer.from('key = value')).toObject()).toEqual({ key: 'value' })
+    expect(new Properties(Buffer.from('key = value')).toObject()).toStrictEqual({ key: 'value' })
   })
 
   it('handles file ending with blank line', () => {

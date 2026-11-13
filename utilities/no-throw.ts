@@ -48,7 +48,7 @@ export class NormalizedError extends Error {
  *
  * @returns `true` if the value has string `message` and `stack` properties.
  */
-export const isError = (value: unknown): value is Error =>
+const isError = (value: unknown): value is Error =>
   typeof value === 'object' &&
   value !== null &&
   'message' in value &&
@@ -120,7 +120,7 @@ const describeThrownValue = (value: unknown): string => {
  *
  * @returns A {@link NormalizedError} representing the thrown value.
  */
-export const toNormalizedError = (value: unknown): NormalizedError => {
+const toNormalizedError = (value: unknown): NormalizedError => {
   if (isNormalizedError(value)) {
     return value
   }

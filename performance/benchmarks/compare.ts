@@ -305,15 +305,15 @@ const runAllSuites = async (
 ): Promise<BenchmarkResult[]> => {
   const results: BenchmarkResult[] = []
 
-  if (!suiteFilter || suiteFilter === 'properties') {
+  if (suiteFilter === undefined || suiteFilter === 'properties') {
     const propertiesBench = await runPropertiesBenchmarks(modules.properties)
     results.push(...extractResults(propertiesBench))
   }
-  if (!suiteFilter || suiteFilter === 'editor') {
+  if (suiteFilter === undefined || suiteFilter === 'editor') {
     const editorBench = await runEditorBenchmarks(modules.editor)
     results.push(...extractResults(editorBench))
   }
-  if (!suiteFilter || suiteFilter === 'escape') {
+  if (suiteFilter === undefined || suiteFilter === 'escape') {
     const escapeUnescapeBench = await runEscapeUnescapeBenchmarks(modules.escape, modules.unescape)
     results.push(...extractResults(escapeUnescapeBench))
   }
@@ -393,7 +393,7 @@ const main = async (): Promise<void> => {
 
   const runs = parseRunsFlag(arguments_)
   const suiteIndex = arguments_.indexOf('--suite')
-  const suiteFilter = suiteIndex === -1 ? undefined : arguments_[suiteIndex + 1]
+  const suiteFilter = suiteIndex === -1 ? undefined : arguments_.at(suiteIndex + 1)
   const baseline = resolveBaseline(arguments_)
 
   console.log(`Comparing current build against baseline: ${baseline.label}`)

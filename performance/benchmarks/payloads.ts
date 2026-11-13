@@ -10,7 +10,7 @@ const ENTRY_COUNT = 10_000
  *
  * @returns A `.properties`-formatted string with {@link ENTRY_COUNT} entries.
  */
-export const generatePureKeyValue = (): string => {
+const generatePureKeyValue = (): string => {
   const lines: string[] = []
   for (let index = 0; index < ENTRY_COUNT; index++) {
     lines.push(`key${index}=value${index}`)
@@ -24,7 +24,7 @@ export const generatePureKeyValue = (): string => {
  *
  * @returns A `.properties`-formatted string with ~{@link ENTRY_COUNT} comment lines.
  */
-export const generateCommentHeavy = (): string => {
+const generateCommentHeavy = (): string => {
   const lines: string[] = []
   for (let index = 0; index < ENTRY_COUNT; index++) {
     lines.push(
@@ -43,7 +43,7 @@ export const generateCommentHeavy = (): string => {
  *
  * @returns A `.properties`-formatted string with {@link ENTRY_COUNT} whitespace-padded entries.
  */
-export const generateWhitespaceHeavy = (): string => {
+const generateWhitespaceHeavy = (): string => {
   const lines: string[] = []
   for (let index = 0; index < ENTRY_COUNT; index++) {
     lines.push('', `    key${index}    =    value with trailing spaces${index}    `, '')
@@ -60,7 +60,7 @@ export const generateWhitespaceHeavy = (): string => {
  *
  * @returns A `.properties`-formatted string with {@link ENTRY_COUNT} unicode-escaped entries.
  */
-export const generateUnicodeEscapes = (): string => {
+const generateUnicodeEscapes = (): string => {
   const lines: string[] = []
   for (let index = 0; index < ENTRY_COUNT; index++) {
     const text = `value${index}`
@@ -86,7 +86,7 @@ export const generateUnicodeEscapes = (): string => {
  *
  * @returns A `.properties`-formatted string with {@link ENTRY_COUNT} multiline entries.
  */
-export const generateMultilineValues = (): string => {
+const generateMultilineValues = (): string => {
   const lines: string[] = []
   for (let index = 0; index < ENTRY_COUNT; index++) {
     lines.push(`key${index}=line1of${index}\\`, `  line2of${index}\\`, `  line3of${index}`)

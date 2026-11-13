@@ -1,5 +1,6 @@
 import path from 'node:path'
 
+import eslintJs from '@eslint/js'
 import { defineConfig } from 'eslint/config'
 import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescript'
 import { flatConfigs as importXPluginFlatConfigs } from 'eslint-plugin-import-x'
@@ -8,6 +9,7 @@ import jsdocPlugin from 'eslint-plugin-jsdoc'
 import { configs as packageJsonConfigs } from 'eslint-plugin-package-json'
 import preferArrowFunctionsPlugin from 'eslint-plugin-prefer-arrow-functions'
 import prettierRecommendedConfig from 'eslint-plugin-prettier/recommended'
+import { configs as regexpConfigs } from 'eslint-plugin-regexp'
 import tsdocPlugin from 'eslint-plugin-tsdoc'
 import unicornPlugin from 'eslint-plugin-unicorn'
 import * as jsoncParser from 'jsonc-eslint-parser'
@@ -142,6 +144,13 @@ export default defineConfig(
       'tests/functional/package.json',
     ],
   },
+  // ESLint core recommended rules. typescript-eslint's presets (below) only switch off the
+  // core rules TypeScript itself already enforces — they never enable the rest.
+  // @see https://eslint.org/docs/latest/rules/
+  eslintJs.configs.recommended,
+  // Regular expression correctness and clarity.
+  // @see https://github.com/ota-meshi/eslint-plugin-regexp
+  regexpConfigs['flat/recommended'],
   // Prettier recommended configs.
   // @see https://github.com/prettier/eslint-plugin-prettier
   prettierRecommendedConfig,
@@ -150,8 +159,11 @@ export default defineConfig(
   unicornPlugin.configs.recommended,
   // Local project-specific rules (see eslint/rules/).
   { plugins: { local: { rules: { 'array-iteration-only': arrayIterationOnlyRule } } } },
-  // TypeScript configuration. Applies to eslint/ files too (their tsconfig project is
-  // overridden by the dedicated block below, mirroring the performance/ and build-scripts/ dirs).
+  // TypeScript configuration, for every TypeScript file in the repository. Typed linting uses
+  // the TypeScript project service: each file is checked against the nearest `tsconfig.json`
+  // that includes it (root for src/, then one per tests/, performance/, utilities/, eslint/ and
+  // src/build-scripts/), exactly as an editor would.
+  // @see https://typescript-eslint.io/packages/parser#projectservice
   {
     files: [...TYPESCRIPT_FILES],
     extends: [
@@ -169,7 +181,18 @@ export default defineConfig(
       tsdoc: tsdocPlugin,
       jsdoc: jsdocPlugin,
     },
-    languageOptions: { parserOptions: { project: ['tsconfig.json'], tsconfigRootDir: ROOT_DIR } },
+    languageOptions: {
+      parserOptions: {
+        projectService: {
+          // The root `eslint.config.ts` sits outside every directory-level project (its nearest
+          // `tsconfig.json` is the root one, which only covers src/), so it is checked with the
+          // eslint/ project's compiler options instead.
+          allowDefaultProject: ['eslint.config.ts'],
+          defaultProject: 'eslint/tsconfig.json',
+        },
+        tsconfigRootDir: ROOT_DIR,
+      },
+    },
     settings: {
       'import-x/resolver-next': [createTypeScriptImportResolver()],
       jsdoc: { mode: 'typescript' },
@@ -296,6 +319,9 @@ export default defineConfig(
       'jsdoc/check-param-names': 'error',
       'jsdoc/require-returns': 'error',
       'jsdoc/require-returns-description': 'error',
+      // Documentation must say more than the name it documents already does.
+      // @see https://github.com/gajus/eslint-plugin-jsdoc/blob/main/docs/rules/informative-docs.md
+      'jsdoc/informative-docs': 'error',
       // Enforces explicit return types on functions and class methods to avoid unintentionally breaking contracts.
       // @see https://typescript-eslint.io/rules/explicit-module-boundary-types/
       '@typescript-eslint/explicit-function-return-type': 'error',
@@ -311,6 +337,18 @@ export default defineConfig(
       // Allow numbers in template literals (predictable coercion); still catches objects/null/undefined.
       // @see https://typescript-eslint.io/rules/restrict-template-expressions/
       '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
+      // No implicit truthiness on strings or numbers (nullable or not). An empty string is a valid
+      // `.properties` key and value and `0` is a valid index, so `if (key)` style checks are a
+      // correctness hazard in this codebase, not a style preference. Optional booleans stay
+      // allowed: `undefined` can only mean `false` there (e.g. `options.removeComments`).
+      // @see https://typescript-eslint.io/rules/strict-boolean-expressions/
+      '@typescript-eslint/strict-boolean-expressions': [
+        'error',
+        { allowString: false, allowNumber: false, allowNullableBoolean: true },
+      ],
+      // Every `switch` over a union (e.g. node `type`) must handle all of its members.
+      // @see https://typescript-eslint.io/rules/switch-exhaustiveness-check/
+      '@typescript-eslint/switch-exhaustiveness-check': 'error',
       // Checks members (classes, interfaces, types) and applies consistent ordering.
       // @see https://typescript-eslint.io/rules/member-ordering/
       '@typescript-eslint/member-ordering': [
@@ -406,6 +444,8 @@ export default defineConfig(
        * built around, and the comments ship verbatim in the published `.d.ts` files.
        */
       'unicorn/no-asterisk-prefix-in-documentation-comments': 'off',
+      // `unshift`/`shift` re-index the whole array on every call (quadratic inside a loop).
+      'unicorn/no-array-front-mutation': 'error',
       // Block comments whose content fits on one line stay on one line.
       // @see https://github.com/sindresorhus/eslint-plugin-unicorn/blob/main/docs/rules/single-line-block-comment-style.md
       'unicorn/single-line-block-comment-style': ['error', 'single-line'],
@@ -414,14 +454,6 @@ export default defineConfig(
       // Disable typescript-eslint stylistic rules that suggest ES2015+ runtime APIs
       // (see TS_ESLINT_MODERN_API_RULES). Re-enabled in non-shipped files block below.
       ...setRules(TS_ESLINT_MODERN_API_RULES, 'off'),
-    },
-  },
-  // Special configuration for the ESLint configuration file.
-  {
-    files: ['eslint.config.ts', 'eslint/**/*.ts'],
-    ignores: ['**/*.d.ts'],
-    languageOptions: {
-      parserOptions: { project: ['eslint/tsconfig.json'], tsconfigRootDir: ROOT_DIR },
     },
   },
   // Non-shipped files (build scripts, tests, config) run in Node 20+ and should use modern APIs.
@@ -450,13 +482,6 @@ export default defineConfig(
       'no-console': 'off',
     },
   },
-  // Build script TypeScript files.
-  {
-    files: TYPESCRIPT_FILES.map((pattern) => `src/build-scripts/${pattern}`),
-    languageOptions: {
-      parserOptions: { project: ['src/build-scripts/tsconfig.json'], tsconfigRootDir: ROOT_DIR },
-    },
-  },
   // Bundler integration plugins (shipped, but Node.js-context by nature: they run inside
   // Node.js-based build tools and legitimately read files). The runtime-agnostic restriction
   // applies to the core library only.
@@ -465,20 +490,6 @@ export default defineConfig(
     rules: {
       'no-restricted-globals': 'off',
       'no-restricted-imports': 'off',
-    },
-  },
-  // Performance TypeScript files.
-  {
-    files: TYPESCRIPT_FILES.map((pattern) => `performance/${pattern}`),
-    languageOptions: {
-      parserOptions: { project: ['performance/tsconfig.json'], tsconfigRootDir: ROOT_DIR },
-    },
-  },
-  // Shared internal utilities (dev tooling only, never shipped).
-  {
-    files: TYPESCRIPT_FILES.map((pattern) => `utilities/${pattern}`),
-    languageOptions: {
-      parserOptions: { project: ['utilities/tsconfig.json'], tsconfigRootDir: ROOT_DIR },
     },
   },
   // The noThrow error-handling module: the one place allowed to contain try/catch (it is the
@@ -491,17 +502,6 @@ export default defineConfig(
       'no-restricted-syntax': 'off',
       'unicorn/prefer-await': 'off',
       'unicorn/prefer-top-level-await': 'off',
-    },
-  },
-  // Functional test harness (scenarios.ts, execute-scenario.ts, generate.ts are non-test .ts
-  // files under tests/, so they fall outside the Jest-only `tests/**/*.test.ts` project block
-  // below) — needs its own typed-lint project coverage, mirrored from how performance/**/*.ts
-  // is handled above. functional.test.ts matches both this block and the Jest block; the Jest
-  // block below applies last and adds jest-specific plugin rules on top.
-  {
-    files: TYPESCRIPT_FILES.map((pattern) => `tests/functional/${pattern}`),
-    languageOptions: {
-      parserOptions: { project: ['tests/tsconfig.json'], tsconfigRootDir: ROOT_DIR },
     },
   },
   // JSON files.
@@ -521,14 +521,14 @@ export default defineConfig(
   {
     files: ['tests/**/*.test.ts'],
     plugins: jestPlugin.configs['flat/recommended'].plugins,
-    languageOptions: {
-      ...jestPlugin.configs['flat/recommended'].languageOptions,
-      parserOptions: { project: ['tests/tsconfig.json'], tsconfigRootDir: ROOT_DIR },
-    },
+    languageOptions: jestPlugin.configs['flat/recommended'].languageOptions,
     rules: {
       ...jestPlugin.configs['flat/recommended'].rules,
       // Recognize custom assertion helpers prefixed with `expect` (e.g. expectRoundTrip).
       'jest/expect-expect': ['warn', { assertFunctionNames: ['expect', 'expect*'] }],
+      // `toEqual` ignores `undefined` properties and object types; `toStrictEqual` does not.
+      // @see https://github.com/jest-community/eslint-plugin-jest/blob/main/docs/rules/prefer-strict-equal.md
+      'jest/prefer-strict-equal': 'error',
       // Jest's `it`/`test` callbacks accept `void | Promise<void>`, so the rule's concern about
       // silently leaking a returned value through an arrow shorthand doesn't apply in tests.
       // @see https://typescript-eslint.io/rules/no-confusing-void-expression/

@@ -10,7 +10,7 @@ describe('PropertiesEditor', () => {
   it('insert adds property at end', () => {
     const editor = new PropertiesEditor('a = 1')
     editor.insert('b', '2')
-    expect(editor.toObject()).toEqual({ a: '1', b: '2' })
+    expect(editor.toObject()).toStrictEqual({ a: '1', b: '2' })
     expect(editor.format()).toContain('b')
   })
 
@@ -41,7 +41,7 @@ describe('PropertiesEditor', () => {
     const result = editor.format()
     expect(result).not.toContain('=')
     expect(result).not.toContain(':')
-    expect(new Properties(result).toObject()).toEqual({ key: 'value' })
+    expect(new Properties(result).toObject()).toStrictEqual({ key: 'value' })
   })
 
   it('insert with comment', () => {
@@ -68,7 +68,7 @@ describe('PropertiesEditor', () => {
   it('insert appends at end when referenceKey not found', () => {
     const editor = new PropertiesEditor('a = 1')
     editor.insert('b', '2', { referenceKey: 'missing' })
-    expect(editor.toObject()).toEqual({ a: '1', b: '2' })
+    expect(editor.toObject()).toStrictEqual({ a: '1', b: '2' })
   })
 
   // ─── insertComment ────────────────────────────────────────────────
@@ -176,20 +176,20 @@ describe('PropertiesEditor', () => {
   it('update changes value', () => {
     const editor = new PropertiesEditor('key = old')
     editor.update('key', { newValue: 'new' })
-    expect(editor.toObject()).toEqual({ key: 'new' })
+    expect(editor.toObject()).toStrictEqual({ key: 'new' })
   })
 
   it('update changes key (rename)', () => {
     const editor = new PropertiesEditor('old = value')
     editor.update('old', { newKey: 'new' })
-    expect(editor.toObject()).toEqual({ new: 'value' })
+    expect(editor.toObject()).toStrictEqual({ new: 'value' })
   })
 
   it('update changes separator', () => {
     const editor = new PropertiesEditor('key = value')
     editor.update('key', { separator: ':' })
     expect(editor.format()).toContain(':')
-    expect(editor.toObject()).toEqual({ key: 'value' })
+    expect(editor.toObject()).toStrictEqual({ key: 'value' })
   })
 
   it('update with separator space', () => {
@@ -197,7 +197,7 @@ describe('PropertiesEditor', () => {
     editor.update('key', { separator: ' ' })
     const result = editor.format()
     expect(result).not.toContain('=')
-    expect(new Properties(result).toObject()).toEqual({ key: 'value' })
+    expect(new Properties(result).toObject()).toStrictEqual({ key: 'value' })
   })
 
   it('update with newComment replaces leading comment nodes', () => {
@@ -244,7 +244,7 @@ describe('PropertiesEditor', () => {
     }
     expect(deleted.key).toBe('b')
     expect(deleted.value).toBe('2')
-    expect(editor.toObject()).toEqual({ a: '1', c: '3' })
+    expect(editor.toObject()).toStrictEqual({ a: '1', c: '3' })
   })
 
   it('delete removes property with preceding comments', () => {
@@ -276,7 +276,7 @@ describe('PropertiesEditor', () => {
       return
     }
     expect(deleted.value).toBe('first')
-    expect(editor.toObject()).toEqual({ key: 'third' })
+    expect(editor.toObject()).toStrictEqual({ key: 'third' })
     expect(editor.getPropertyNodes('key')).toHaveLength(2)
   })
 
@@ -316,7 +316,7 @@ describe('PropertiesEditor', () => {
     }
     const result = editor.format()
     expect(result).toBe('# third\nkey = third')
-    expect(editor.toObject()).toEqual({ key: 'third' })
+    expect(editor.toObject()).toStrictEqual({ key: 'third' })
   })
 
   // ─── deleteAll ────────────────────────────────────────────────────
@@ -328,12 +328,12 @@ describe('PropertiesEditor', () => {
     expect(deleted[0].value).toBe('first')
     expect(deleted[1].value).toBe('second')
     expect(deleted[2].value).toBe('third')
-    expect(editor.toObject()).toEqual({ other: 'x' })
+    expect(editor.toObject()).toStrictEqual({ other: 'x' })
   })
 
   it('deleteAll returns empty array for missing key', () => {
     const editor = new PropertiesEditor('a = 1')
-    expect(editor.deleteAll('missing')).toEqual([])
+    expect(editor.deleteAll('missing')).toStrictEqual([])
   })
 
   // ─── upsert ───────────────────────────────────────────────────────
@@ -341,13 +341,13 @@ describe('PropertiesEditor', () => {
   it('upsert inserts if key does not exist', () => {
     const editor = new PropertiesEditor('a = 1')
     editor.upsert('b', '2')
-    expect(editor.toObject()).toEqual({ a: '1', b: '2' })
+    expect(editor.toObject()).toStrictEqual({ a: '1', b: '2' })
   })
 
   it('upsert updates if key exists', () => {
     const editor = new PropertiesEditor('a = 1')
     editor.upsert('a', '2')
-    expect(editor.toObject()).toEqual({ a: '2' })
+    expect(editor.toObject()).toStrictEqual({ a: '2' })
   })
 
   it('upsert updates with all options', () => {
@@ -381,7 +381,7 @@ describe('PropertiesEditor', () => {
     editor.delete('b')
     const result = editor.format()
     const reparsed = new Properties(result)
-    expect(reparsed.toObject()).toEqual({ a: 'updated', c: '3' })
+    expect(reparsed.toObject()).toStrictEqual({ a: 'updated', c: '3' })
   })
 
   it('editing updates line numbers correctly', () => {
