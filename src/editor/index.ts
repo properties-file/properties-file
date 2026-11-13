@@ -160,8 +160,9 @@ const buildPropertyNode = (
 
   const separatorChar =
     options.separator === ' ' ? undefined : (options.separator ?? DEFAULT_SEPARATOR)
-  // `Boolean()` on top of the `undefined` check, on purpose: an untyped JavaScript caller can
-  // pass an out-of-type `''`, which must keep meaning "no separator character".
+  // Any falsy separator means "no separator character", including out-of-type values from
+  // untyped JavaScript callers (`''`, `0`, `false`). The `undefined` comparison is what narrows
+  // the type; `Boolean()` covers the rest.
   const hasSeparatorChar = separatorChar !== undefined && Boolean(separatorChar)
   const separatorLeading = ' '
   const separatorTrailing = hasSeparatorChar ? ' ' : ''
@@ -444,9 +445,9 @@ export class PropertiesEditor extends Properties {
         : existing.escapedValue
 
     // Determine separator.
-    // `Boolean()` rather than an `undefined` comparison, on purpose: an untyped JavaScript caller
-    // can pass an out-of-type `null` or `''`, which must keep meaning "keep the original
-    // separator" instead of being written into the file.
+    // Any falsy `separator` means "keep the original one", and any falsy separator character
+    // means "none", including out-of-type values from untyped JavaScript callers (`null`, `''`,
+    // `0`, `false`) — hence `Boolean()` rather than `undefined` comparisons alone.
     const newSeparator = options.separator
     const hasNewSeparator = Boolean(newSeparator)
     const separatorChar = hasNewSeparator
@@ -454,17 +455,17 @@ export class PropertiesEditor extends Properties {
         ? undefined
         : newSeparator
       : existing.separatorChar
+    const hasSeparatorChar = separatorChar !== undefined && Boolean(separatorChar)
     const separatorLeading = hasNewSeparator ? ' ' : existing.separatorLeading
     const separatorTrailing = hasNewSeparator
-      ? separatorChar === undefined
-        ? ''
-        : ' '
+      ? hasSeparatorChar
+        ? ' '
+        : ''
       : existing.separatorTrailing
 
-    const separatorString =
-      separatorChar === undefined
-        ? separatorLeading
-        : `${separatorLeading}${separatorChar}${separatorTrailing}`
+    const separatorString = hasSeparatorChar
+      ? `${separatorLeading}${separatorChar}${separatorTrailing}`
+      : separatorLeading
 
     const rawLine = `${escapedKey}${separatorString}${escapedValue}`
     const rawLines = rawLine.split(REGEX_NEWLINE)
@@ -542,7 +543,8 @@ export class PropertiesEditor extends Properties {
    * which is useful for cleaning up duplicate keys while keeping the effective value.
    *
    * @param key - The unescaped key to delete.
-   * @param options - Which occurrence to delete and whether its leading comments go with it.
+   * @param options - Which occurrence to delete and whether its leading comments and blank
+   *   lines go with it.
    *
    * @returns The deleted {@link PropertyNode}, or `undefined` if the key was not found.
    */

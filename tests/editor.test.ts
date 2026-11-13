@@ -210,21 +210,34 @@ describe('PropertiesEditor', () => {
     expect(after.format()).toBe('a=1\n=empty\n\nb=2')
   })
 
-  // Untyped JavaScript callers can pass values the TypeScript types exclude. A `null` or empty
-  // separator has always meant "not set" and must never be written into the file.
+  // Untyped JavaScript callers can pass values the TypeScript types exclude. A falsy separator
+  // means "not set" and is never written into the file.
 
-  it('insert treats an out-of-type empty or null separator as not set', () => {
-    const emptySeparator = new PropertiesEditor('a=1')
-    emptySeparator.insert('x', 'y', untypedOptions({ separator: '' }))
-    expect(emptySeparator.format()).toBe('a=1\nx y')
+  it('insert treats an out-of-type falsy separator as no separator character', () => {
+    for (const separator of ['', 0, false]) {
+      const editor = new PropertiesEditor('a=1')
+      editor.insert('x', 'y', untypedOptions({ separator }))
+      expect(editor.format()).toBe('a=1\nx y')
+    }
 
     const nullSeparator = new PropertiesEditor('a=1')
     nullSeparator.insert('x', 'y', untypedOptions({ separator: null }))
     expect(nullSeparator.format()).toBe('a=1\nx = y')
   })
 
-  it('update keeps the original separator for an out-of-type empty or null separator', () => {
-    for (const separator of ['', null]) {
+  it('update and upsert never write a stored out-of-type falsy separator', () => {
+    for (const separator of ['', 0, false]) {
+      const editor = new PropertiesEditor('a=1')
+      editor.insert('x', 'y', untypedOptions({ separator }))
+      editor.update('x', { newValue: 'updated' })
+      expect(editor.format()).toBe('a=1\nx updated')
+      editor.upsert('x', 'upserted')
+      expect(editor.format()).toBe('a=1\nx upserted')
+    }
+  })
+
+  it('update keeps the original separator for an out-of-type falsy separator', () => {
+    for (const separator of ['', null, 0, false]) {
       for (const content of ['a=1', 'a : 1', 'a 1']) {
         const editor = new PropertiesEditor(content)
         editor.update('a', untypedOptions({ separator }))

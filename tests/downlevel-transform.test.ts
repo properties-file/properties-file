@@ -1728,6 +1728,30 @@ describe('ES5 output gate (verify-es5-output)', () => {
     expect(rogueVerdict).toContain('post-ES5 construct')
   })
 
+  it('ignores eslint-disable comments surviving from the source (the gate cannot be switched off)', () => {
+    // A file-level directive, a next-line directive naming the violated rule, and an inline
+    // rule configuration: none may hide the post-ES5 call from the gate.
+    for (const directive of [
+      '/* eslint-disable */',
+      '// eslint-disable-next-line es-x/no-array-prototype-includes',
+      '/* eslint es-x/no-array-prototype-includes: "off" */',
+    ]) {
+      const verdict = gateVerdictFor(`${directive}\nvar found = [1].includes(1)\n`)
+      expect(verdict).toContain('GATE_FAILED')
+      expect(verdict).toContain('post-ES5 construct')
+    }
+  })
+
+  it('accepts ES5 code that carries eslint-disable comments for source-level rules', () => {
+    // Directives naming core rules or other plugins' rules are leftovers of the source-level
+    // lint; being ignored here must not turn them into violations.
+    const verdict = gateVerdictFor(
+      '// eslint-disable-next-line no-control-regex, unicorn/no-null -- reason\n' +
+        'var controlCharacters = /[\\u0000-\\u001F]/\n'
+    )
+    expect(verdict).toContain('GATE_PASSED')
+  })
+
   it('never skips genuine post-ES5 static APIs on ES5 global namespaces', () => {
     // The static-global false-positive filter must apply to prototype-rule name collisions
     // only — an escaped `Object.entries(...)` is a real ES2017 usage and must fail the gate.

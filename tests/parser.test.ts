@@ -6,11 +6,37 @@ import { readFileSync } from 'node:fs'
 
 import { Properties, PropertiesNodeType } from '../src/parser'
 
-import type { PropertyNode } from '../src/parser/nodes'
+import type { NormalizeOptions, PropertyNode } from '../src/parser/nodes'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Minimal runtime check backing {@link untypedNormalizeOptions}: all a JavaScript caller
+ * guarantees.
+ *
+ * @param value - The value to check.
+ *
+ * @returns `true` if the value is a non-null object.
+ */
+const isNormalizeOptions = (value: unknown): value is NormalizeOptions =>
+  typeof value === 'object' && value !== null
+
+/**
+ * Pass normalization options the way an untyped JavaScript caller can, including values the
+ * TypeScript types exclude.
+ *
+ * @param options - The options object, with any property values.
+ *
+ * @returns The same object, typed as {@link NormalizeOptions}.
+ */
+const untypedNormalizeOptions = (options: unknown): NormalizeOptions => {
+  if (!isNormalizeOptions(options)) {
+    throw new Error('Normalization options must be an object.')
+  }
+  return options
+}
 
 /**
  * Assert that parsing and re-formatting the input produces the exact same string.
@@ -375,6 +401,28 @@ describe('Query methods', () => {
 // ---------------------------------------------------------------------------
 
 describe('format() with normalization options', () => {
+  it('treats any truthy value of a boolean option like true (untyped JavaScript callers)', () => {
+    const properties = new Properties('  # note\n\n  a = 1\na = 2\n# lead\nb = 3')
+
+    expect(properties.format(untypedNormalizeOptions({ removeComments: 1 }))).toBe(
+      '\n  a = 1\na = 2\nb = 3'
+    )
+    expect(properties.format(untypedNormalizeOptions({ removeBlankLines: 'yes' }))).toBe(
+      '  # note\n  a = 1\na = 2\n# lead\nb = 3'
+    )
+    expect(properties.format(untypedNormalizeOptions({ deduplicateKeys: 1 }))).toBe(
+      'a = 2\n# lead\nb = 3'
+    )
+    expect(
+      properties.format(
+        untypedNormalizeOptions({ deduplicateKeys: 1, deduplicateKeysKeepLeadingNodes: 'yes' })
+      )
+    ).toBe('  # note\n\na = 2\n# lead\nb = 3')
+    expect(
+      properties.format(untypedNormalizeOptions({ removeLeadingWhitespace: 1, separatorChar: ':' }))
+    ).toBe('# note\n\na : 1\na : 2\n# lead\nb : 3')
+  })
+
   it('removeComments strips all comment lines', () => {
     const result = new Properties('# comment\nkey = value\n! another').format({
       removeComments: true,

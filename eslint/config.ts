@@ -458,7 +458,8 @@ export default defineConfig(
       ...setRules(TS_ESLINT_MODERN_API_RULES, 'off'),
     },
   },
-  // Non-shipped files (build scripts, tests, config) run in Node 20+ and should use modern APIs.
+  // Non-shipped files (build scripts, tests, config) only run on the development Node.js version
+  // (see `.nvmrc`) and should use modern APIs.
   {
     files: [
       ...TYPESCRIPT_FILES.map((pattern) => `src/build-scripts/${pattern}`),

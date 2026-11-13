@@ -144,10 +144,10 @@ export const verifyEs5Output = async (
     overrideConfig: [
       {
         files: ['**/*.js'],
-        // Source-level `eslint-disable` comments survive compilation into the built files. One
-        // naming a core rule this instance does not enable (e.g. `no-control-regex`) suppresses
-        // nothing here, which ESLint would otherwise report as an unused directive.
-        linterOptions: { reportUnusedDisableDirectives: 'off' },
+        // Source-level `eslint-disable` comments survive compilation into the built files.
+        // They must never be honored here: one could otherwise switch this gate off for a line
+        // or for a whole file.
+        linterOptions: { noInlineConfig: true },
         languageOptions: {
           // `module` files need ES2015 parsing for the import/export statements themselves;
           // every other construct is still restricted to ES5 by the es-x rules below.
@@ -197,9 +197,10 @@ export const verifyEs5Output = async (
       }
     }
     for (const message of result.messages) {
-      // This isolated ESLint instance deliberately loads only the es-x plugin — surviving
-      // source-level directives naming other plugins' rules are inert here, not violations.
-      if (/Definition for rule '[^']*' was not found/.test(message.message)) {
+      // ESLint reports every inline directive it ignored because of `noInlineConfig` (see
+      // above). Those notices are expected — the directives belong to the source-level lint —
+      // not violations.
+      if (message.ruleId === null && message.message.includes("'noInlineConfig' setting")) {
         continue
       }
       const offset = (lineStartOffsets[message.line - 1] ?? 0) + message.column - 1
