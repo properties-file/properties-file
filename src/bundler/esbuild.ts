@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs'
 
 import { getProperties } from '..'
 
+import { serializeProperties } from './serialize'
+
 import type { Plugin } from 'esbuild'
 
 /**
@@ -13,7 +15,7 @@ const esbuildPlugin = (): Plugin => ({
   name: 'properties-file',
   setup: (build): void => {
     build.onLoad({ filter: /\.properties$/ }, ({ path: filePath }) => ({
-      contents: `export const properties = ${JSON.stringify(getProperties(readFileSync(filePath, 'utf8')))};`,
+      contents: `export const properties = ${serializeProperties(getProperties(readFileSync(filePath, 'utf8')))};`,
       loader: 'js',
     }))
   },

@@ -8,12 +8,7 @@
       }
     ]
   },
-  "collectCoverageFrom": [
-    "src/**/*.ts",
-    "!src/**/*.d.ts",
-    "!src/bundler/**",
-    "!src/build-scripts/**"
-  ],
+  "collectCoverageFrom": ["src/**/*.ts", "!src/**/*.d.ts", "!src/build-scripts/**"],
   "modulePathIgnorePatterns": ["<rootDir>/performance/", "<rootDir>/tests/node-compat/"],
   "coverageThreshold": {
     "global": {
