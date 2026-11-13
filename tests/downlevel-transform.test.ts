@@ -1742,6 +1742,16 @@ describe('ES5 output gate (verify-es5-output)', () => {
     }
   })
 
+  it('rejects a file that does not parse, even when the parse error quotes an ignored-directive notice', () => {
+    // A parse error leaves the whole file unchecked, and its message quotes the offending
+    // token — here, the very text the ignored-directive filter looks for.
+    const verdict = gateVerdictFor(
+      'var value = 1 "\'noInlineConfig\' setting"\nvar found = [1].includes(1)\n'
+    )
+    expect(verdict).toContain('GATE_FAILED')
+    expect(verdict).toContain('post-ES5 construct')
+  })
+
   it('accepts ES5 code that carries eslint-disable comments for source-level rules', () => {
     // Directives naming core rules or other plugins' rules are leftovers of the source-level
     // lint; being ignored here must not turn them into violations.

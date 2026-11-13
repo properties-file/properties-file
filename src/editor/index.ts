@@ -160,9 +160,9 @@ const buildPropertyNode = (
 
   const separatorChar =
     options.separator === ' ' ? undefined : (options.separator ?? DEFAULT_SEPARATOR)
-  // Any falsy separator means "no separator character", including out-of-type values from
-  // untyped JavaScript callers (`''`, `0`, `false`). The `undefined` comparison is what narrows
-  // the type; `Boolean()` covers the rest.
+  // Any falsy separator character means "none", including out-of-type values from untyped
+  // JavaScript callers (`''`, `0`, `false`). The `undefined` comparison is what narrows the
+  // type; `Boolean()` covers the rest.
   const hasSeparatorChar = separatorChar !== undefined && Boolean(separatorChar)
   const separatorLeading = ' '
   const separatorTrailing = hasSeparatorChar ? ' ' : ''

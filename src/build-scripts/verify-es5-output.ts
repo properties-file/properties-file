@@ -199,8 +199,13 @@ export const verifyEs5Output = async (
     for (const message of result.messages) {
       // ESLint reports every inline directive it ignored because of `noInlineConfig` (see
       // above). Those notices are expected — the directives belong to the source-level lint —
-      // not violations.
-      if (message.ruleId === null && message.message.includes("'noInlineConfig' setting")) {
+      // not violations. A fatal message is a parse error, which can quote any text of the file
+      // and leaves it entirely unchecked: never skip one.
+      if (
+        message.fatal !== true &&
+        message.ruleId === null &&
+        message.message.includes("'noInlineConfig' setting")
+      ) {
         continue
       }
       const offset = (lineStartOffsets[message.line - 1] ?? 0) + message.column - 1

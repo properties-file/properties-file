@@ -401,7 +401,7 @@ describe('Query methods', () => {
 // ---------------------------------------------------------------------------
 
 describe('format() with normalization options', () => {
-  it('treats any truthy value of a boolean option like true (untyped JavaScript callers)', () => {
+  it('removes comments and blank lines, deduplicates and strips whitespace for any truthy option value (untyped JavaScript callers)', () => {
     const properties = new Properties('  # note\n\n  a = 1\na = 2\n# lead\nb = 3')
 
     expect(properties.format(untypedNormalizeOptions({ removeComments: 1 }))).toBe(

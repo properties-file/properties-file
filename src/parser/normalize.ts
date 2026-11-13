@@ -127,8 +127,9 @@ export const formatNormalized = (
     options.wrapValuesAt !== undefined ||
     options.removeLeadingWhitespace === true
 
-  // Optional boolean options, read once. `Boolean()` rather than `=== true`: any truthy value
-  // enables the option, including out-of-type ones from untyped JavaScript callers (`1`).
+  // The optional boolean options tested by truthiness below, read once. `Boolean()` rather than
+  // `=== true`: for these checks any truthy value counts, including out-of-type ones from
+  // untyped JavaScript callers (`1`).
   const shouldDeduplicateKeys = Boolean(options.deduplicateKeys)
   const shouldKeepLeadingNodes = Boolean(options.deduplicateKeysKeepLeadingNodes)
   const shouldRemoveComments = Boolean(options.removeComments)

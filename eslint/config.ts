@@ -144,8 +144,8 @@ export default defineConfig(
       'tests/functional/package.json',
     ],
   },
-  // ESLint core recommended rules. typescript-eslint's presets (below) only switch off the
-  // core rules TypeScript itself already enforces — they never enable the rest.
+  // ESLint core recommended rules. typescript-eslint's presets (below) switch off the core
+  // rules TypeScript itself already enforces and enable only a handful of the others.
   // @see https://eslint.org/docs/latest/rules/
   eslintJs.configs.recommended,
   // Regular expression correctness and clarity.
@@ -459,7 +459,7 @@ export default defineConfig(
     },
   },
   // Non-shipped files (build scripts, tests, config) only run on the development Node.js version
-  // (see `.nvmrc`) and should use modern APIs.
+  // or newer (see `.nvmrc`) and should use modern APIs.
   {
     files: [
       ...TYPESCRIPT_FILES.map((pattern) => `src/build-scripts/${pattern}`),

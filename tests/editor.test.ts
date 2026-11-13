@@ -210,8 +210,8 @@ describe('PropertiesEditor', () => {
     expect(after.format()).toBe('a=1\n=empty\n\nb=2')
   })
 
-  // Untyped JavaScript callers can pass values the TypeScript types exclude. A falsy separator
-  // means "not set" and is never written into the file.
+  // Untyped JavaScript callers can pass values the TypeScript types exclude. An out-of-type
+  // falsy separator is never written into the file.
 
   it('insert treats an out-of-type falsy separator as no separator character', () => {
     for (const separator of ['', 0, false]) {
