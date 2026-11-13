@@ -1676,10 +1676,12 @@ describe('ES5 output gate (verify-es5-output)', () => {
    * rejects.
    *
    * @param content - The JavaScript content of the probe file.
+   * @param sourceType - How the gate parses the probe: `script` (the CJS build, the default) or
+   *   `module` (the ESM build).
    *
    * @returns The subprocess's verdict output.
    */
-  const gateVerdictFor = (content: string): string => {
+  const gateVerdictFor = (content: string, sourceType: 'module' | 'script' = 'script'): string => {
     const directory = mkdtempSync(path.join(tmpdir(), 'es5-gate-'))
     temporaryDirectories.push(directory)
     writeFileSync(path.join(directory, 'probe.js'), content)
@@ -1690,7 +1692,7 @@ describe('ES5 output gate (verify-es5-output)', () => {
       runnerPath,
       `import { verifyEs5Output } from ${JSON.stringify(verifierPath)}\n` +
         `import { isNormalizedError, noThrow } from ${JSON.stringify(noThrowPath)}\n` +
-        `const outcome = await noThrow(() => verifyEs5Output(${JSON.stringify(directory)}, 'script'))\n` +
+        `const outcome = await noThrow(() => verifyEs5Output(${JSON.stringify(directory)}, ${JSON.stringify(sourceType)}))\n` +
         'console.log(isNormalizedError(outcome) ? `GATE_FAILED: ${outcome.message}` : `GATE_PASSED`)\n'
     )
     return execSync(`npx tsx ${JSON.stringify(runnerPath)}`, { encoding: 'utf8', stdio: 'pipe' })
@@ -1778,4 +1780,36 @@ describe('ES5 output gate (verify-es5-output)', () => {
     expect(verdict).toContain('GATE_FAILED')
     expect(verdict).toContain('post-ES5 construct')
   })
+
+  it.each(['script', 'module'] as const)(
+    'reports every post-ES5 global and static member exactly once (%s)',
+    (sourceType) => {
+      // es-x's global rules only see references that resolve to a declared global variable.
+      // ESLint declares only the globals of the parsing `ecmaVersion` (5 for `script`, 2015 for
+      // `module`), so without the gate declaring the newer ones, a bare `new Map()` in the CJS
+      // build (or `globalThis` in either build) is an unresolved reference es-x never reports.
+      // One construct per line, each reported by exactly one rule: the exact count proves that
+      // every line is seen, not merely that something is.
+      const lines = [
+        'var map = new Map()',
+        'var set = new Set()',
+        'var weakMap = new WeakMap()',
+        'var symbol = Symbol("x")',
+        'var promise = Promise.resolve()',
+        'var proxy = new Proxy({}, {})',
+        'var ownKeys = Reflect.ownKeys({})',
+        'var bytes = new Uint8Array(2)',
+        'var root = globalThis',
+        'var big = BigInt(1)',
+        'var weakRef = new WeakRef({})',
+        // Post-ES5 static members of ES5 globals must stay reported alongside them.
+        'var entries = Object.entries({})',
+        'var array = Array.from([])',
+        'var isNotANumber = Number.isNaN(1)',
+        'var truncated = Math.trunc(1.5)',
+      ]
+      const verdict = gateVerdictFor(`${lines.join('\n')}\n`, sourceType)
+      expect(verdict).toContain(`contains ${lines.length} post-ES5 construct(s)`)
+    }
+  )
 })

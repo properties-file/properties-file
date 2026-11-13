@@ -31,6 +31,7 @@ import path from 'node:path'
 
 import { ESLint } from 'eslint'
 import esXPlugin from 'eslint-plugin-es-x'
+import globals from 'globals'
 import {
   createSourceFile,
   isFunctionDeclaration,
@@ -153,6 +154,14 @@ export const verifyEs5Output = async (
           // every other construct is still restricted to ES5 by the es-x rules below.
           ecmaVersion: sourceType === 'module' ? 2015 : 5,
           sourceType,
+          // Declare every ECMAScript built-in global, of every edition. es-x's global rules
+          // (`no-map`, `no-symbol`, `no-promise`, `no-global-this`, `no-bigint`, ...) only see
+          // references that resolve to a declared global variable, and ESLint itself declares
+          // only the globals of the parsing `ecmaVersion` above — without this, a bare
+          // `new Map()` in the CJS build (ES5 globals only) or `globalThis` in either build is
+          // an unresolved reference that no rule reports. Declaring a global permits nothing:
+          // its es-x rule still reports every reference to it.
+          globals: globals.builtin,
         },
         plugins: { 'es-x': esXPlugin },
         // Aggressive mode: prototype-method rules match by method name on ANY receiver — the
