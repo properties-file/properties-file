@@ -29,7 +29,7 @@
  * `main` or `module`.
  */
 import {
-  existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -234,9 +234,17 @@ const getSubpathStub = (subpath: string, entry: unknown): SubpathStub => {
 }
 
 /**
+ * Matches a path as a generated stub contains it: up from the stub's own directory to the
+ * package root, then into the build output (`../dist/cjs/editor/index.js`, or `../../dist/…`
+ * for a nested stub).
+ */
+const REGEX_STUB_TARGET = /^(?:\.\.\/)+dist\//
+
+/**
  * Check whether a file is a stub this step generated: valid JSON for an object with exactly the
- * {@link StubManifest} keys, each a string. Any other content, unparseable JSON included, is
- * someone else's file.
+ * {@link StubManifest} keys, each a string pointing up into the build output as every generated
+ * stub does (see {@link REGEX_STUB_TARGET}). Any other content, unparseable JSON included, is
+ * someone else's file — a manifest that merely has the same three fields is not ours.
  *
  * @param filePath - The `package.json` file to inspect.
  *
@@ -249,7 +257,9 @@ const isStubManifestFile = (filePath: string): boolean => {
     isRecord(manifest) &&
     JSON.stringify(Object.keys(manifest).toSorted(compareStrings)) ===
       JSON.stringify(STUB_MANIFEST_KEYS) &&
-    Object.values(manifest).every((value) => typeof value === 'string')
+    Object.values(manifest).every(
+      (value) => typeof value === 'string' && REGEX_STUB_TARGET.test(value)
+    )
   )
 }
 
@@ -339,13 +349,20 @@ export const generateSubpathStubs = (packageJsonPath: string): void => {
 
   const existingStubRootPaths = stubRootDirectories
     .map((stubRootDirectory) => path.join(packageRootPath, stubRootDirectory))
-    .filter((stubRootPath) => existsSync(stubRootPath))
+    // `lstat`, not `exists`: a symbolic link counts as existing even when it is broken.
+    .filter((stubRootPath) => lstatSync(stubRootPath, { throwIfNoEntry: false }) !== undefined)
 
   // Never delete a directory this step did not create (e.g. an exports key colliding with a
-  // source directory): a previously generated stub tree holds stub-shaped `package.json` files
-  // only (see `hasOnlyStubFiles`). All directories are checked before any is deleted, so a
-  // refusal leaves the tree untouched.
+  // source directory): a previously generated stub tree is a real directory (not a file, and
+  // not a symbolic link, which would be followed into someone else's directory) holding
+  // generated stubs only (see `hasOnlyStubFiles`). All of them are checked before any is
+  // deleted, so a refusal leaves the tree untouched.
   for (const stubRootPath of existingStubRootPaths) {
+    if (!lstatSync(stubRootPath).isDirectory()) {
+      throw new Error(
+        `🚨 ${stubRootPath} is not a directory (a file or a symbolic link), refusing to replace it`
+      )
+    }
     if (!hasOnlyStubFiles(stubRootPath)) {
       throw new Error(
         `🚨 ${stubRootPath} contains files other than generated stubs, refusing to replace it`

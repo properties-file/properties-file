@@ -78,8 +78,9 @@ the build also generates one stub `package.json` per subpath at the package root
 `editor/package.json`, whose `main` points to `../dist/cjs/editor/index.js`), derived from the
 `exports` map (`src/build-scripts/generate-subpath-stubs.ts`). The stubs are git-ignored and
 shipped through `files`, which the build checks contains exactly `dist` plus each stub directory.
-The generator only accepts subpath keys made of lowercase segments (`./editor`,
-`./bundler/webpack`; no dots, digits, `*` patterns or trailing slash), and entries of exactly the
+The generator only accepts subpath keys whose segments are lowercase ASCII letters (`./editor`,
+`./bundler/webpack`; no hyphens, dots, digits, `*` patterns or trailing slash), and entries of
+exactly the
 shape `{ "import": { "types", "default" }, "require": { "types", "default" } }` with every target
 inside `./dist/`; any other key or condition fails the build. A new subpath needs:
 
@@ -127,8 +128,9 @@ npm run size              # Compare bundle sizes against latest published versio
 `check-package` runs `publint` and `attw` against the packed tarball, in every resolution mode
 `attw` knows, including TypeScript's legacy `node10`. That mode cannot read the `exports` map:
 it resolves the subpath entry points (`properties-file/editor`, …) through the generated stub
-`package.json` files described under [Dual output](#dual-output-esm--cjs), so a missing stub or
-a wrong stub `types` fails the check. Neither tool follows a stub's `main` or `module`; the
+`package.json` files described under [Dual output](#dual-output-esm--cjs), so a missing stub, or
+a stub whose `types` cannot be resolved, fails the check (a `types` pointing to another existing
+declaration file does not). Neither tool follows a stub's `main` or `module`; the
 generator itself fails the build if any stub's `main`, `module` or `types` does not point to an
 existing file, and the Node.js 0.4 check (`tests/node-compat/`) loads the non-bundler entry
 points through their stubs' `main`.

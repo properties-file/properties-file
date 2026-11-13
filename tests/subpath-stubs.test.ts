@@ -9,9 +9,11 @@
  */
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -312,6 +314,16 @@ describe('legacy subpath resolution stubs (generate-subpath-stubs)', () => {
       }, 'broken/package.json')
     })
 
+    it('a package.json with exactly the stub keys, but not pointing into the build output', () => {
+      expectRefusal((editorPath) => {
+        mkdirSync(path.join(editorPath, 'lookalike'))
+        writeFileSync(
+          path.join(editorPath, 'lookalike', 'package.json'),
+          JSON.stringify({ main: 'index.js', module: 'index.mjs', types: 'index.d.ts' })
+        )
+      }, 'lookalike/package.json')
+    })
+
     it('a symbolic link named package.json, even to a stub-shaped file', () => {
       expectRefusal((editorPath) => {
         mkdirSync(path.join(editorPath, 'linked'))
@@ -321,6 +333,43 @@ describe('legacy subpath resolution stubs (generate-subpath-stubs)', () => {
         )
       }, 'linked/package.json')
     })
+  })
+
+  it('refuses a stub directory that is a symbolic link, even to a directory of stubs', () => {
+    const packageJsonPath = createStandardPackage()
+    const packageRootPath = path.dirname(packageJsonPath)
+    generateSubpathStubs(packageJsonPath)
+    // Move the generated `editor/` stubs elsewhere and leave a link to them in their place.
+    const editorPath = path.join(packageRootPath, 'editor')
+    const linkedPath = path.join(packageRootPath, 'elsewhere')
+    renameSync(editorPath, linkedPath)
+    symlinkSync(linkedPath, editorPath)
+
+    expect(() => {
+      generateSubpathStubs(packageJsonPath)
+    }).toThrow(
+      `🚨 ${editorPath} is not a directory (a file or a symbolic link), refusing to replace it`
+    )
+    expect(lstatSync(editorPath).isSymbolicLink()).toBe(true)
+    expect(existsSync(path.join(linkedPath, 'package.json'))).toBe(true)
+    expect(readStub(packageJsonPath, 'bundler/webpack')).toStrictEqual(WEBPACK_STUB)
+  })
+
+  it('refuses a stub directory path that is a file', () => {
+    const packageJsonPath = createStandardPackage()
+    const packageRootPath = path.dirname(packageJsonPath)
+    generateSubpathStubs(packageJsonPath)
+    const editorPath = path.join(packageRootPath, 'editor')
+    rmSync(editorPath, { recursive: true })
+    writeFileSync(editorPath, 'not a directory')
+
+    expect(() => {
+      generateSubpathStubs(packageJsonPath)
+    }).toThrow(
+      `🚨 ${editorPath} is not a directory (a file or a symbolic link), refusing to replace it`
+    )
+    expect(lstatSync(editorPath).isFile()).toBe(true)
+    expect(readStub(packageJsonPath, 'bundler/webpack')).toStrictEqual(WEBPACK_STUB)
   })
 
   it('rejects a "files" list that does not match the stub directories', () => {
