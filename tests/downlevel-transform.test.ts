@@ -1861,6 +1861,28 @@ describe('ES5 output gate (verify-es5-output)', () => {
     }
   )
 
+  it.each([
+    ['\\r', '\r'],
+    ['\\r\\n', '\r\n'],
+    ['\\u2028', '\u{2028}'],
+    ['\\u2029', '\u{2029}'],
+  ])(
+    'locates findings exactly in a file whose line terminators are %s (helper exemption)',
+    (_terminatorName, terminator) => {
+      // ESLint counts every ECMAScript line terminator when numbering lines. A finding's
+      // position must be resolved the same way, or a violation AFTER an allowlisted SWC helper
+      // can resolve to a position INSIDE it and be exempted.
+      const content = [
+        'function _instanceof(value) {',
+        '  return value',
+        '}',
+        'var found = [1].includes(1)',
+        '',
+      ].join(terminator)
+      expect(gateVerdictFor(content)).toContain('contains 1 post-ES5 construct(s)')
+    }
+  )
+
   it('never exempts a parse error located inside an allowlisted SWC helper', () => {
     // A parse error leaves the WHOLE file unchecked (here, the `Map` after the helper too), so
     // its position — inside the helper's text — must not exempt it. Post-ES5 syntax is a
