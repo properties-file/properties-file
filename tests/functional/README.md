@@ -37,10 +37,15 @@ Wiring:
 - `npm run functional-generate` — regenerate `golden.json` from the source.
 - `npm run test-functional` — run both replay runners against `dist/` (part of `npm run build`,
   after the Jest suite).
-- `npm run test-node-compat` — Docker image copies `golden.json` + `run-cjs.js` and replays the
-  full scenario set on Node.js 0.4.
+- `npm run test-node-compat` — Docker image installs the package as
+  `/app/node_modules/properties-file` (root `package.json`, the generated legacy subpath stubs,
+  `dist/cjs`), copies `golden.json` + `run-cjs.js` next to it, and replays the full scenario set
+  on Node.js 0.4 twice: loading the entry points by file path, then by package name.
 - `run-cjs.js [distRoot]` / `run-esm.mts [distRoot]` accept an optional dist root argument
-  (defaults to the repository's `dist/cjs` / `dist/esm`; the Docker image passes `/dist/cjs`).
+  (defaults to the repository's `dist/cjs` / `dist/esm`; the Docker image passes its installed
+  copy of `dist/cjs`). `run-cjs.js --package-name` instead loads `properties-file`,
+  `properties-file/editor`, … through `node_modules`, which on a runtime without `exports`
+  support exercises the root `main` field and the stubs.
 
 ## Adding a scenario
 
