@@ -443,10 +443,10 @@ describe('format() with normalization options', () => {
         untypedNormalizeOptions({ deduplicateKeys: 1, deduplicateKeysKeepLeadingNodes: 'yes' })
       )
     ).toBe('  # note\n\na = 2\n# lead\nb = 3')
-    // On its own, a truthy non-`true` `removeLeadingWhitespace` strips comment lines only:
-    // property lines are rebuilt when another option requires it (here, `separatorChar`).
+    // Comment lines and property lines alike, with or without another option that rebuilds
+    // property lines (here, `separatorChar`).
     expect(properties.format(untypedNormalizeOptions({ removeLeadingWhitespace: 1 }))).toBe(
-      '# note\n\n  a = 1\na = 2\n# lead\nb = 3'
+      '# note\n\na = 1\na = 2\n# lead\nb = 3'
     )
     expect(
       properties.format(untypedNormalizeOptions({ removeLeadingWhitespace: 1, separatorChar: ':' }))

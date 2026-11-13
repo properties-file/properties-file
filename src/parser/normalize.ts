@@ -117,6 +117,16 @@ export const formatNormalized = (
   options: NormalizeOptions
 ): string => {
   const eol = options.endOfLineCharacter ?? eolCharacter
+
+  // The optional boolean options tested by truthiness, read once. `Boolean()` rather than
+  // `=== true`: for these checks any truthy value counts, including out-of-type ones from
+  // untyped JavaScript callers (`1`).
+  const shouldDeduplicateKeys = Boolean(options.deduplicateKeys)
+  const shouldKeepLeadingNodes = Boolean(options.deduplicateKeysKeepLeadingNodes)
+  const shouldRemoveComments = Boolean(options.removeComments)
+  const shouldRemoveBlankLines = Boolean(options.removeBlankLines)
+  const shouldRemoveLeadingWhitespace = Boolean(options.removeLeadingWhitespace)
+
   const requiresPropertyRebuild =
     options.separatorChar !== undefined ||
     options.separatorLeading !== undefined ||
@@ -125,17 +135,9 @@ export const formatNormalized = (
     options.collapseMultiline === true ||
     options.wrapKeysAt !== undefined ||
     options.wrapValuesAt !== undefined ||
-    options.removeLeadingWhitespace === true
-
-  // The optional boolean options tested by truthiness below, read once. `Boolean()` rather than
-  // `=== true`: for these checks any truthy value counts, including out-of-type ones from
-  // untyped JavaScript callers (`1`). `requiresPropertyRebuild` above is stricter (`=== true`),
-  // so a truthy non-`true` `removeLeadingWhitespace` on its own only strips comment lines.
-  const shouldDeduplicateKeys = Boolean(options.deduplicateKeys)
-  const shouldKeepLeadingNodes = Boolean(options.deduplicateKeysKeepLeadingNodes)
-  const shouldRemoveComments = Boolean(options.removeComments)
-  const shouldRemoveBlankLines = Boolean(options.removeBlankLines)
-  const shouldRemoveLeadingWhitespace = Boolean(options.removeLeadingWhitespace)
+    // Same truthiness test as for comment lines below, so that the option always applies to
+    // both kinds of lines or to neither.
+    shouldRemoveLeadingWhitespace
 
   // Pre-compute which node indices to keep when deduplicating.
   let skipIndices: Record<number, boolean> | undefined
