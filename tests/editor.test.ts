@@ -151,6 +151,26 @@ describe('PropertiesEditor', () => {
     expect(editor.format()).toContain('# comment')
   })
 
+  // An empty string is a valid `.properties` key (`=value`), so it must work as a reference.
+
+  it('insert honors an empty-string reference key', () => {
+    const editor = new PropertiesEditor('a=1\n=empty\nb=2')
+    editor.insert('x', '9', { referenceKey: '', position: 'before' })
+    expect(editor.format()).toBe('a=1\nx = 9\n=empty\nb=2')
+  })
+
+  it('insertComment honors an empty-string reference key', () => {
+    const editor = new PropertiesEditor('a=1\n=empty\nb=2')
+    editor.insertComment('note', { referenceKey: '', position: 'before' })
+    expect(editor.format()).toBe('a=1\n# note\n=empty\nb=2')
+  })
+
+  it('insertBlankLine honors an empty-string reference key', () => {
+    const editor = new PropertiesEditor('a=1\n=empty\nb=2')
+    editor.insertBlankLine({ referenceKey: '' })
+    expect(editor.format()).toBe('a=1\n=empty\n\nb=2')
+  })
+
   // ─── update ───────────────────────────────────────────────────────
 
   it('update changes value', () => {

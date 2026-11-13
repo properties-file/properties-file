@@ -342,7 +342,7 @@ export class PropertiesEditor extends Properties {
     )
 
     // Determine insertion position.
-    if (options?.referenceKey) {
+    if (options?.referenceKey !== undefined) {
       const reference = this.findLastProperty(options.referenceKey)
       if (reference !== undefined) {
         const insertIndex = options.position === 'before' ? reference.index : reference.index + 1
@@ -367,7 +367,7 @@ export class PropertiesEditor extends Properties {
     const delimiter = options?.commentDelimiter ?? DEFAULT_COMMENT_DELIMITER
     const newNodes = buildCommentNodes(comment, delimiter)
 
-    if (options?.referenceKey) {
+    if (options?.referenceKey !== undefined) {
       const reference = this.findLastProperty(options.referenceKey)
       if (reference !== undefined) {
         const insertIndex = options.position === 'before' ? reference.index : reference.index + 1
@@ -393,7 +393,7 @@ export class PropertiesEditor extends Properties {
       lineNumber: 0,
     }
 
-    if (options?.referenceKey) {
+    if (options?.referenceKey !== undefined) {
       const reference = this.findLastProperty(options.referenceKey)
       if (reference !== undefined) {
         const insertIndex = options.position === 'before' ? reference.index : reference.index + 1
