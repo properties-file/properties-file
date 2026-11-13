@@ -8,7 +8,8 @@
  * API or syntax found here is a build-pipeline bug (e.g. an emitted helper or a toolchain
  * emission relying on a modern API). Source linting can never see generated code; this can.
  * Every `.js` file is verified: a file ESLint does not lint, or does not parse, fails the build
- * rather than being skipped.
+ * rather than being skipped, and so does an entry that is neither a regular file nor a
+ * directory (a symbolic link), whose target would otherwise go unverified.
  *
  * The es-x rules run in `aggressive` mode: without type information, es-x's prototype-method
  * rules only fire on receivers whose type its type tracer can infer (literals, built-in globals
@@ -156,6 +157,20 @@ export const verifyEs5Output = async (
   // ESLint requires an absolute path for the linter's anchor and the linted file names.
   const directoryPath = path.resolve(buildDirectoryPath)
   const directoryEntries = await readdir(directoryPath, { recursive: true, withFileTypes: true })
+  // Only regular files are read and only directories are descended into. Anything else — a
+  // symbolic link above all, to a file or a directory, whose target `readdir` neither reports
+  // as a file nor descends into — would leave the code it leads to unverified, so its presence
+  // fails the gate rather than being skipped, whatever its name.
+  const unverifiableEntryPaths = directoryEntries
+    .filter((entry) => !entry.isFile() && !entry.isDirectory())
+    .map((entry) => path.join(entry.parentPath, entry.name))
+  if (unverifiableEntryPaths.length > 0) {
+    throw new Error(
+      `🚨 ${buildDirectoryPath} contains entries that are neither regular files nor ` +
+        'directories (e.g. symbolic links), which the ES5 gate cannot verify: ' +
+        unverifiableEntryPaths.join(', ')
+    )
+  }
   const filePaths = directoryEntries
     .filter((entry) => entry.isFile() && entry.name.endsWith('.js'))
     .map((entry) => path.join(entry.parentPath, entry.name))

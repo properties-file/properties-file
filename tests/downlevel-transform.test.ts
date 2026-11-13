@@ -14,7 +14,7 @@
  * cases can't interfere with each other or touch the real filesystem.
  */
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { runInNewContext } from 'node:vm'
@@ -1971,6 +1971,32 @@ describe('ES5 output gate (verify-es5-output)', () => {
     expect(reportLines).toHaveLength(1)
     expect(reportLines[0]).toContain(path.join('node_modules', 'dependency', 'index.js'))
   })
+
+  it.each([
+    ['a file', true],
+    ['a directory', false],
+  ])(
+    'refuses a directory containing a symbolic link to %s (fail-closed)',
+    (_kind, isFileTarget) => {
+      // A symbolic link is neither a regular file nor a directory to `readdir`, so the code it
+      // leads to would otherwise never be linted. The link target lives outside the probe.
+      const outside = mkdtempSync(path.join(tmpdir(), 'es5-gate-outside-'))
+      temporaryDirectories.push(outside)
+      const targetPath = path.join(outside, isFileTarget ? 'target.js' : 'target')
+      if (isFileTarget) {
+        writeFileSync(targetPath, 'var map = new Map()\n')
+      } else {
+        mkdirSync(targetPath)
+        writeFileSync(path.join(targetPath, 'index.js'), 'var map = new Map()\n')
+      }
+      const { verdict } = runGate((directory) => {
+        writeFileSync(path.join(directory, 'a.js'), 'var value = 1\n')
+        symlinkSync(targetPath, path.join(directory, 'linked.js'))
+      })
+      expect(verdict).toContain('GATE_FAILED')
+      expect(verdict).toContain('linked.js')
+    }
+  )
 
   it.each([
     ['\\r', '\r'],
