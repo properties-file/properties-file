@@ -1977,11 +1977,40 @@ describe('ES5 output gate (verify-es5-output)', () => {
     expect(reportLines[0]).toContain('(es-x/no-export-ns-from)')
   })
 
+  it.each(['script', 'module'] as const)(
+    'counts a post-ES5 global and a different construct at the same position separately (%s)',
+    (sourceType) => {
+      // Both lines start a post-ES5 prototype-method call on a global that no es-x rule reports
+      // by itself. The method findings are located at the same identifier as the global ban's
+      // finding, which must still be reported: nothing else in the report names the global.
+      const { verdict, reportLines } = runGate((directory) => {
+        writeFileSync(
+          path.join(directory, 'index.js'),
+          'var first = Temporal.includes(1)\nvar second = SuppressedError.at(0)\n'
+        )
+      }, sourceType)
+
+      expect(verdict).toMatch(/contains \d+ post-ES5 construct\(s\)/)
+      for (const lineNumber of [1, 2]) {
+        const lineReports = reportLines.filter((reportLine) =>
+          reportLine.includes(`index.js:${lineNumber}:`)
+        )
+        expect(
+          lineReports.filter((reportLine) => reportLine.includes('(no-restricted-globals)'))
+        ).toHaveLength(1)
+        expect(
+          lineReports.filter((reportLine) => reportLine.includes('(es-x/')).length
+        ).toBeGreaterThanOrEqual(1)
+      }
+    }
+  )
+
   it('counts a file ESLint does not lint (under node_modules) as a violation, without crashing', () => {
     // ESLint's default ignores (`node_modules/`, `.git/`) apply inside the verified directory:
     // such a file gets a single non-fatal "No matching configuration" message and no
-    // `SourceCode`. It is listed after `a.js`, so a gate reusing the linter's last `SourceCode`
-    // would resolve this file's line-0 message against `a.js` instead of reporting it.
+    // `SourceCode`. It is listed after `a.js`: a gate that only treated fatal messages as
+    // "not linted" would resolve this file's line-0 message against a `SourceCode` that is not
+    // this file's, and crash instead of reporting it.
     const { verdict, reportLines } = runGate((directory) => {
       writeFileSync(path.join(directory, 'a.js'), 'var value = 1\n')
       mkdirSync(path.join(directory, 'node_modules', 'dependency'), { recursive: true })

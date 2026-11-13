@@ -22,8 +22,8 @@
  * `Array#keys`) is not reported, while a post-ES5 call on its result
  * (`Object.keys(o).includes(k)`, an array receiver) is. No es-x finding is filtered after the
  * fact: every one outside the SWC helpers below fails the build. The only finding not counted
- * is the global ban's report of an identifier an es-x rule already reports — the same
- * construct, counted once.
+ * is the global ban's report of an identifier that an es-x rule already reports (the very same
+ * identifier, start to end) — the same construct, counted once.
  *
  * The one allowed location is inside SWC's own emitted compatibility helpers: those reference
  * modern globals deliberately, behind `typeof` guards and try/catch feature detection, to use
@@ -264,9 +264,9 @@ export const verifyEs5Output = async (
     // were produced from — and it never reads the repository's own ESLint configuration: this
     // check is exceptionless. Its anchor is the directory being verified, which is not
     // necessarily inside the process's own cwd (the gate's unit tests verify temporary
-    // directories). A new `Linter` per file guarantees that the `SourceCode` it returns is this
-    // file's or none: a `Linter` returns the `SourceCode` of the last file it linted, which is
-    // a previous file's when this one was not linted.
+    // directories). A `Linter` returns the `SourceCode` of the last file it linted, which is a
+    // previous file's when this one was not linted: the `isFullyLinted` check below is what
+    // keeps that from being read, and a new `Linter` per file makes it impossible besides.
     const linter = new Linter({ cwd: directoryPath })
     const messages = linter.verify(content, config, filePath)
     if (messages.length === 0) {
@@ -288,20 +288,25 @@ export const verifyEs5Output = async (
     }
     const swcHelperRanges =
       lintedSourceCode === null ? [] : getSwcHelperRanges(lintedSourceCode.ast)
-    // Where an es-x rule reports a post-ES5 global, `no-restricted-globals` reports the same
-    // identifier: the second finding is the same construct, not another one.
-    const otherRulePositions = new Set(
-      messages
-        .filter((message) => message.ruleId !== POST_ES5_GLOBAL_RULE_ID)
-        .map((message) => `${message.line}:${message.column}`)
-    )
     for (const message of messages) {
       if (isIgnoredDirectiveNotice(message)) {
         continue
       }
+      // Where an es-x rule reports a post-ES5 global, `no-restricted-globals` reports the very
+      // same identifier (same start, same end): that second finding is the same construct, not
+      // another one. A finding that merely starts at the same position (e.g. a prototype-method
+      // rule on `Temporal.includes(...)`, which spans the whole member expression) is a
+      // different construct and replaces nothing.
       if (
         message.ruleId === POST_ES5_GLOBAL_RULE_ID &&
-        otherRulePositions.has(`${message.line}:${message.column}`)
+        messages.some(
+          (otherMessage) =>
+            otherMessage.ruleId?.startsWith('es-x/') === true &&
+            otherMessage.line === message.line &&
+            otherMessage.column === message.column &&
+            otherMessage.endLine === message.endLine &&
+            otherMessage.endColumn === message.endColumn
+        )
       ) {
         continue
       }
