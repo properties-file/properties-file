@@ -523,10 +523,11 @@ const CATALOG_RULE_STRING_RAW: CatalogRule = {
       SyntaxKind.TaggedTemplateExpression
     )) {
       const tag = taggedTemplate.getTag()
-      if (!Node.isPropertyAccessExpression(tag) || tag.getName() !== 'raw') {
-        continue
-      }
-      if (!isGlobalConstructorReference(tag.getExpression(), 'String', 'StringConstructor')) {
+      if (
+        !Node.isPropertyAccessExpression(tag) ||
+        tag.getName() !== 'raw' ||
+        !isGlobalConstructorReference(tag.getExpression(), 'String', 'StringConstructor')
+      ) {
         continue
       }
 

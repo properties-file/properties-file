@@ -262,11 +262,13 @@ const restore = (name: string): void => {
   // Replace project directories with snapshot copies.
   for (const directoryName of SNAPSHOT_DIRECTORIES) {
     const snapshotCopy = path.resolve(directory, directoryName)
-    const projectCopy = path.resolve(rootDirectory, directoryName)
-    if (existsSync(snapshotCopy)) {
-      rmSync(projectCopy, { recursive: true, force: true })
-      execSync(`cp -r "${snapshotCopy}" "${projectCopy}"`, { stdio: 'pipe' })
+    if (!existsSync(snapshotCopy)) {
+      continue
     }
+
+    const projectCopy = path.resolve(rootDirectory, directoryName)
+    rmSync(projectCopy, { recursive: true, force: true })
+    execSync(`cp -r "${snapshotCopy}" "${projectCopy}"`, { stdio: 'pipe' })
   }
 
   // Restore individual config files from the snapshot.
@@ -328,10 +330,8 @@ const fail = (message: string): never => {
  * @returns The validated name.
  */
 const requireName = (name: string | undefined, command: string): string => {
-  if (!name) {
-    return fail(`Missing snapshot name for '${command}'.`)
-  }
-  return name
+  // An empty name must be rejected too: it would resolve to the snapshots directory itself.
+  return name === undefined || name === '' ? fail(`Missing snapshot name for '${command}'.`) : name
 }
 
 /** Parse the CLI command and dispatch it to the matching snapshot operation. */

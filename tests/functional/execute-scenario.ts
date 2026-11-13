@@ -20,8 +20,8 @@ import { escapeKey, escapeValue } from '../../src/escape'
 import { Properties } from '../../src/parser'
 import { unescapeContent } from '../../src/unescape'
 
-import type { EditorOperation, Scenario } from './scenarios'
 import type { KeyValuePairObject, PropertiesNode } from '../../src/parser'
+import type { EditorOperation, Scenario } from './scenarios'
 
 // ---------------------------------------------------------------------------
 // Result shapes

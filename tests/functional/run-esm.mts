@@ -26,9 +26,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { isNormalizedError, noThrow } from '../../utilities/no-throw'
 
+import type { NormalizeOptions } from '../../src/parser'
 import type { GoldenScenario, ParseResult, SummarizedNode } from './execute-scenario'
 import type { EditorOperation } from './scenarios'
-import type { NormalizeOptions } from '../../src/parser'
 
 // ---------------------------------------------------------------------------
 // Structural types for the built modules
@@ -190,10 +190,13 @@ const isDeepEqual = (a: unknown, b: unknown): boolean => {
   if (a === b) {
     return true
   }
-  if (typeof a !== typeof b) {
-    return false
-  }
-  if (typeof a !== 'object' || a === null || typeof b !== 'object' || b === null) {
+  if (
+    typeof a !== typeof b ||
+    typeof a !== 'object' ||
+    a === null ||
+    typeof b !== 'object' ||
+    b === null
+  ) {
     return false
   }
 
@@ -204,10 +207,7 @@ const isDeepEqual = (a: unknown, b: unknown): boolean => {
   }
 
   if (isArrayA && isArrayB) {
-    if (a.length !== b.length) {
-      return false
-    }
-    return a.every((value, index) => isDeepEqual(value, b[index]))
+    return a.length === b.length && a.every((value, index) => isDeepEqual(value, b[index]))
   }
 
   if (!isRecord(a) || !isRecord(b)) {
@@ -215,10 +215,10 @@ const isDeepEqual = (a: unknown, b: unknown): boolean => {
   }
   const aKeys = Object.keys(a).toSorted((left, right) => left.localeCompare(right))
   const bKeys = Object.keys(b).toSorted((left, right) => left.localeCompare(right))
-  if (aKeys.length !== bKeys.length || aKeys.some((key, index) => key !== bKeys[index])) {
-    return false
-  }
-  return aKeys.every((key) => isDeepEqual(a[key], b[key]))
+  return (
+    aKeys.length === bKeys.length &&
+    aKeys.every((key, index) => key === bKeys[index] && isDeepEqual(a[key], b[key]))
+  )
 }
 
 // ---------------------------------------------------------------------------

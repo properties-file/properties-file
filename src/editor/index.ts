@@ -194,22 +194,21 @@ const buildPropertyNode = (
  *
  * @param comment - The comment text (may contain newlines for multi-line comments).
  * @param delimiter - The comment delimiter character.
- * @param startLineNumber - The 1-based starting line number.
  *
- * @returns An array of CommentNodes and BlankLineNodes.
+ * @returns An array of CommentNodes and BlankLineNodes, with placeholder line numbers (every
+ *   caller runs {@link recalculateLineNumbers} once the nodes are inserted).
  */
 const buildCommentNodes = (
   comment: string,
-  delimiter: CommentDelimiter,
-  startLineNumber: number
+  delimiter: CommentDelimiter
 ): (CommentNode | BlankLineNode)[] => {
   const lines = comment.split(REGEX_NEWLINE)
-  return lines.map((line, index): CommentNode | BlankLineNode => {
+  return lines.map((line): CommentNode | BlankLineNode => {
     if (line === '') {
       return {
         type: 'blank',
         rawLine: '',
-        lineNumber: startLineNumber + index,
+        lineNumber: 0,
       }
     }
     return {
@@ -218,7 +217,7 @@ const buildCommentNodes = (
       leadingWhitespace: '',
       delimiter,
       body: ` ${line}`,
-      lineNumber: startLineNumber + index,
+      lineNumber: 0,
     }
   })
 }
@@ -326,7 +325,7 @@ export class PropertiesEditor extends Properties {
     // Build comment nodes if requested.
     if (options?.comment !== undefined) {
       const delimiter = options.commentDelimiter ?? DEFAULT_COMMENT_DELIMITER
-      newNodes.push(...buildCommentNodes(options.comment, delimiter, 0))
+      newNodes.push(...buildCommentNodes(options.comment, delimiter))
     }
 
     // Build property node.
@@ -366,7 +365,7 @@ export class PropertiesEditor extends Properties {
    */
   insertComment(comment: string, options?: InsertCommentOptions): void {
     const delimiter = options?.commentDelimiter ?? DEFAULT_COMMENT_DELIMITER
-    const newNodes = buildCommentNodes(comment, delimiter, 0)
+    const newNodes = buildCommentNodes(comment, delimiter)
 
     if (options?.referenceKey) {
       const reference = this.findLastProperty(options.referenceKey)
@@ -490,7 +489,7 @@ export class PropertiesEditor extends Properties {
       }
 
       const delimiter = options.commentDelimiter ?? DEFAULT_COMMENT_DELIMITER
-      const commentNodes = buildCommentNodes(options.newComment, delimiter, 0)
+      const commentNodes = buildCommentNodes(options.newComment, delimiter)
 
       this.nodes.splice(
         removalStartIndex,
@@ -578,10 +577,12 @@ export class PropertiesEditor extends Properties {
     const deleted: PropertyNode[] = []
     for (let index = this.nodes.length - 1; index >= 0; index--) {
       const node = this.nodes[index]
-      if (node.type === 'property' && node.key === key) {
-        this.nodes.splice(index, 1)
-        deleted.push(node)
+      if (node.type !== 'property' || node.key !== key) {
+        continue
       }
+
+      this.nodes.splice(index, 1)
+      deleted.push(node)
     }
     if (deleted.length > 0) {
       recalculateLineNumbers(this.nodes)

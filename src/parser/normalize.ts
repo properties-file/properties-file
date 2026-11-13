@@ -189,11 +189,9 @@ export const formatNormalized = (
         break
       }
       case 'property': {
-        if (requiresPropertyRebuild) {
-          parts.push(rebuildPropertyLine(node, options))
-        } else {
-          parts.push(node.rawLines.join(eol))
-        }
+        parts.push(
+          requiresPropertyRebuild ? rebuildPropertyLine(node, options) : node.rawLines.join(eol)
+        )
         break
       }
     }
