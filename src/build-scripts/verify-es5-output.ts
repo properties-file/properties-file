@@ -204,9 +204,11 @@ export const verifyEs5Output = async (
         continue
       }
       const offset = (lineStartOffsets[message.line - 1] ?? 0) + message.column - 1
-      const isInsideSwcHelper = swcHelperRanges.some(
-        ([start, end]) => offset >= start && offset < end
-      )
+      // A parse error is never exempted, wherever it is located: it leaves the whole file
+      // unchecked, not just the helper its position happens to fall in.
+      const isInsideSwcHelper =
+        message.fatal !== true &&
+        swcHelperRanges.some(([start, end]) => offset >= start && offset < end)
       if (isInsideSwcHelper) {
         continue
       }

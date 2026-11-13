@@ -1861,6 +1861,16 @@ describe('ES5 output gate (verify-es5-output)', () => {
     }
   )
 
+  it('never exempts a parse error located inside an allowlisted SWC helper', () => {
+    // A parse error leaves the WHOLE file unchecked (here, the `Map` after the helper too), so
+    // its position — inside the helper's text — must not exempt it. Post-ES5 syntax is a
+    // parse error in the CJS build (parsed as ES5).
+    const verdict = gateVerdictFor(
+      'function _instanceof(value) {\n  return () => value\n}\nvar map = new Map()\n'
+    )
+    expect(verdict).toContain('contains 1 post-ES5 construct(s)')
+  })
+
   it('reports a post-ES5 prototype call chained onto an ES5 global call (Object.keys(o).includes(k))', () => {
     // The flagged member expression's text starts with an ES5 global's name, but its receiver
     // is the call's RESULT (an array, a string), not the global namespace itself.
