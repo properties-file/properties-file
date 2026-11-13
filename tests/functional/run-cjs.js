@@ -67,6 +67,13 @@ var scenarios = JSON.parse(fs.readFileSync(goldenPath, 'utf8'))
  * resolution failure exits immediately with the failing request, so a runtime
  * that cannot resolve the legacy layout is reported as exactly that rather than
  * as a generic stack trace.
+ *
+ * Only a module-not-found error for the request itself counts as a resolution
+ * failure: its message starts with `Cannot find module '<request>'` on every
+ * Node.js version from 0.4 (which throws exactly that message) to current ones
+ * (which append the require stack). Anything else, including an error thrown
+ * while the resolved module evaluates or a module-not-found error for a file it
+ * requires in turn, is rethrown unchanged.
  */
 function loadEntryPoint(subpath, distFile) {
   if (!isPackageNameMode) {
@@ -76,13 +83,17 @@ function loadEntryPoint(subpath, distFile) {
   try {
     return require(request)
   } catch (error) {
+    var message = error && typeof error.message === 'string' ? error.message : ''
+    if (message.indexOf("Cannot find module '" + request + "'") !== 0) {
+      throw error
+    }
     console.log(
       '[run-cjs] Node ' +
         process.version +
         ': cannot load "' +
         request +
         '" by package name: ' +
-        (error && error.message ? error.message : error)
+        message
     )
     console.log(
       '[run-cjs] Expected node_modules/' +
