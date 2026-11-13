@@ -1954,6 +1954,29 @@ describe('ES5 output gate (verify-es5-output)', () => {
     }
   )
 
+  it('refuses a directory with no .js file to verify', () => {
+    // An empty (or mistyped) directory verifies nothing: it must never be confirmed as ES5.
+    const { verdict } = runGate((directory) => {
+      writeFileSync(path.join(directory, 'notes.txt'), 'var map = new Map()\n')
+    })
+    expect(verdict).toContain('GATE_FAILED')
+    expect(verdict).toContain('contains no .js file to verify')
+  })
+
+  it('reports a plain `export * from` in the ESM build (documents current es-x behavior)', () => {
+    // es-x's `no-export-ns-from` reports the ES2015 `export * from` re-export too, with a
+    // message about the ES2020 `export * as ns` form. The built ESM output contains no
+    // `export *`, so this over-report is harmless today; this test pins it so a change in es-x
+    // behavior is noticed.
+    const { verdict, reportLines } = runGate((directory) => {
+      writeFileSync(path.join(directory, 'index.js'), 'export * from "./d.js"\n')
+      writeFileSync(path.join(directory, 'd.js'), 'export var value = 1\n')
+    }, 'module')
+    expect(verdict).toContain('contains 1 post-ES5 construct(s)')
+    expect(reportLines).toHaveLength(1)
+    expect(reportLines[0]).toContain('(es-x/no-export-ns-from)')
+  })
+
   it('counts a file ESLint does not lint (under node_modules) as a violation, without crashing', () => {
     // ESLint's default ignores (`node_modules/`, `.git/`) apply inside the verified directory:
     // such a file gets a single non-fatal "No matching configuration" message and no
