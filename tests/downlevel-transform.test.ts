@@ -14,7 +14,7 @@
  * cases can't interfere with each other or touch the real filesystem.
  */
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { runInNewContext } from 'node:vm'
@@ -1953,6 +1953,24 @@ describe('ES5 output gate (verify-es5-output)', () => {
       expect(gateVerdictFor(`${lines.join('\n')}\n`, sourceType)).toContain('GATE_PASSED')
     }
   )
+
+  it('counts a file ESLint does not lint (under node_modules) as a violation, without crashing', () => {
+    // ESLint's default ignores (`node_modules/`, `.git/`) apply inside the verified directory:
+    // such a file gets a single non-fatal "No matching configuration" message and no
+    // `SourceCode`. It is listed after `a.js`, so a gate reusing the linter's last `SourceCode`
+    // would resolve this file's line-0 message against `a.js` instead of reporting it.
+    const { verdict, reportLines } = runGate((directory) => {
+      writeFileSync(path.join(directory, 'a.js'), 'var value = 1\n')
+      mkdirSync(path.join(directory, 'node_modules', 'dependency'), { recursive: true })
+      writeFileSync(
+        path.join(directory, 'node_modules', 'dependency', 'index.js'),
+        'var map = new Map()\n'
+      )
+    })
+    expect(verdict).toContain('contains 1 post-ES5 construct(s)')
+    expect(reportLines).toHaveLength(1)
+    expect(reportLines[0]).toContain(path.join('node_modules', 'dependency', 'index.js'))
+  })
 
   it.each([
     ['\\r', '\r'],

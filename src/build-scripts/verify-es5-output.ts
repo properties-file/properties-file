@@ -7,6 +7,8 @@
  * no per-API exceptions — a rewritten API can no longer appear in the output, so any post-ES5
  * API or syntax found here is a build-pipeline bug (e.g. an emitted helper or a toolchain
  * emission relying on a modern API). Source linting can never see generated code; this can.
+ * Every `.js` file is verified: a file ESLint does not lint, or does not parse, fails the build
+ * rather than being skipped.
  *
  * The es-x rules run in `aggressive` mode: without type information, es-x's prototype-method
  * rules only fire on receivers whose type its type tracer can infer (literals, built-in globals
@@ -39,7 +41,7 @@ import { Linter } from 'eslint'
 import esXPlugin from 'eslint-plugin-es-x'
 import globals from 'globals'
 
-import type { AST } from 'eslint'
+import type { AST, SourceCode } from 'eslint'
 
 /**
  * The exact names of SWC's emitted compatibility helper functions, as observed in this
@@ -94,6 +96,22 @@ const POST_ES5_GLOBAL_NAMES = new Set([
 ])
 
 /**
+ * Check whether a lint message is ESLint's notice that it ignored an inline directive because
+ * of `noInlineConfig` (see the configuration in {@link verifyEs5Output}). Those notices are
+ * expected — the directives belong to the source-level lint — not violations. A fatal message
+ * is a parse error, which can quote any text of the file (including this notice's wording) and
+ * leaves the file entirely unchecked: it is never a notice.
+ *
+ * @param message - The lint message to check.
+ *
+ * @returns `true` if the message is an ignored-directive notice.
+ */
+const isIgnoredDirectiveNotice = (message: Linter.LintMessage): boolean =>
+  message.fatal !== true &&
+  message.ruleId === null &&
+  message.message.includes("'noInlineConfig' setting")
+
+/**
  * Compute the `[start, end)` character ranges of SWC's emitted compatibility helpers in a built
  * file, by matching the top-level function declarations of the AST ESLint linted it from against
  * {@link SWC_HELPER_NAMES}. Using the parsed AST (rather than regex plus brace counting) is what
@@ -146,12 +164,6 @@ export const verifyEs5Output = async (
   if (filePaths.length === 0) {
     throw new Error(`🚨 ${buildDirectoryPath} contains no .js file to verify.`)
   }
-  // The `Linter` API (rather than the file-oriented `ESLint` class) is used because it exposes
-  // the `SourceCode` of each linted file — the AST and position mapping the findings were
-  // produced from — and it never reads the repository's own ESLint configuration: this check is
-  // exceptionless. Its anchor is the directory being verified, which is not necessarily inside
-  // the process's own cwd (the gate's unit tests verify temporary directories).
-  const linter = new Linter({ cwd: directoryPath })
   const config: Linter.Config[] = [
     {
       files: ['**/*.js'],
@@ -228,15 +240,35 @@ export const verifyEs5Output = async (
   )
   let violationCount = 0
   for (const { filePath, content } of files) {
+    // The `Linter` API (rather than the file-oriented `ESLint` class) is used because it
+    // exposes the `SourceCode` of each linted file — the AST and position mapping the findings
+    // were produced from — and it never reads the repository's own ESLint configuration: this
+    // check is exceptionless. Its anchor is the directory being verified, which is not
+    // necessarily inside the process's own cwd (the gate's unit tests verify temporary
+    // directories). A new `Linter` per file guarantees that the `SourceCode` it returns is this
+    // file's or none: a `Linter` returns the `SourceCode` of the last file it linted, which is
+    // a previous file's when this one was not linted.
+    const linter = new Linter({ cwd: directoryPath })
     const messages = linter.verify(content, config, filePath)
     if (messages.length === 0) {
       continue
     }
-    // A fatal message is a parse error: ESLint then reports it alone, and has no `SourceCode`
-    // (no AST) for the file — and none is needed, since a parse error is never exempted.
-    const hasParseError = messages.some((message) => message.fatal === true)
-    const sourceCode = hasParseError ? undefined : linter.getSourceCode()
-    const swcHelperRanges = sourceCode === undefined ? [] : getSwcHelperRanges(sourceCode.ast)
+    // Every message without a rule, other than an ignored-directive notice, means the file was
+    // not linted, or not entirely: a fatal parse error (ESLint then reports it alone), or a
+    // non-fatal notice such as "No matching configuration found" (line 0) for a file under a
+    // directory ESLint ignores by default (`node_modules/`, `.git/`). ESLint creates no
+    // `SourceCode` for such a file, and none is needed: nothing in it is exempted, every
+    // message counts as a violation.
+    const isFullyLinted = messages.every(
+      (message) => message.ruleId !== null || isIgnoredDirectiveNotice(message)
+    )
+    // The declared type omits the `null` this returns when the linter has linted no file.
+    const lintedSourceCode: SourceCode | null = isFullyLinted ? linter.getSourceCode() : null
+    if (isFullyLinted && lintedSourceCode === null) {
+      throw new Error(`🚨 ESLint produced findings but no SourceCode for ${filePath}.`)
+    }
+    const swcHelperRanges =
+      lintedSourceCode === null ? [] : getSwcHelperRanges(lintedSourceCode.ast)
     // Where an es-x rule reports a post-ES5 global, `no-restricted-globals` reports the same
     // identifier: the second finding is the same construct, not another one.
     const otherRulePositions = new Set(
@@ -245,15 +277,7 @@ export const verifyEs5Output = async (
         .map((message) => `${message.line}:${message.column}`)
     )
     for (const message of messages) {
-      // ESLint reports every inline directive it ignored because of `noInlineConfig` (see
-      // above). Those notices are expected — the directives belong to the source-level lint —
-      // not violations. A fatal message is a parse error, which can quote any text of the file
-      // and leaves it entirely unchecked: never skip one.
-      if (
-        message.fatal !== true &&
-        message.ruleId === null &&
-        message.message.includes("'noInlineConfig' setting")
-      ) {
+      if (isIgnoredDirectiveNotice(message)) {
         continue
       }
       if (
@@ -262,13 +286,14 @@ export const verifyEs5Output = async (
       ) {
         continue
       }
-      // A parse error is never exempted, wherever it is located: it leaves the whole file
-      // unchecked, not just the helper its position happens to fall in. Every other finding's
-      // position is converted to a character offset by the same `SourceCode` that numbered its
-      // line, so every line terminator ESLint counts (`\r\n`, `\r`, `\n`, U+2028, U+2029) is
-      // counted here too (ESLint columns are 1-based, `getIndexFromLoc` columns 0-based).
-      if (sourceCode !== undefined) {
-        const offset = sourceCode.getIndexFromLoc({
+      // A file that was not entirely linted (see above) is never exempted, wherever its
+      // messages are located: a parse error leaves the whole file unchecked, not just the
+      // helper its position happens to fall in. Every other finding's position is converted to
+      // a character offset by the same `SourceCode` that numbered its line, so every line
+      // terminator ESLint counts (`\r\n`, `\r`, `\n`, U+2028, U+2029) is counted here too
+      // (ESLint columns are 1-based, `getIndexFromLoc` columns 0-based).
+      if (lintedSourceCode !== null) {
+        const offset = lintedSourceCode.getIndexFromLoc({
           line: message.line,
           column: message.column - 1,
         })
@@ -283,7 +308,7 @@ export const verifyEs5Output = async (
       violationCount++
       console.error(
         `   ✖ ${filePath}:${message.line}:${message.column} ${message.message} ` +
-          `(${message.ruleId ?? 'parsing error'})`
+          `(${message.ruleId ?? (message.fatal === true ? 'parsing error' : 'not linted')})`
       )
     }
   }
