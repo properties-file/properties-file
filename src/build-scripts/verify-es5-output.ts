@@ -1,11 +1,12 @@
 /**
  * Authoritative artifact-level ES5 compatibility gate (invoked from `build.ts`): runs every
- * es-x `restrict-to-es5` rule against the downleveled output before minification. Unlike the
- * source-side ESLint config (which disables rules for syntax TypeScript transpiles and for
- * APIs the downlevel transform rewrites), this check has no per-API exceptions — a rewritten
- * API can no longer appear in the output, so any post-ES5 API or syntax found here is a
- * build-pipeline bug (e.g. an emitted helper or a toolchain emission relying on a modern API).
- * Source linting can never see generated code; this can.
+ * es-x `restrict-to-es5` rule, plus a ban on every post-ES5 built-in global derived from the
+ * `globals` package (some of which no `restrict-to-es5` rule reports), against the downleveled
+ * output before minification. Unlike the source-side ESLint config (which disables rules for
+ * syntax TypeScript transpiles and for APIs the downlevel transform rewrites), this check has
+ * no per-API exceptions — a rewritten API can no longer appear in the output, so any post-ES5
+ * API or syntax found here is a build-pipeline bug (e.g. an emitted helper or a toolchain
+ * emission relying on a modern API). Source linting can never see generated code; this can.
  *
  * The es-x rules run in `aggressive` mode: without type information, es-x's prototype-method
  * rules only fire on receivers whose type its type tracer can infer (literals, built-in globals
@@ -16,8 +17,10 @@
  * Receivers of known type are still checked by type in this mode, so an ES5 *static* call
  * whose method name collides with a post-ES5 prototype method (e.g. `Object.keys(...)` vs
  * `Array#keys`) is not reported, while a post-ES5 call on its result
- * (`Object.keys(o).includes(k)`, an array receiver) is. No finding is filtered after the fact:
- * every es-x finding outside the SWC helpers below fails the build.
+ * (`Object.keys(o).includes(k)`, an array receiver) is. No es-x finding is filtered after the
+ * fact: every one outside the SWC helpers below fails the build. The only finding not counted
+ * is the global ban's report of an identifier an es-x rule already reports — the same
+ * construct, counted once.
  *
  * The one allowed location is inside SWC's own emitted compatibility helpers: those reference
  * modern globals deliberately, behind `typeof` guards and try/catch feature detection, to use
@@ -66,6 +69,28 @@ const SWC_HELPER_NAMES = new Set([
   '_to_consumable_array',
   '_type_of',
   '_unsupported_iterable_to_array',
+])
+
+/**
+ * The ESLint core rule that reports every reference to a {@link POST_ES5_GLOBAL_NAMES} global.
+ */
+const POST_ES5_GLOBAL_RULE_ID = 'no-restricted-globals'
+
+/**
+ * Every ECMAScript built-in global that is not an ES5 global, derived rather than listed so it
+ * follows the `globals` package across upgrades: each name `globals` declares for some
+ * ECMAScript edition (`globals.builtin`, the union of all editions) but not for ES5. Most of
+ * these also have an es-x rule in `restrict-to-es5` (`no-map`, `no-symbol`, ...), but not all:
+ * no es-x rule reports a reference to `ArrayBuffer` or `Intl` itself, and the rules for
+ * `DisposableStack`, `AsyncDisposableStack` and `SuppressedError` exist only in es-x's esnext
+ * configuration. Only `Temporal` is named by hand: `globals` lists that TC39 global for host
+ * environments (`browser`, `node`, ...) but not yet for any ECMAScript edition, so the
+ * derivation alone misses it. Once a `globals` upgrade adds it to an edition, the explicit name
+ * is a harmless duplicate in the set.
+ */
+const POST_ES5_GLOBAL_NAMES = new Set([
+  ...Object.keys(globals.builtin).filter((name) => !Object.hasOwn(globals.es5, name)),
+  'Temporal',
 ])
 
 /**
@@ -144,8 +169,9 @@ export const verifyEs5Output = async (
         // references that resolve to a declared global variable, and ESLint itself declares
         // only the globals of the parsing `ecmaVersion` above — without this, a bare
         // `new Map()` in the CJS build (ES5 globals only) or `globalThis` in either build is
-        // an unresolved reference that no rule reports. Declaring a global permits nothing:
-        // its es-x rule still reports every reference to it.
+        // an unresolved reference that no es-x rule reports. Declaring a global permits
+        // nothing: every reference to a non-ES5 global, declared here or not, is reported by
+        // the `no-restricted-globals` rule below, whether or not an es-x rule reports it too.
         globals: globals.builtin,
       },
       plugins: { 'es-x': esXPlugin },
@@ -155,6 +181,16 @@ export const verifyEs5Output = async (
       // are reported and real escapes pass silently). See the module documentation above.
       settings: { 'es-x': { aggressive: true } },
       rules: {
+        // Every reference to a post-ES5 built-in global, including those no `restrict-to-es5`
+        // es-x rule reports (see `POST_ES5_GLOBAL_NAMES`). Where an es-x rule reports the same
+        // reference, both report the same identifier, and the finding is counted once below.
+        [POST_ES5_GLOBAL_RULE_ID]: [
+          'error',
+          ...[...POST_ES5_GLOBAL_NAMES].map((name) => ({
+            name,
+            message: 'It is not an ES5 global.',
+          })),
+        ],
         ...esXPlugin.configs['flat/restrict-to-es5'].rules,
         // The ESM build's own import/export statements are the intended module format.
         ...(sourceType === 'module' && { 'es-x/no-modules': 'off' as const }),
@@ -172,6 +208,18 @@ export const verifyEs5Output = async (
         'es-x/no-iterator-prototype-map': 'off',
         'es-x/no-iterator-prototype-reduce': 'off',
         'es-x/no-iterator-prototype-some': 'off',
+        // es-x's esnext configuration is not enabled as a whole: in aggressive mode, its
+        // `no-iterator-prototype-join` rule matches every ES5 `Array#join` call. Of its other
+        // rules, these three report post-ES5 methods that nothing above reports and whose
+        // names collide with no ES5 method. Every other one is redundant: its
+        // global (`DisposableStack`, `Temporal`, `Iterator.zip`, `Atomics.pause`, ...) or the
+        // global its member hangs off (`Symbol.dispose`) is reported by
+        // `no-restricted-globals` above, esnext syntax (`using` declarations) is a parse
+        // error at the `ecmaVersion` above, and `no-iterator-prototype-includes` duplicates
+        // `no-array-prototype-includes` by name.
+        'es-x/no-date-prototype-totemporalinstant': 'error',
+        'es-x/no-iterator-prototype-chunks': 'error',
+        'es-x/no-iterator-prototype-windows': 'error',
       },
     },
   ]
@@ -189,6 +237,13 @@ export const verifyEs5Output = async (
     const hasParseError = messages.some((message) => message.fatal === true)
     const sourceCode = hasParseError ? undefined : linter.getSourceCode()
     const swcHelperRanges = sourceCode === undefined ? [] : getSwcHelperRanges(sourceCode.ast)
+    // Where an es-x rule reports a post-ES5 global, `no-restricted-globals` reports the same
+    // identifier: the second finding is the same construct, not another one.
+    const otherRulePositions = new Set(
+      messages
+        .filter((message) => message.ruleId !== POST_ES5_GLOBAL_RULE_ID)
+        .map((message) => `${message.line}:${message.column}`)
+    )
     for (const message of messages) {
       // ESLint reports every inline directive it ignored because of `noInlineConfig` (see
       // above). Those notices are expected — the directives belong to the source-level lint —
@@ -198,6 +253,12 @@ export const verifyEs5Output = async (
         message.fatal !== true &&
         message.ruleId === null &&
         message.message.includes("'noInlineConfig' setting")
+      ) {
+        continue
+      }
+      if (
+        message.ruleId === POST_ES5_GLOBAL_RULE_ID &&
+        otherRulePositions.has(`${message.line}:${message.column}`)
       ) {
         continue
       }

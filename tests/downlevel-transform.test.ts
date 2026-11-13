@@ -13,12 +13,13 @@
  * Every test builds an isolated in-memory ts-morph project (`useInMemoryFileSystem: true`) so
  * cases can't interfere with each other or touch the real filesystem.
  */
-import { execSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { runInNewContext } from 'node:vm'
 
+import globals from 'globals'
 import { Project, ScriptTarget } from 'ts-morph'
 import { ScriptTarget as CompilerScriptTarget, transpileModule } from 'typescript'
 
@@ -1669,22 +1670,33 @@ describe('ES5 output gate (verify-es5-output)', () => {
     }
   })
 
+  /** The outcome of one gate run, as observed from its subprocess. */
+  type GateRun = {
+    /** The `GATE_PASSED` / `GATE_FAILED: <message>` verdict line. */
+    verdict: string
+    /** The gate's per-violation report lines (`✖ <file>:<line>:<column> <message> (<rule>)`). */
+    reportLines: string[]
+  }
+
   /**
-   * Run the gate over a single-file probe directory and return a `GATE_PASSED` /
-   * `GATE_FAILED: <message>` verdict line. The gate runs in a `tsx` subprocess because
-   * `ESLint`'s flat-config machinery uses dynamic `import()`, which Jest's module sandbox
-   * rejects.
+   * Run the gate over a probe directory that `populate` fills with the files to verify. The
+   * gate runs in a `tsx` subprocess because `ESLint`'s flat-config machinery uses dynamic
+   * `import()`, which Jest's module sandbox rejects. The subprocess's runner script is a `.mts`
+   * file inside the probe directory, which the gate (verifying `.js` files only) never lints.
    *
-   * @param content - The JavaScript content of the probe file.
+   * @param populate - Creates the probe's files inside the (empty) directory it is given.
    * @param sourceType - How the gate parses the probe: `script` (the CJS build, the default) or
    *   `module` (the ESM build).
    *
-   * @returns The subprocess's verdict output.
+   * @returns The subprocess's verdict line and the gate's per-violation report lines.
    */
-  const gateVerdictFor = (content: string, sourceType: 'module' | 'script' = 'script'): string => {
+  const runGate = (
+    populate: (directory: string) => void,
+    sourceType: 'module' | 'script' = 'script'
+  ): GateRun => {
     const directory = mkdtempSync(path.join(tmpdir(), 'es5-gate-'))
     temporaryDirectories.push(directory)
-    writeFileSync(path.join(directory, 'probe.js'), content)
+    populate(directory)
     const runnerPath = path.join(directory, 'runner.mts')
     const verifierPath = path.resolve('src/build-scripts/verify-es5-output.ts')
     const noThrowPath = path.resolve('utilities/no-throw.ts')
@@ -1695,7 +1707,47 @@ describe('ES5 output gate (verify-es5-output)', () => {
         `const outcome = await noThrow(() => verifyEs5Output(${JSON.stringify(directory)}, ${JSON.stringify(sourceType)}))\n` +
         'console.log(isNormalizedError(outcome) ? `GATE_FAILED: ${outcome.message}` : `GATE_PASSED`)\n'
     )
-    return execSync(`npx tsx ${JSON.stringify(runnerPath)}`, { encoding: 'utf8', stdio: 'pipe' })
+    // The verdict is printed on stdout, the gate's report on stderr.
+    const run = spawnSync('npx', ['tsx', runnerPath], { encoding: 'utf8' })
+    return {
+      verdict: run.stdout,
+      reportLines: run.stderr.split('\n').filter((line) => line.trimStart().startsWith('✖ ')),
+    }
+  }
+
+  /**
+   * Run the gate over a single-file probe directory (`probe.js`) and return its verdict line.
+   *
+   * @param content - The JavaScript content of the probe file.
+   * @param sourceType - How the gate parses the probe (see {@link runGate}).
+   *
+   * @returns The subprocess's `GATE_PASSED` / `GATE_FAILED: <message>` verdict line.
+   */
+  const gateVerdictFor = (content: string, sourceType: 'module' | 'script' = 'script'): string =>
+    runGate((directory) => {
+      writeFileSync(path.join(directory, 'probe.js'), content)
+    }, sourceType).verdict
+
+  /**
+   * Run the gate over a single-file probe directory (`probe.js`) and return the line numbers of
+   * its reported violations, one entry per violation (so a line reported twice appears twice).
+   *
+   * @param content - The JavaScript content of the probe file.
+   * @param sourceType - How the gate parses the probe (see {@link runGate}).
+   *
+   * @returns The verdict line and the sorted line numbers of the reported violations.
+   */
+  const reportedLinesFor = (
+    content: string,
+    sourceType: 'module' | 'script' = 'script'
+  ): { verdict: string; lineNumbers: number[] } => {
+    const { verdict, reportLines } = runGate((directory) => {
+      writeFileSync(path.join(directory, 'probe.js'), content)
+    }, sourceType)
+    const lineNumbers = reportLines.map((reportLine) =>
+      Number(/probe\.js:(\d+):\d+ /.exec(reportLine)?.[1])
+    )
+    return { verdict, lineNumbers: lineNumbers.toSorted((left, right) => left - right) }
   }
 
   it('rejects a post-ES5 prototype-method call on a variable receiver (aggressive mode)', () => {
@@ -1720,7 +1772,7 @@ describe('ES5 output gate (verify-es5-output)', () => {
   it.each(['script', 'module'] as const)(
     'accepts every ES5 static member of the ES5 global namespaces (%s)',
     (sourceType) => {
-      // The gate filters no finding after the fact, so this relies on es-x's type tracer
+      // The gate filters no es-x finding after the fact, so this relies on es-x's type tracer
       // knowing each namespace's type: an aggressive-mode name match against a post-ES5
       // prototype rule (`Object.keys` vs `Array#keys`) would otherwise fail the build here.
       const es5StaticMembers: Record<string, string[]> = {
@@ -1838,8 +1890,9 @@ describe('ES5 output gate (verify-es5-output)', () => {
       // ESLint declares only the globals of the parsing `ecmaVersion` (5 for `script`, 2015 for
       // `module`), so without the gate declaring the newer ones, a bare `new Map()` in the CJS
       // build (or `globalThis` in either build) is an unresolved reference es-x never reports.
-      // One construct per line, each reported by exactly one rule: the exact count proves that
-      // every line is seen, not merely that something is.
+      // One construct per line: every line number must appear exactly once in the report, which
+      // proves that every line is seen and that none is counted twice (a total alone could hide
+      // one line reported twice and another not at all).
       const lines = [
         'var map = new Map()',
         'var set = new Set()',
@@ -1852,14 +1905,52 @@ describe('ES5 output gate (verify-es5-output)', () => {
         'var root = globalThis',
         'var big = BigInt(1)',
         'var weakRef = new WeakRef({})',
+        // Post-ES5 globals that no `restrict-to-es5` es-x rule reports: no es-x rule exists
+        // for the first two, and the rules for the next three exist only in es-x's esnext
+        // configuration. Temporal is not listed in any ECMAScript edition of `globals` yet.
+        'var buffer = new ArrayBuffer(8)',
+        'var collator = new Intl.Collator()',
+        'var stack = new DisposableStack()',
+        'var asyncStack = new AsyncDisposableStack()',
+        'var suppressed = new SuppressedError()',
+        'var now = Temporal.Now',
+        // The esnext prototype methods the gate enables individually (variable receivers).
+        'var instant = value.toTemporalInstant()',
+        'var chunks = value.chunks(2)',
+        'var windows = value.windows(2)',
         // Post-ES5 static members of ES5 globals must stay reported alongside them.
         'var entries = Object.entries({})',
         'var array = Array.from([])',
         'var isNotANumber = Number.isNaN(1)',
         'var truncated = Math.trunc(1.5)',
       ]
-      const verdict = gateVerdictFor(`${lines.join('\n')}\n`, sourceType)
+      const { verdict, lineNumbers } = reportedLinesFor(`${lines.join('\n')}\n`, sourceType)
+      expect(lineNumbers).toStrictEqual(lines.map((_line, index) => index + 1))
       expect(verdict).toContain(`contains ${lines.length} post-ES5 construct(s)`)
+    }
+  )
+
+  it.each(['script', 'module'] as const)(
+    'reports a reference to every non-ES5 ECMAScript built-in global exactly once (%s)',
+    (sourceType) => {
+      // Every global `globals` lists for some ECMAScript edition but not for ES5, plus Temporal
+      // (see the gate's configuration), whether or not an es-x rule also reports it.
+      const postEs5GlobalNames = [
+        ...Object.keys(globals.builtin).filter((name) => !Object.hasOwn(globals.es5, name)),
+        'Temporal',
+      ]
+      const lines = postEs5GlobalNames.map((name, index) => `var reference${index} = ${name}`)
+      const { verdict, lineNumbers } = reportedLinesFor(`${lines.join('\n')}\n`, sourceType)
+      expect(lineNumbers).toStrictEqual(lines.map((_line, index) => index + 1))
+      expect(verdict).toContain(`contains ${lines.length} post-ES5 construct(s)`)
+    }
+  )
+
+  it.each(['script', 'module'] as const)(
+    'accepts a reference to every ES5 global (%s)',
+    (sourceType) => {
+      const lines = Object.keys(globals.es5).map((name, index) => `var reference${index} = ${name}`)
+      expect(gateVerdictFor(`${lines.join('\n')}\n`, sourceType)).toContain('GATE_PASSED')
     }
   )
 
