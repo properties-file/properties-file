@@ -26,7 +26,7 @@ export const escapeValue = (unescapedValue: string, escapeUnicode = false): stri
 const REGEX_ESCAPE_NO_UNICODE = /[\s!#:=\\]/g
 
 /** Pre-compiled regex for escaping with unicode expansion. */
-// eslint-disable-next-line unicorn/prefer-unicode-code-point-escapes -- `\u{...}` in a regex requires the ES2015 `u` flag, which would survive into the ES5 output
+// eslint-disable-next-line unicorn/prefer-unicode-code-point-escapes, no-control-regex -- `\u{...}` in a regex requires the ES2015 `u` flag, which would survive into the ES5 output; control characters are matched on purpose (escaping them is what this regex is for)
 const REGEX_ESCAPE_UNICODE = /[\s!#:=\\\u0000-\u001F\u007F-\uFFFF]/g
 
 /**

@@ -30,7 +30,7 @@ import type { Program, Type, TypeChecker } from 'typescript'
 
 /**
  * The subset of `@typescript-eslint/parser`'s type-aware parser services used by this rule.
- * Available at runtime whenever typed linting (`parserOptions.project`) is configured.
+ * Available at runtime whenever typed linting (`parserOptions.projectService`) is configured.
  */
 type TypeAwareParserServices = {
   program: Program
@@ -103,7 +103,7 @@ export const arrayIterationOnlyRule: Rule.RuleModule = {
     const services: unknown = context.sourceCode.parserServices
     if (!hasTypeInformation(services)) {
       throw new Error(
-        'The local/array-iteration-only rule requires typed linting (parserOptions.project).'
+        'The local/array-iteration-only rule requires typed linting (parserOptions.projectService).'
       )
     }
     const checker = services.program.getTypeChecker()

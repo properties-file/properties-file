@@ -212,7 +212,7 @@ const measureAll = (distributionEsmPath: string): SizeResult[] =>
  * @param label - Optional label for the table header.
  */
 const printTable = (results: SizeResult[], label?: string): void => {
-  if (label) {
+  if (label !== undefined) {
     console.log(`\n${label}`)
   }
 

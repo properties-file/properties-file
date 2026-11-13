@@ -184,10 +184,12 @@ export class Properties {
       if (node.type === 'property') {
         break
       }
-      leading.unshift(node)
+      leading.push(node)
     }
-
-    return leading
+    // Collected nearest-first; restore file order. In-place reverse of a function-local array
+    // this method exclusively owns — `toReversed()` would add a pointless copy.
+    // eslint-disable-next-line unicorn/no-array-reverse
+    return leading.reverse()
   }
 
   // ─── Reconstruction ─────────────────────────────────────────────────

@@ -88,14 +88,21 @@ These are shipped but exempt from ES5 restrictions since they run in bundler con
 
 ```bash
 npm test                  # Run tests with coverage (must be 100%)
-npm run build             # Full build: lint, compile, test, measure size
+npm run build             # Full build: lint, unused-code check, compile, package check, test, measure size
+npm run knip              # Report unused files, exports and dependencies
+npm run check-package     # Validate the built package's exports map and type resolution
 npm run benchmark         # Compare benchmarks against latest published version
 npm run size              # Compare bundle sizes against latest published version
 ```
 
+`check-package` runs `publint` and `attw` against the packed tarball. `attw` runs with
+`--profile node16`, which skips TypeScript's legacy `node10` module resolution: the subpath
+entry points (`properties-file/editor`, `properties-file/parser`, …) are exposed through the
+`exports` map only, which that resolution mode cannot read.
+
 ## Pull Request Checklist
 
-- [ ] `npm run build` passes (includes linting, tests, 100% coverage, and size measurement)
+- [ ] `npm run build` passes (includes linting, unused-code and package checks, tests, 100% coverage, and size measurement)
 - [ ] Performance-sensitive changes include `npm run benchmark` results
 - [ ] Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
       (drives automated changelog via `release-it`)

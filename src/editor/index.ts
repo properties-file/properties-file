@@ -160,10 +160,14 @@ const buildPropertyNode = (
 
   const separatorChar =
     options.separator === ' ' ? undefined : (options.separator ?? DEFAULT_SEPARATOR)
-  const separatorLeading = separatorChar ? ' ' : ' '
-  const separatorTrailing = separatorChar ? ' ' : ''
+  // Any falsy separator character means "none", including out-of-type values from untyped
+  // JavaScript callers (`''`, `0`, `false`). The `undefined` comparison is what narrows the
+  // type; `Boolean()` covers the rest.
+  const hasSeparatorChar = separatorChar !== undefined && Boolean(separatorChar)
+  const separatorLeading = ' '
+  const separatorTrailing = hasSeparatorChar ? ' ' : ''
 
-  const separatorString = separatorChar
+  const separatorString = hasSeparatorChar
     ? `${separatorLeading}${separatorChar}${separatorTrailing}`
     : separatorLeading
 
@@ -317,7 +321,8 @@ export class PropertiesEditor extends Properties {
    *
    * @param key - The unescaped key.
    * @param value - The unescaped value.
-   * @param options - Insert options.
+   * @param options - Where to insert (reference key and position), plus the separator, Unicode
+   *   escaping and optional leading comment of the new property.
    */
   insert(key: string, value: string, options?: InsertOptions): void {
     const newNodes: PropertiesNode[] = []
@@ -342,7 +347,7 @@ export class PropertiesEditor extends Properties {
     )
 
     // Determine insertion position.
-    if (options?.referenceKey) {
+    if (options?.referenceKey !== undefined) {
       const reference = this.findLastProperty(options.referenceKey)
       if (reference !== undefined) {
         const insertIndex = options.position === 'before' ? reference.index : reference.index + 1
@@ -361,13 +366,13 @@ export class PropertiesEditor extends Properties {
    * Insert a comment.
    *
    * @param comment - The comment text (may contain newlines).
-   * @param options - Insert comment options.
+   * @param options - Where to insert (reference key and position) and the comment delimiter.
    */
   insertComment(comment: string, options?: InsertCommentOptions): void {
     const delimiter = options?.commentDelimiter ?? DEFAULT_COMMENT_DELIMITER
     const newNodes = buildCommentNodes(comment, delimiter)
 
-    if (options?.referenceKey) {
+    if (options?.referenceKey !== undefined) {
       const reference = this.findLastProperty(options.referenceKey)
       if (reference !== undefined) {
         const insertIndex = options.position === 'before' ? reference.index : reference.index + 1
@@ -384,7 +389,7 @@ export class PropertiesEditor extends Properties {
   /**
    * Insert a blank line.
    *
-   * @param options - Insert blank line options.
+   * @param options - Where to insert (reference key and position).
    */
   insertBlankLine(options?: InsertBlankLineOptions): void {
     const blankNode: BlankLineNode = {
@@ -393,7 +398,7 @@ export class PropertiesEditor extends Properties {
       lineNumber: 0,
     }
 
-    if (options?.referenceKey) {
+    if (options?.referenceKey !== undefined) {
       const reference = this.findLastProperty(options.referenceKey)
       if (reference !== undefined) {
         const insertIndex = options.position === 'before' ? reference.index : reference.index + 1
@@ -411,7 +416,8 @@ export class PropertiesEditor extends Properties {
    * Update an existing property.
    *
    * @param key - The unescaped key to update (uses last occurrence).
-   * @param options - Update options.
+   * @param options - What to change: value, key, separator, Unicode escaping or leading comment.
+   *   Anything left unset keeps its original form.
    *
    * @returns `true` if the property was found and updated, `false` otherwise.
    */
@@ -439,23 +445,25 @@ export class PropertiesEditor extends Properties {
         : existing.escapedValue
 
     // Determine separator.
-    const separatorChar = options.separator
-      ? options.separator === ' '
+    // Any falsy `separator` means "keep the original one", and any falsy separator character
+    // means "none", including out-of-type values from untyped JavaScript callers (`null`, `''`,
+    // `0`, `false`) — hence `Boolean()` rather than `undefined` comparisons alone.
+    const newSeparator = options.separator
+    const hasNewSeparator = Boolean(newSeparator)
+    const separatorChar = hasNewSeparator
+      ? newSeparator === ' '
         ? undefined
-        : options.separator
+        : newSeparator
       : existing.separatorChar
-    const separatorLeading = options.separator
-      ? separatorChar
-        ? ' '
-        : ' '
-      : existing.separatorLeading
-    const separatorTrailing = options.separator
-      ? separatorChar
+    const hasSeparatorChar = separatorChar !== undefined && Boolean(separatorChar)
+    const separatorLeading = hasNewSeparator ? ' ' : existing.separatorLeading
+    const separatorTrailing = hasNewSeparator
+      ? hasSeparatorChar
         ? ' '
         : ''
       : existing.separatorTrailing
 
-    const separatorString = separatorChar
+    const separatorString = hasSeparatorChar
       ? `${separatorLeading}${separatorChar}${separatorTrailing}`
       : separatorLeading
 
@@ -510,7 +518,8 @@ export class PropertiesEditor extends Properties {
    *
    * @param key - The unescaped key.
    * @param value - The unescaped value.
-   * @param options - Upsert options.
+   * @param options - Separator, Unicode escaping and leading comment, applied whether the
+   *   property is inserted or updated.
    */
   upsert(key: string, value: string, options?: UpsertOptions): void {
     if (this.findLastProperty(key) !== undefined) {
@@ -534,7 +543,8 @@ export class PropertiesEditor extends Properties {
    * which is useful for cleaning up duplicate keys while keeping the effective value.
    *
    * @param key - The unescaped key to delete.
-   * @param options - Delete options.
+   * @param options - Which occurrence to delete and whether its leading comments and blank
+   *   lines go with it.
    *
    * @returns The deleted {@link PropertyNode}, or `undefined` if the key was not found.
    */

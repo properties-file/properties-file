@@ -53,7 +53,7 @@ const wrapAtWidth = (escaped: string, width: number): string => {
 /**
  * Rebuild a property line from its parsed fields.
  *
- * @param node - The property node.
+ * @param node - The parsed property whose key, separator and value are re-serialized.
  * @param options - Normalization options.
  *
  * @returns The reconstructed property line(s) as a single string.
@@ -62,7 +62,8 @@ const rebuildPropertyLine = (node: PropertyNode, options: NormalizeOptions): str
   const shouldEscapeUnicode = options.escapeUnicode === true
 
   // Determine leading whitespace.
-  const leading = options.removeLeadingWhitespace ? '' : node.leadingWhitespace
+  const shouldRemoveLeadingWhitespace = Boolean(options.removeLeadingWhitespace)
+  const leading = shouldRemoveLeadingWhitespace ? '' : node.leadingWhitespace
 
   // Determine key content.
   let keyContent = shouldEscapeUnicode ? escapeKey(node.key, true) : node.escapedKey
@@ -126,9 +127,19 @@ export const formatNormalized = (
     options.wrapValuesAt !== undefined ||
     options.removeLeadingWhitespace === true
 
+  // The optional boolean options tested by truthiness below, read once. `Boolean()` rather than
+  // `=== true`: for these checks any truthy value counts, including out-of-type ones from
+  // untyped JavaScript callers (`1`). `requiresPropertyRebuild` above is stricter (`=== true`),
+  // so a truthy non-`true` `removeLeadingWhitespace` on its own only strips comment lines.
+  const shouldDeduplicateKeys = Boolean(options.deduplicateKeys)
+  const shouldKeepLeadingNodes = Boolean(options.deduplicateKeysKeepLeadingNodes)
+  const shouldRemoveComments = Boolean(options.removeComments)
+  const shouldRemoveBlankLines = Boolean(options.removeBlankLines)
+  const shouldRemoveLeadingWhitespace = Boolean(options.removeLeadingWhitespace)
+
   // Pre-compute which node indices to keep when deduplicating.
   let skipIndices: Record<number, boolean> | undefined
-  if (options.deduplicateKeys) {
+  if (shouldDeduplicateKeys) {
     // Walk backward to find the last occurrence of each key.
     const seen: Record<string, boolean> = {}
     const duplicateIndices: number[] = []
@@ -147,7 +158,7 @@ export const formatNormalized = (
     skipIndices = {}
     for (const duplicateIndex of duplicateIndices) {
       skipIndices[duplicateIndex] = true
-      if (!options.deduplicateKeysKeepLeadingNodes) {
+      if (!shouldKeepLeadingNodes) {
         // Walk backward from the duplicate to also skip its leading comment/blank nodes.
         for (let search = duplicateIndex - 1; search >= 0; search--) {
           if (nodes[search].type === 'property') {
@@ -164,25 +175,24 @@ export const formatNormalized = (
   // eslint-disable-next-line unicorn/no-for-loop -- the element is read only after the skipIndices check below; an entries()-style loop would read it eagerly for skipped nodes too
   for (let nodeIndex = 0; nodeIndex < nodes.length; nodeIndex++) {
     // Skip nodes marked for removal by deduplication (property + its leading comments/blanks).
-    // Intentional truthiness check, not an existence check: `skipIndices` values are only ever
-    // `true` when present, so a plain read is equivalent to an own-property check here, without
-    // the extra method-call overhead of one in this per-node loop.
-    // eslint-disable-next-line unicorn/no-computed-property-existence-check
-    if (skipIndices?.[nodeIndex]) {
+    // A plain read compared to `true`, not an own-property check: `skipIndices` values are only
+    // ever `true` when present, so the two are equivalent here, without the extra method-call
+    // overhead of an existence check in this per-node loop.
+    if (skipIndices?.[nodeIndex] === true) {
       continue
     }
 
     const node = nodes[nodeIndex]
     switch (node.type) {
       case 'comment': {
-        if (options.removeComments) {
+        if (shouldRemoveComments) {
           continue
         }
-        parts.push(options.removeLeadingWhitespace ? `${node.delimiter}${node.body}` : node.rawLine)
+        parts.push(shouldRemoveLeadingWhitespace ? `${node.delimiter}${node.body}` : node.rawLine)
         break
       }
       case 'blank': {
-        if (options.removeBlankLines) {
+        if (shouldRemoveBlankLines) {
           continue
         }
         parts.push(node.rawLine)

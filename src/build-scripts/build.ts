@@ -17,14 +17,14 @@ import { minify_sync as minify } from 'terser'
 import { verifyEs5Output } from './verify-es5-output'
 
 /** Matches ESM/CJS build files (`.js` and `.d.ts`). */
-const REGEX_ESM_BUILD_FILES = /\.(d\.ts|js)$/
+const REGEX_ESM_BUILD_FILES = /\.(?:d\.ts|js)$/
 
 /** Matches JavaScript files (`.js`). */
 const REGEX_JS_FILES = /\.js$/
 
 /** Matches import/require paths without file extensions that need ESM extensions added. */
 const REGEX_EXTENSIONLESS_IMPORTS =
-  /(?<importClause>from\s*|import\s*)(?<quote>["'])(?<modulePath>(?!.*\.(js|ts))(\.|\.?\.\/.*?)\.?)(\k<quote>)/gm
+  /(?<importClause>from\s*|import\s*)(?<quote>["'])(?<modulePath>(?!.*\.(?:js|ts))(?:\.|\.?\.\/.*?)\.?)\k<quote>/g
 
 /**
  * +------------------------------------------------------------------+
@@ -37,8 +37,8 @@ console.log(`${EOL}🏃 Running build step: add file type declarations.${EOL}`)
 /**
  * Append a type declaration to another type file.
  *
- * @param targetTypeFilePath - The path of the target type file.
- * @param typeDeclarationFilePath - The path of the type declaration file.
+ * @param targetTypeFilePath - The `.d.ts` file the import statement is appended to.
+ * @param typeDeclarationFilePath - The declaration file to import, relative to the target.
  */
 const appendFileTypeDeclaration = (
   targetTypeFilePath: string,

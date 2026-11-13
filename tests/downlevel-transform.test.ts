@@ -551,7 +551,7 @@ describe('downlevel catalog #9 - Array#entries (for...of)', () => {
         '}\n'
     )
     // Native for...of yields every element exactly once regardless of binding assignment.
-    expect(run(['a', 'b', 'c'])).toEqual([
+    expect(run(['a', 'b', 'c'])).toStrictEqual([
       [1, 'a'],
       [2, 'b'],
       [3, 'c'],
@@ -569,7 +569,7 @@ describe('downlevel catalog #9 - Array#entries (for...of)', () => {
         '  return out\n' +
         '}\n'
     )
-    expect(run(['a', 'b'])).toEqual(['a0', 'b1'])
+    expect(run(['a', 'b'])).toStrictEqual(['a0', 'b1'])
   })
 
   it('rewrites inside a braceless if body (the block replacement is a single statement)', () => {
@@ -581,8 +581,8 @@ describe('downlevel catalog #9 - Array#entries (for...of)', () => {
         '  return out\n' +
         '}\n'
     )
-    expect(run(['a', 'b'])).toEqual(['0:a', '1:b'])
-    expect(run([])).toEqual([])
+    expect(run(['a', 'b'])).toStrictEqual(['0:a', '1:b'])
+    expect(run([])).toStrictEqual([])
   })
 })
 
@@ -836,7 +836,7 @@ describe('downlevel emitted helpers - standalone strict type-checking', () => {
  * @returns The number of predicate calls, the array's final length, and the find result.
  */
 const runGrowingArrayFind = (
-  find: (array: number[], predicate: (value: unknown) => unknown) => unknown
+  find: (array: number[], isMatch: (value: unknown) => boolean) => unknown
 ): { calls: number; length: number; result: unknown } => {
   const array = [1, 2, 3]
   let calls = 0
@@ -1105,11 +1105,11 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
     const findHelper = compileHelper('downlevelArrayFind', isFindFamilyHelper)
     const findIndexHelper = compileHelper('downlevelArrayFindIndex', isFindFamilyHelper)
 
-    expect(runGrowingArrayFind((array, predicate) => findHelper(array, predicate))).toEqual(
-      runGrowingArrayFind((array, predicate) => array.find((v) => predicate(v)))
+    expect(runGrowingArrayFind((array, isMatch) => findHelper(array, isMatch))).toStrictEqual(
+      runGrowingArrayFind((array, isMatch) => array.find((v) => isMatch(v)))
     )
-    expect(runGrowingArrayFind((array, predicate) => findIndexHelper(array, predicate))).toEqual(
-      runGrowingArrayFind((array, predicate) => array.findIndex((v) => predicate(v)))
+    expect(runGrowingArrayFind((array, isMatch) => findIndexHelper(array, isMatch))).toStrictEqual(
+      runGrowingArrayFind((array, isMatch) => array.findIndex((v) => isMatch(v)))
     )
   })
 
@@ -1170,14 +1170,14 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
 
   it('downlevelObjectValues matches native Object.values, including an empty object', () => {
     const helper = compileHelper('downlevelObjectValues', isObjectIterableHelper)
-    expect(helper({ a: 1, b: 2, c: 3 })).toEqual(Object.values({ a: 1, b: 2, c: 3 }))
-    expect(helper({})).toEqual(Object.values({}))
+    expect(helper({ a: 1, b: 2, c: 3 })).toStrictEqual(Object.values({ a: 1, b: 2, c: 3 }))
+    expect(helper({})).toStrictEqual(Object.values({}))
   })
 
   it('downlevelObjectEntries matches native Object.entries, including an empty object', () => {
     const helper = compileHelper('downlevelObjectEntries', isObjectIterableHelper)
-    expect(helper({ a: 1, b: 2, c: 3 })).toEqual(Object.entries({ a: 1, b: 2, c: 3 }))
-    expect(helper({})).toEqual(Object.entries({}))
+    expect(helper({ a: 1, b: 2, c: 3 })).toStrictEqual(Object.entries({ a: 1, b: 2, c: 3 }))
+    expect(helper({})).toStrictEqual(Object.entries({}))
   })
 
   // --- #16 Array#toSpliced ---------------------------------------------------------------------
@@ -1185,12 +1185,12 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
   it('downlevelArrayToSpliced matches native Array#toSpliced across start/deleteCount/insert combinations', () => {
     const helper = compileHelper('downlevelArrayToSpliced', isToSplicedHelper)
     const array = [1, 2, 3, 4]
-    expect(helper(array, 1)).toEqual(array.toSpliced(1))
-    expect(helper(array, 1, 2, 9, 8)).toEqual(array.toSpliced(1, 2, 9, 8))
-    expect(helper(array, -2, 1)).toEqual(array.toSpliced(-2, 1))
-    expect(helper(array, 10, 5, 99)).toEqual(array.toSpliced(10, 5, 99))
+    expect(helper(array, 1)).toStrictEqual(array.toSpliced(1))
+    expect(helper(array, 1, 2, 9, 8)).toStrictEqual(array.toSpliced(1, 2, 9, 8))
+    expect(helper(array, -2, 1)).toStrictEqual(array.toSpliced(-2, 1))
+    expect(helper(array, 10, 5, 99)).toStrictEqual(array.toSpliced(10, 5, 99))
     // The original array must be left untouched (non-mutating, like native toSpliced).
-    expect(array).toEqual([1, 2, 3, 4])
+    expect(array).toStrictEqual([1, 2, 3, 4])
   })
 
   it('downlevelArrayToSpliced distinguishes an omitted deleteCount from an explicit undefined', () => {
@@ -1198,13 +1198,13 @@ describe('downlevel emitted helpers - runtime equivalence with the native method
     const array = [1, 2, 3, 4, 5]
     // Omitted: delete to the end. Explicit undefined: ToIntegerOrInfinity(undefined) is 0 —
     // delete nothing. Native distinguishes the two by argument count.
-    expect(helper(array, 1)).toEqual(array.toSpliced(1))
-    expect(helper(array, 1, undefined)).toEqual(array.toSpliced(1, undefined))
-    expect(helper(array, 1, undefined)).toEqual([1, 2, 3, 4, 5])
+    expect(helper(array, 1)).toStrictEqual(array.toSpliced(1))
+    expect(helper(array, 1, undefined)).toStrictEqual(array.toSpliced(1, undefined))
+    expect(helper(array, 1, undefined)).toStrictEqual([1, 2, 3, 4, 5])
     // The with-items form is compared against a literal: TypeScript's 3-argument `toSpliced`
     // overload requires a `number` deleteCount, so the native call is not type-expressible
     // with an explicit `undefined` (at runtime it deletes nothing and inserts before index 1).
-    expect(helper(array, 1, undefined, 9)).toEqual([1, 9, 2, 3, 4, 5])
+    expect(helper(array, 1, undefined, 9)).toStrictEqual([1, 9, 2, 3, 4, 5])
   })
 })
 
@@ -1333,16 +1333,16 @@ describe('downlevel inline rewrites - runtime equivalence with the native method
     const array = [3, 1, 2]
     // No comparator, matching the no-comparator rewrite form under test.
     // eslint-disable-next-line unicorn/require-array-sort-compare
-    expect(rewritten(array)).toEqual([3, 1, 2].toSorted())
-    expect(array).toEqual([3, 1, 2])
+    expect(rewritten(array)).toStrictEqual([3, 1, 2].toSorted())
+    expect(array).toStrictEqual([3, 1, 2])
   })
 
   it('#5 slice().reverse() matches native Array#toReversed without mutating the receiver', () => {
     const sourceFile = rewrite('declare const arr: number[]\nconst result = arr.toReversed()\n')
     const rewritten = compileRewrittenExpression(['arr'], extractRewrittenExpression(sourceFile))
     const array = [3, 1, 2]
-    expect(rewritten(array)).toEqual([3, 1, 2].toReversed())
-    expect(array).toEqual([3, 1, 2])
+    expect(rewritten(array)).toStrictEqual([3, 1, 2].toReversed())
+    expect(array).toStrictEqual([3, 1, 2])
   })
 
   it('#6 split(a).join(b) matches native String#replaceAll for a non-empty literal search and a $-free literal replacement', () => {
@@ -1645,14 +1645,14 @@ describe('downlevel catalog - coverage meta-guard', () => {
       .filter((familyNumber): familyNumber is string => familyNumber !== undefined)
       .filter((familyNumber, index, families) => families.indexOf(familyNumber) === index)
       .filter((familyNumber) => !coveredFamilies.has(familyNumber))
-    expect(missingFamilies).toEqual([])
+    expect(missingFamilies).toStrictEqual([])
   })
 
   it('every emitted helper is exercised by at least one compileHelper equivalence test', () => {
     const unexercisedHelpers = Object.keys(HELPER_SOURCE).filter(
       (helperName) => !normalizedSource.includes(`compileHelper('${helperName}'`)
     )
-    expect(unexercisedHelpers).toEqual([])
+    expect(unexercisedHelpers).toStrictEqual([])
   })
 })
 
@@ -1726,6 +1726,40 @@ describe('ES5 output gate (verify-es5-output)', () => {
     const rogueVerdict = gateVerdictFor(rogue)
     expect(rogueVerdict).toContain('GATE_FAILED')
     expect(rogueVerdict).toContain('post-ES5 construct')
+  })
+
+  it('ignores eslint-disable comments surviving from the source (the gate cannot be switched off)', () => {
+    // A file-level directive, a next-line directive naming the violated rule, and an inline
+    // rule configuration: none may hide the post-ES5 call from the gate.
+    for (const directive of [
+      '/* eslint-disable */',
+      '// eslint-disable-next-line es-x/no-array-prototype-includes',
+      '/* eslint es-x/no-array-prototype-includes: "off" */',
+    ]) {
+      const verdict = gateVerdictFor(`${directive}\nvar found = [1].includes(1)\n`)
+      expect(verdict).toContain('GATE_FAILED')
+      expect(verdict).toContain('post-ES5 construct')
+    }
+  })
+
+  it('rejects a file that does not parse, even when the parse error quotes an ignored-directive notice', () => {
+    // A parse error leaves the whole file unchecked, and its message quotes the offending
+    // token — here, the very text the ignored-directive filter looks for.
+    const verdict = gateVerdictFor(
+      'var value = 1 "\'noInlineConfig\' setting"\nvar found = [1].includes(1)\n'
+    )
+    expect(verdict).toContain('GATE_FAILED')
+    expect(verdict).toContain('post-ES5 construct')
+  })
+
+  it('accepts ES5 code that carries eslint-disable comments for source-level rules', () => {
+    // Directives naming core rules or other plugins' rules are leftovers of the source-level
+    // lint; being ignored here must not turn them into violations.
+    const verdict = gateVerdictFor(
+      '// eslint-disable-next-line no-control-regex, unicorn/no-null -- reason\n' +
+        'var controlCharacters = /[\\u0000-\\u001F]/\n'
+    )
+    expect(verdict).toContain('GATE_PASSED')
   })
 
   it('never skips genuine post-ES5 static APIs on ES5 global namespaces', () => {

@@ -24,14 +24,14 @@ import type { NormalizeOptions } from '../../src/parser'
 // ---------------------------------------------------------------------------
 
 /** Exercises `getProperties()` and the `Properties` node API. */
-export type ParseScenario = {
+type ParseScenario = {
   id: string
   kind: 'parse'
   input: string
 }
 
 /** Exercises `Properties.format()`. */
-export type FormatScenario = {
+type FormatScenario = {
   id: string
   kind: 'format'
   input: string
@@ -46,7 +46,7 @@ export type EditorOperation =
   | { method: 'delete'; args: [string, DeleteOptions?] }
 
 /** Exercises `PropertiesEditor` mutation methods. */
-export type EditorScenario = {
+type EditorScenario = {
   id: string
   kind: 'editor'
   input: string
@@ -54,7 +54,7 @@ export type EditorScenario = {
 }
 
 /** Exercises `escapeKey` / `escapeValue`. */
-export type EscapeScenario = {
+type EscapeScenario = {
   id: string
   kind: 'escape'
   fn: 'escapeKey' | 'escapeValue'
@@ -63,7 +63,7 @@ export type EscapeScenario = {
 }
 
 /** Exercises `unescapeContent`. */
-export type UnescapeScenario = {
+type UnescapeScenario = {
   id: string
   kind: 'unescape'
   input: string
@@ -281,6 +281,19 @@ const editorScenarios: EditorScenario[] = [
       args: ['feature.disabled', { newValue: 'true', newKey: 'feature.isDisabled' }],
     },
   ]),
+  // An empty string is a valid key (`=value`), so it must work as a reference key.
+  {
+    id: 'editor-insert-empty-reference-key',
+    kind: 'editor',
+    input: 'first=1\n=empty key\nlast=2',
+    ops: [
+      {
+        method: 'insert',
+        args: ['inserted.before', 'X', { referenceKey: '', position: 'before' }],
+      },
+      { method: 'insert', args: ['inserted.after', 'Y', { referenceKey: '' }] },
+    ],
+  },
 ]
 
 // ---------------------------------------------------------------------------
