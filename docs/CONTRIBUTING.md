@@ -123,6 +123,7 @@ npm run knip              # Report unused files, exports and dependencies
 npm run check-package     # Validate the built package's exports map and type resolution
 npm run benchmark         # Compare benchmarks against latest published version
 npm run size              # Compare bundle sizes against latest published version
+npm run release -- patch  # Preview the release of a new version (see Releasing)
 ```
 
 `check-package` runs `publint` and `attw` against the packed tarball, in every resolution mode
@@ -135,9 +136,143 @@ generator itself fails the build if any stub's `main`, `module` or `types` does 
 existing file, and the Node.js 0.4 check (`tests/node-compat/`) loads the non-bundler entry
 points through their stubs' `main`.
 
+## Releasing
+
+A release has two halves: a script run locally (`release/`), and a GitHub Actions workflow
+(`.github/workflows/release.yml`) started by the tag the script pushes. Neither needs an npm
+token or a one-time password, and the script asks no question (git itself may still ask for
+credentials or a signing passphrase, as it does for any commit or push).
+
+```bash
+npm run release -- patch             # Dry run: reports every step and the changelog entry, changes nothing
+npm run release -- patch --confirm   # The release. Or `minor`, `major`, or an explicit version such as `5.1.0`
+```
+
+Only `--confirm` makes a release real, so a mistyped command is a dry run. In particular, npm
+keeps for itself any option written without the `--` separator
+(`npm run release patch --confirm`): the script never sees it, and reports a dry run.
+
+The script:
+
+1. Stops unless the checkout is on `main`, clean, and at the tip of `origin/main`; unless the
+   current version's tag is in the history of `HEAD`; and unless the new version's tag exists
+   neither locally nor on `origin` (which must have a single push URL). A dry run reports
+   these as warnings and goes on, as long as the current version's tag exists locally.
+2. Runs `npm run build`, and stops if the build fails or changes a file.
+3. Bumps the version in `package.json` and `package-lock.json`.
+4. Adds the version's entry to `CHANGELOG.md`: a heading with the compare link and the date
+   (UTC), then the `fix`, `feat` and `perf` commits and the reverts made since the current
+   version's tag, and the commits marked as breaking changes. Other commit types and merge
+   commits are not listed, so an entry can be its heading alone. A commit and the revert that
+   names it are both left out when both are in the release (the revert of a merge commit is
+   listed as a revert instead, next to the commits of the merge).
+5. Commits the three files as `🔖 release v<version>`, creates the annotated `v<version>` tag,
+   and pushes the branch and the tag together, and nothing else.
+
+If a step fails before the commit, the three files are restored. If the tag or the push fails,
+the error says how to retry or undo.
+
+The workflow then has three jobs, all on the tagged commit:
+
+- **Test** runs the whole test workflow (its Node.js versions, plus Node.js 0.4.0).
+- **Build** checks that the tag is `v` + the `package.json` version and that its commit is part
+  of `main`, runs `npm run build`, and packs the package (`npm pack`). It stops if the build
+  changed a file, which the script already ruled out on the releasing machine. Only a rewritten
+  `README.md` is tolerated (its size badge is measured again), and packed as it was tagged.
+  This job cannot publish anything.
+- **Publish** runs once both pass: it publishes the packed archive to npm and creates the
+  GitHub release, with the version's `CHANGELOG.md` entry as its notes. It is the only job
+  allowed to publish, and nothing from the repository or its dependencies runs in it.
+
+When a run fails, what to do depends on its cause and on whether the version reached npm (in
+the Publish job, the version is published first, then the GitHub release is created):
+
+- **The cause is outside the repository** (the trusted publisher is not set up, npm or GitHub
+  is unavailable): fix it and re-run the failed jobs from the Actions tab, which GitHub allows
+  for 30 days. Publishing is skipped when the version is already on npm, and so is creating a
+  GitHub release that already exists, so re-running is safe wherever the run stopped.
+- **The cause is inside the repository** (a failing test, a mistake in the workflow), or
+  outside of it but there to stay (a new Node.js version the build does not pass on): a re-run
+  cannot fix it, because it runs the tagged commit again, workflow file included. If the
+  version is not on npm (`npm view properties-file@<version> version` prints nothing but an
+  error), publish it from a fixed commit, as described below. If it is on npm, it cannot be
+  published again and its tag must stay where it is: fix the problem for the next version, and
+  create the missing GitHub release by hand, from a checkout of the tag:
+
+  ```bash
+  npx tsx release/notes.ts <version> | gh release create v<version> --verify-tag --title "Release <version>" --notes-file -
+  ```
+
+To publish a version that failed from a fixed commit:
+
+1. Delete the failed run, in the Actions tab. Its jobs could otherwise be re-run later and
+   publish what that run had built.
+2. Fix the problem on `main`. If the fix belongs in the release notes, add it to the version's
+   `CHANGELOG.md` entry in the same way: the entry was written before the fix. Push.
+3. Move the version's tag to the fixed commit, which starts a new run:
+
+   ```bash
+   git switch main && git pull --ff-only
+   git tag --force --annotate v<version> --message "Release <version>"
+   git push --force origin v<version>
+   ```
+
+Other clones keep the old tag until they run `git fetch --tags --force`; a release made from
+one of them before that would list the fix again.
+
+To edit the notes of a release, edit its `CHANGELOG.md` entry and its GitHub release; the
+workflow only writes them once.
+
+Pre-release versions (`5.1.0-beta.1`) are not supported: the script and the workflow both
+refuse anything but a plain `major.minor.patch` version.
+
+### One-time setup
+
+Publishing uses npm [trusted publishing](https://docs.npmjs.com/trusted-publishers): npm
+accepts a publish because GitHub vouches for the repository, the workflow file and the
+environment of the job it comes from, instead of asking for a token or a one-time password.
+The GitHub settings below are therefore part of what protects the package. Set everything up
+in this order, so that the package is never publishable from an unprotected environment:
+
+1. **The `npm` environment**, in the repository's **Settings** → **Environments**: create it,
+   set its deployment branches and tags to "Selected branches and tags", and add a single
+   rule, of ref type **Tag**, with the pattern `v*`. No branch rule: a workflow on a branch
+   that matches one could publish from the environment. GitHub creates a missing environment
+   without any rule the first time a workflow names it, hence doing this first. A required
+   reviewer can be added there too, to approve each publish by hand.
+2. **A tag ruleset**, in **Settings** → **Rules** → **Rulesets**: target the tags `v*`,
+   enable "Restrict creations", "Restrict updates" and "Restrict deletions", put the
+   repository admin role in the bypass list (and the organization admin role, if releases are
+   pushed by an owner of the organization), and set the enforcement status to **Active**: a
+   new ruleset is disabled until then. The rules that are already enabled in a new ruleset
+   can stay. Only those who bypass the ruleset can then push, move
+   or delete a release tag, which `npm run release` and moving a tag (see above) both need.
+3. **The trusted publisher**, on npmjs.com, in the package's **Settings** → **Trusted
+   Publisher** → **GitHub Actions**:
+   - Organization or user: `properties-file`
+   - Repository: `properties-file`
+   - Workflow filename: `release.yml` (the file name only; it is case-sensitive)
+   - Environment name: `npm`
+   - Allowed actions: publishing with `npm publish`
+
+   npm does not check the entry when it is saved: a mistake only shows as a failed publish
+   (often a `404` on the package; the log of the Publish job says why). A new entry also stops
+   working if it is not used for a successful publish within 2 days (a new one then has to be
+   created), so create it when a release is about to be made.
+
+4. **Publishing access**, on npmjs.com, in the package's **Settings**: require two-factor
+   authentication and disallow tokens. npm then refuses a publish made with an npm token;
+   trusted publishing keeps working, and so does a maintainer publishing by hand with
+   two-factor authentication.
+
+With all four in place, publishing takes the right to push a `v*` tag. Whatever is on `main`
+goes into the next release, so write access to `main` is trusted as well: protect the branch
+if more people get that access. Each release also shows as a deployment to `npm` on the
+repository's page.
+
 ## Pull Request Checklist
 
 - [ ] `npm run build` passes (includes linting, unused-code and package checks, tests, 100% coverage, and size measurement)
 - [ ] Performance-sensitive changes include `npm run benchmark` results
 - [ ] Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
-      (drives automated changelog via `release-it`)
+      (`fix`, `feat` and `perf` commits are listed in the changelog by `npm run release`)

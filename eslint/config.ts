@@ -168,8 +168,8 @@ export default defineConfig(
   { plugins: { local: { rules: { 'array-iteration-only': arrayIterationOnlyRule } } } },
   // TypeScript configuration, for every TypeScript file in the repository. Typed linting uses
   // the TypeScript project service: each file is checked against the nearest `tsconfig.json`
-  // that includes it (root for src/, then one per tests/, performance/, utilities/, eslint/ and
-  // src/build-scripts/), exactly as an editor would.
+  // that includes it (root for src/, then one per tests/, performance/, release/, utilities/,
+  // eslint/ and src/build-scripts/), exactly as an editor would.
   // @see https://typescript-eslint.io/packages/parser#projectservice
   {
     files: [...TYPESCRIPT_FILES],
@@ -465,7 +465,7 @@ export default defineConfig(
       ...setRules(TS_ESLINT_MODERN_API_RULES, 'off'),
     },
   },
-  // Non-shipped files (build scripts, tests, config) only run on the development Node.js version
+  // Non-shipped files (build and release scripts, tests, config) only run on the development Node.js version
   // or newer (see `.nvmrc`) and should use modern APIs.
   {
     files: [
@@ -474,6 +474,7 @@ export default defineConfig(
       'eslint.config.ts',
       ...TYPESCRIPT_FILES.map((pattern) => `eslint/${pattern}`),
       ...TYPESCRIPT_FILES.map((pattern) => `performance/${pattern}`),
+      ...TYPESCRIPT_FILES.map((pattern) => `release/${pattern}`),
       ...TYPESCRIPT_FILES.map((pattern) => `utilities/${pattern}`),
     ],
     rules: {
