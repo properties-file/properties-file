@@ -91,17 +91,19 @@ const POST_ES5_GLOBAL_RULE_ID = 'no-restricted-globals'
  * derivation alone misses it. Once a `globals` upgrade adds it to an edition, the explicit name
  * is a harmless duplicate in the set.
  */
-/**
- * The one es-x rule that is not about a global and still reports a node with exactly an
- * identifier's range: a shorthand property (`{ Temporal }`) is a single node spanning just its
- * identifier. Its finding is about the shorthand syntax, not about the global.
- */
-const SHORTHAND_PROPERTY_RULE_ID = 'es-x/no-property-shorthands'
-
 const POST_ES5_GLOBAL_NAMES = new Set([
   ...Object.keys(globals.builtin).filter((name) => !Object.hasOwn(globals.es5, name)),
   'Temporal',
 ])
+
+/**
+ * The one es-x rule, in the pinned es-x version, that is not about a global and still reports a
+ * node with exactly an identifier's range: a shorthand property (`{ Temporal }`) is a single
+ * node spanning just its identifier. Its finding is about the shorthand syntax, not about the
+ * global. A future es-x rule of the same kind would need to be added here; until then the
+ * global's own finding would be merged into that rule's, never lost with the file passing.
+ */
+const SHORTHAND_PROPERTY_RULE_ID = 'es-x/no-property-shorthands'
 
 /**
  * Check whether a lint message is ESLint's notice that it ignored an inline directive because
