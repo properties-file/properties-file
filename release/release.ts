@@ -4,9 +4,9 @@
  * entry, then commits, tags and pushes. Pushing the tag starts the other half,
  * `.github/workflows/release.yml`, which publishes to npm and creates the GitHub release.
  *
- * It only needs `git` and `npm` (plus the repository's own `prettier`), asks no question (git
- * itself may still ask for credentials or a signing passphrase), and with `--dry-run` goes
- * through the same steps while changing nothing.
+ * The only commands it runs are `git`, `npm` and the repository's own `prettier`, and it asks
+ * no question (git itself may still ask for credentials or a signing passphrase). Without
+ * `--confirm` it is a dry run: it goes through the same steps while changing nothing.
  */
 import { spawnSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -39,8 +39,31 @@ const FIELD_SEPARATOR = String.fromCodePoint(0x1f)
 /** Separates the commits in the `git log` output (ASCII record separator). */
 const RECORD_SEPARATOR = String.fromCodePoint(0x1e)
 
+/** The option that makes a release real. */
+const CONFIRM_OPTION = '--confirm'
+
+/** The option that asks for what is already the default, a dry run. */
+const DRY_RUN_OPTION = '--dry-run'
+
+/**
+ * The variables npm sets when it is given `--dry-run` (or the `--dryrun` it also accepts)
+ * itself, which is what happens to that option without a `--` before the script's arguments.
+ */
+const NPM_DRY_RUN_VARIABLES = ['npm_config_dry_run', 'npm_config_dryrun']
+
+/**
+ * The variables git sets for the hooks it runs, pointing git at the repository and the index
+ * of the operation in progress. The release must not inherit them: this repository's
+ * pre-commit hook runs the tests, whose releases would otherwise write to the index of the
+ * commit being made instead of the one of their scratch repository.
+ */
+const GIT_HOOK_VARIABLES = new Set(['GIT_DIR', 'GIT_INDEX_FILE', 'GIT_PREFIX', 'GIT_WORK_TREE'])
+
 /** How to call the release script, shown when its arguments are not usable. */
-const USAGE = 'Usage: npm run release -- <major | minor | patch | x.y.z> [--dry-run]'
+const USAGE = `Usage: npm run release -- <major | minor | patch | x.y.z> [${CONFIRM_OPTION}]`
+
+/** Environment variables, as in `process.env`. */
+type Environment = Record<string, string | undefined>
 
 /** What `npm run release` was asked to do. */
 export type ReleaseArguments = {
@@ -54,12 +77,22 @@ export type ReleaseArguments = {
 export type ReleaseOptions = ReleaseArguments & {
   /** The root directory of the repository to release. */
   directoryPath: string
+  /** The environment variables the commands of the release run with. */
+  environment: Environment
   /** The release date, written to the changelog as a UTC `YYYY-MM-DD` date. */
   date: Date
   /** Whether the commands that change something print their output as they run. */
   shouldStreamOutput: boolean
   /** Receives every line the release reports. */
   log: (message: string) => void
+}
+
+/** Where the commands of a release run. */
+type Workspace = {
+  /** The root directory of the repository to release. */
+  directoryPath: string
+  /** The environment variables the commands run with. */
+  environment: Environment
 }
 
 /** The outcome of a command. */
@@ -75,35 +108,42 @@ type CommandResult = {
 /**
  * Parse the arguments of `npm run release`.
  *
- * `--dry-run` is also an option of npm itself: in `npm run release patch --dry-run`, without
- * the `--` separator, npm keeps the option for itself and only tells the script through the
- * `npm_config_dry_run` environment variable. Both forms are a dry run here, so that a forgotten
- * `--` cannot turn a preview into a release.
+ * A release is only real with `--confirm`: anything else is a dry run. This is what keeps a
+ * mistyped command from releasing. npm keeps for itself every option written without a `--`
+ * before the script's arguments (`npm run release patch --confirm`), so the script never
+ * sees it and falls back to the dry run. If npm was itself asked for a dry run (see
+ * {@link NPM_DRY_RUN_VARIABLES}), the release is a dry run whatever the script was given.
  *
  * @param commandArguments - The command line arguments, without the executable and script.
  * @param environment - The environment variables of the process.
  *
  * @returns The parsed arguments.
  *
- * @throws If there is an unknown option, or not exactly one version argument.
+ * @throws If there is an unknown option, both options at once, or not exactly one version
+ *   argument.
  */
 export const parseReleaseArguments = (
   commandArguments: string[],
-  environment: Record<string, string | undefined>
+  environment: Environment
 ): ReleaseArguments => {
   const options = commandArguments.filter((argument) => argument.startsWith('-'))
   const requests = commandArguments.filter((argument) => !argument.startsWith('-'))
-  const unknownOption = options.find((option) => option !== '--dry-run')
+  const unknownOption = options.find(
+    (option) => option !== CONFIRM_OPTION && option !== DRY_RUN_OPTION
+  )
   if (unknownOption !== undefined) {
     throw new Error(`🚨 unknown option "${unknownOption}"\n${USAGE}`)
+  }
+  if (options.includes(CONFIRM_OPTION) && options.includes(DRY_RUN_OPTION)) {
+    throw new Error(`🚨 ${CONFIRM_OPTION} and ${DRY_RUN_OPTION} cannot be used together\n${USAGE}`)
   }
   if (requests.length !== 1) {
     throw new Error(`🚨 expected exactly one version argument\n${USAGE}`)
   }
-  return {
-    request: requests[0],
-    isDryRun: options.includes('--dry-run') || environment.npm_config_dry_run === 'true',
-  }
+  const isNpmDryRun = NPM_DRY_RUN_VARIABLES.some(
+    (name) => ![undefined, '', 'false'].includes(environment[name])
+  )
+  return { request: requests[0], isDryRun: !options.includes(CONFIRM_OPTION) || isNpmDryRun }
 }
 
 /**
@@ -120,7 +160,7 @@ const formatCommand = (command: string, commandArguments: string[]): string =>
 /**
  * Run a command and wait for it.
  *
- * @param directoryPath - The directory to run the command in.
+ * @param workspace - Where to run the command.
  * @param command - The executable.
  * @param commandArguments - Its arguments (passed as-is, without a shell).
  * @param shouldStreamOutput - Whether the command prints to the terminal instead of having its
@@ -129,14 +169,15 @@ const formatCommand = (command: string, commandArguments: string[]): string =>
  * @returns The outcome of the command.
  */
 const runCommand = (
-  directoryPath: string,
+  workspace: Workspace,
   command: string,
   commandArguments: string[],
   shouldStreamOutput = false
 ): CommandResult => {
   const outputMode = shouldStreamOutput ? 'inherit' : 'pipe'
   const result = spawnSync(command, commandArguments, {
-    cwd: directoryPath,
+    cwd: workspace.directoryPath,
+    env: workspace.environment,
     encoding: 'utf8',
     stdio: ['ignore', outputMode, outputMode],
   })
@@ -161,15 +202,15 @@ const runCommand = (
 /**
  * Run a read-only git command that is expected to succeed, and get its output.
  *
- * @param directoryPath - The directory to run the command in.
+ * @param workspace - Where to run the command.
  * @param gitArguments - What to pass to `git` (subcommand, options, …).
  *
  * @returns What the command printed, without trailing whitespace.
  *
  * @throws If the command fails.
  */
-const readGit = (directoryPath: string, gitArguments: string[]): string => {
-  const result = runCommand(directoryPath, 'git', gitArguments)
+const readGit = (workspace: Workspace, gitArguments: string[]): string => {
+  const result = runCommand(workspace, 'git', gitArguments)
   if (!result.isSuccess) {
     throw new Error(`🚨 ${result.failure}`)
   }
@@ -210,59 +251,55 @@ const readPackageManifest = (
 /**
  * Check whether a tag exists in the local repository.
  *
- * @param directoryPath - The root directory of the repository.
+ * @param workspace - The repository.
  * @param tag - The tag name.
  *
  * @returns `true` if the tag exists locally.
  */
-const hasLocalTag = (directoryPath: string, tag: string): boolean =>
-  runCommand(directoryPath, 'git', ['rev-parse', '--quiet', '--verify', `refs/tags/${tag}`])
-    .isSuccess
+const hasLocalTag = (workspace: Workspace, tag: string): boolean =>
+  runCommand(workspace, 'git', ['rev-parse', '--quiet', '--verify', `refs/tags/${tag}`]).isSuccess
 
 /**
  * List the changed and the untracked files of the working tree. Untracked files are always
  * listed, whatever the `status.showUntrackedFiles` setting of the person releasing.
  *
- * @param directoryPath - The root directory of the repository.
+ * @param workspace - The repository.
  *
  * @returns The output of `git status --porcelain` (empty when the working tree is clean).
  */
-const readWorkingTreeChanges = (directoryPath: string): string =>
-  readGit(directoryPath, ['status', '--porcelain', '--untracked-files=normal'])
+const readWorkingTreeChanges = (workspace: Workspace): string =>
+  readGit(workspace, ['status', '--porcelain', '--untracked-files=normal'])
 
 /**
  * List what stands in the way of a release: the checkout must be on the release branch, clean
  * and at the tip of the remote branch, the tag of the current version must be part of its
  * history, and the new tag must not exist anywhere yet. The remote is read with
- * `git ls-remote`, so nothing is fetched and the local repository is not changed.
+ * `git ls-remote` at the URL the release is pushed to, so nothing is fetched and the local
+ * repository is not changed.
  *
- * @param directoryPath - The root directory of the repository.
+ * @param workspace - The repository.
  * @param tag - The tag of the version to release.
  * @param previousTag - The tag of the current version.
  *
  * @returns One line per problem (empty when the release can go ahead).
  */
-const getPreflightProblems = (
-  directoryPath: string,
-  tag: string,
-  previousTag: string
-): string[] => {
+const getPreflightProblems = (workspace: Workspace, tag: string, previousTag: string): string[] => {
   const problems: string[] = []
 
-  const branch = readGit(directoryPath, ['rev-parse', '--abbrev-ref', 'HEAD'])
+  const branch = readGit(workspace, ['rev-parse', '--abbrev-ref', 'HEAD'])
   if (branch !== RELEASE_BRANCH) {
     problems.push(`the current branch is "${branch}", releases are made from "${RELEASE_BRANCH}"`)
   }
 
-  if (readWorkingTreeChanges(directoryPath) !== '') {
+  if (readWorkingTreeChanges(workspace) !== '') {
     problems.push('the working tree has uncommitted changes')
   }
 
   // The changelog entry lists the commits made since that tag: if the tag is not in the
   // history of HEAD, it would also list commits the current version already has.
   if (
-    hasLocalTag(directoryPath, previousTag) &&
-    !runCommand(directoryPath, 'git', [
+    hasLocalTag(workspace, previousTag) &&
+    !runCommand(workspace, 'git', [
       'merge-base',
       '--is-ancestor',
       `refs/tags/${previousTag}`,
@@ -272,18 +309,17 @@ const getPreflightProblems = (
     problems.push(`the tag of the current version (${previousTag}) is not an ancestor of HEAD`)
   }
 
-  if (hasLocalTag(directoryPath, tag)) {
+  if (hasLocalTag(workspace, tag)) {
     problems.push(`the tag ${tag} already exists locally`)
   }
 
+  // The push URL, which is not the URL `git ls-remote origin` reads when the two differ.
+  const pushUrl = runCommand(workspace, 'git', ['remote', 'get-url', '--push', REMOTE])
   const branchReference = `refs/heads/${RELEASE_BRANCH}`
   const tagReference = `refs/tags/${tag}`
-  const remote = runCommand(directoryPath, 'git', [
-    'ls-remote',
-    REMOTE,
-    branchReference,
-    tagReference,
-  ])
+  const remote = pushUrl.isSuccess
+    ? runCommand(workspace, 'git', ['ls-remote', pushUrl.output, branchReference, tagReference])
+    : pushUrl
   if (!remote.isSuccess) {
     return [...problems, `the remote "${REMOTE}" could not be read (${remote.failure})`]
   }
@@ -297,7 +333,7 @@ const getPreflightProblems = (
         return [reference, hash]
       })
   )
-  const head = readGit(directoryPath, ['rev-parse', 'HEAD'])
+  const head = readGit(workspace, ['rev-parse', 'HEAD'])
   if (remoteHashes.get(branchReference) !== head) {
     problems.push(`HEAD is not the tip of ${REMOTE}/${RELEASE_BRANCH} (pull or push first)`)
   }
@@ -310,13 +346,13 @@ const getPreflightProblems = (
 /**
  * Read the commits made since a tag, newest first, without merge commits.
  *
- * @param directoryPath - The root directory of the repository.
+ * @param workspace - The repository.
  * @param tag - The tag to start after.
  *
  * @returns The commits between the tag and `HEAD`.
  */
-const readCommitsSince = (directoryPath: string, tag: string): GitCommit[] =>
-  readGit(directoryPath, [
+const readCommitsSince = (workspace: Workspace, tag: string): GitCommit[] =>
+  readGit(workspace, [
     'log',
     '--no-merges',
     '--format=%H%x1f%s%x1f%b%x1e',
@@ -348,6 +384,12 @@ const readCommitsSince = (directoryPath: string, tag: string): GitCommit[] =>
  */
 export const release = (options: ReleaseOptions): string => {
   const { directoryPath, isDryRun, log } = options
+  const workspace = {
+    directoryPath,
+    environment: Object.fromEntries(
+      Object.entries(options.environment).filter(([name]) => !GIT_HOOK_VARIABLES.has(name))
+    ),
+  }
 
   /**
    * Run one of the commands that change something, or only report it in a dry run.
@@ -364,16 +406,14 @@ export const release = (options: ReleaseOptions): string => {
     if (isDryRun) {
       return
     }
-    const result = runCommand(directoryPath, command, commandArguments, options.shouldStreamOutput)
+    const result = runCommand(workspace, command, commandArguments, options.shouldStreamOutput)
     if (!result.isSuccess) {
       throw new Error(`🚨 ${result.failure}`)
     }
   }
 
   // The three files are committed together, and restored together if a step fails.
-  const trackedFiles = new Set(
-    readGit(directoryPath, ['ls-files', '--', ...RELEASE_FILES]).split('\n')
-  )
+  const trackedFiles = new Set(readGit(workspace, ['ls-files', '--', ...RELEASE_FILES]).split('\n'))
   const untrackedFiles = RELEASE_FILES.filter((file) => !trackedFiles.has(file))
   if (untrackedFiles.length > 0) {
     throw new Error(`🚨 not tracked by git in this directory: ${untrackedFiles.join(', ')}`)
@@ -388,7 +428,7 @@ export const release = (options: ReleaseOptions): string => {
     `📦 Releasing ${currentVersion} → ${version}${isDryRun ? ' (dry run: nothing is changed)' : ''}`
   )
 
-  const problems = getPreflightProblems(directoryPath, tag, previousTag)
+  const problems = getPreflightProblems(workspace, tag, previousTag)
   if (problems.length > 0) {
     const list = problems.map((problem) => `   - ${problem}`).join('\n')
     if (!isDryRun) {
@@ -398,13 +438,13 @@ export const release = (options: ReleaseOptions): string => {
   }
 
   // The changelog entry lists the commits made since the tag of the current version.
-  if (!hasLocalTag(directoryPath, previousTag)) {
+  if (!hasLocalTag(workspace, previousTag)) {
     throw new Error(
       `🚨 the tag of the current version (${previousTag}) does not exist locally (try \`git fetch --tags\`)`
     )
   }
 
-  const commits = readCommitsSince(directoryPath, previousTag)
+  const commits = readCommitsSince(workspace, previousTag)
   const breakingCommitCount = countBreakingCommits(commits)
   if (breakingCommitCount > 0 && !version.endsWith('.0.0')) {
     log(
@@ -428,7 +468,7 @@ export const release = (options: ReleaseOptions): string => {
   if (!isDryRun) {
     // The build formats files and rewrites the README size badge. Such changes belong in a
     // commit of their own, not in the release commit: they are left in the working tree.
-    const changes = readWorkingTreeChanges(directoryPath)
+    const changes = readWorkingTreeChanges(workspace)
     if (changes !== '') {
       throw new Error(`🚨 \`npm run build\` changed files, commit them first:\n${changes}`)
     }
@@ -448,7 +488,7 @@ export const release = (options: ReleaseOptions): string => {
   })
   if (isNormalizedError(committed)) {
     // The tree was clean before these steps, so restoring the release files loses nothing.
-    const restored = runCommand(directoryPath, 'git', ['checkout', 'HEAD', '--', ...RELEASE_FILES])
+    const restored = runCommand(workspace, 'git', ['checkout', 'HEAD', '--', ...RELEASE_FILES])
     throw new Error(
       `${committed.message}\n   ${
         restored.isSuccess
@@ -458,21 +498,29 @@ export const release = (options: ReleaseOptions): string => {
     )
   }
 
-  const pushReferences = [`refs/heads/${RELEASE_BRANCH}`, `refs/tags/${tag}`]
+  // Atomic: the branch and the tag are both accepted, or neither is. Nothing else is pushed,
+  // even for someone whose `push.followTags` setting sends every reachable tag along.
+  const pushArguments = [
+    'push',
+    '--atomic',
+    '--no-follow-tags',
+    REMOTE,
+    `refs/heads/${RELEASE_BRANCH}`,
+    `refs/tags/${tag}`,
+  ]
   const pushed = noThrow(() => {
     execute('git', ['tag', '--annotate', tag, '--message', `Release ${version}`])
-    // Atomic: the branch and the tag are both accepted, or neither is.
-    execute('git', ['push', '--atomic', REMOTE, ...pushReferences])
+    execute('git', pushArguments)
   })
   if (isNormalizedError(pushed)) {
     throw new Error(
       [
         pushed.message,
         `   The release commit exists locally. Check what reached "${REMOTE}" with:`,
-        `     git ls-remote ${REMOTE} ${pushReferences.join(' ')}`,
+        `     git ls-remote ${REMOTE} refs/heads/${RELEASE_BRANCH} refs/tags/${tag}`,
         `   To retry (create the tag first if \`git tag --list ${tag}\` prints nothing):`,
         `     git tag --annotate ${tag} --message "Release ${version}"`,
-        `     git push --atomic ${REMOTE} ${pushReferences.join(' ')}`,
+        `     git ${pushArguments.join(' ')}`,
         '   To undo, if nothing was pushed:',
         `     git tag --delete ${tag}`,
         '     git reset --hard HEAD~1',
@@ -483,7 +531,8 @@ export const release = (options: ReleaseOptions): string => {
 
   log(
     isDryRun
-      ? `✅ Dry run of ${tag} complete, nothing was changed.`
+      ? `✅ Dry run of ${tag} complete, nothing was changed. To release it: ` +
+          `npm run release -- ${options.request} ${CONFIRM_OPTION}`
       : `✅ ${tag} is pushed. The release workflow now tests it, publishes it to npm and creates ` +
           `the GitHub release: ${repositoryUrl}/actions/workflows/release.yml`
   )

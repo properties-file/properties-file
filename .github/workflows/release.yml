@@ -35,11 +35,14 @@ jobs:
       name: ${{ steps.tag.outputs.name }}
       version: ${{ steps.tag.outputs.version }}
     steps:
-      # The whole history, to check below that the tagged commit is on `main`.
+      # The whole history, to check below that the tagged commit is on `main`. The token is not
+      # kept in the git configuration: nothing after this step needs it, and the steps below
+      # run every development dependency.
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       # Without a dependency cache, as npm recommends for a workflow that publishes.
       - name: Setup node
@@ -90,15 +93,21 @@ jobs:
       - name: Build
         run: npm run build
 
-      # The build formats files and rewrites the README size badge. `npm run release` only
-      # tags a commit on which it changes nothing, but that was checked on another machine:
-      # if it changes a tracked file here, say so and publish the file as it was tagged.
-      - name: Restore the tracked files the build changed
+      # The build formats and fixes the sources before compiling them, and rewrites the size
+      # badge of the README. `npm run release` only tags a commit on which the build changes
+      # nothing, so a change here means that what was compiled is not what was tagged: stop.
+      # The README is the exception, since its badge is measured again on this machine: it is
+      # published as it was tagged.
+      - name: Check that the build changed nothing
         run: |
+          if ! git diff --quiet -- README.md; then
+            echo "::warning::The build rewrote README.md. It is published as it was tagged."
+            git checkout -- README.md
+          fi
           if [ -n "$(git status --porcelain)" ]; then
             git status --porcelain
-            echo "::warning::The build changed the files listed in this step's log. They are published as they were tagged."
-            git checkout -- .
+            echo "::error::The build changed or created the files listed in this step's log: what it compiled is not the tagged commit."
+            exit 1
           fi
 
       # The exact archive that gets published: `<name>-<version>.tgz`.
@@ -122,8 +131,8 @@ jobs:
     needs: [test, build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # The trusted publisher on npmjs.com names this environment, so npm refuses a publish from
-    # a job that is not in it, and the environment's own rules decide which tags may use it.
+    # The trusted publisher on npmjs.com names this environment, whose rules (set up once, see
+    # "Releasing" in docs/CONTRIBUTING.md) limit which tags may use it.
     environment: npm
     permissions:
       # Create the GitHub release.
@@ -154,13 +163,14 @@ jobs:
           package-manager-cache: false
 
       # Skipped when the version is already on npm, so that a run can be re-run after a later
-      # step failed. Provenance is attached automatically by trusted publishing.
+      # step failed. Provenance is attached automatically by trusted publishing. Verbose,
+      # because npm only says at that level why trusted publishing did not work.
       - name: Publish to npm
         run: |
           if [ "$(npm view "$NAME@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
             echo "::notice::$NAME@$VERSION is already on npm, not publishing again."
           else
-            npm publish "release/$NAME-$VERSION.tgz" --ignore-scripts
+            npm publish "release/$NAME-$VERSION.tgz" --ignore-scripts --loglevel verbose
           fi
 
       # Skipped when the release already exists, for the same reason.

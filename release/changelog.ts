@@ -13,24 +13,38 @@ const REGEX_COMMIT_SUBJECT =
 
 /**
  * Matches a line of a commit body that starts a breaking change note, capturing the note up to
- * the next blank line.
+ * the next line that is empty or only has whitespace.
  */
-const REGEX_BREAKING_CHANGE_NOTE = /^BREAKING[ -]CHANGE: (?<note>.+(?:\n.+)*)/m
+const REGEX_BREAKING_CHANGE_NOTE = /^BREAKING[ -]CHANGE: (?<note>.+(?:\n[^\S\n]*\S.*)*)/m
 
-/** Matches the subject git gives a revert commit, capturing the subject of the reverted one. */
-const REGEX_REVERT_SUBJECT = /^Revert "(?<subject>.+)"$/
+/**
+ * Matches the subject git gives a commit that undoes another one, capturing which of the two
+ * forms it has (`Revert "…"`, or `Reapply "…"` for the revert of a revert) and the subject of
+ * the commit it undoes.
+ */
+const REGEX_UNDO_SUBJECT = /^(?<action>Revert|Reapply) "(?<subject>.+)"$/
 
-/** Matches the body line git gives a revert commit, capturing the hash of the reverted one. */
-const REGEX_REVERTED_HASH = /^This reverts commit (?<hash>[\da-f]{7,40})\b/m
+/** Matches the body line git gives such a commit, capturing the hash of the commit it undoes. */
+const REGEX_UNDONE_HASH = /^This reverts commit (?<hash>[\da-f]{7,40})\b/m
 
-/** Matches a Markdown code span, which is kept as it is when a commit's text is escaped. */
-const REGEX_CODE_SPAN = /(`[^`]*`)/
+/**
+ * Matches what {@link escapeEmphasis} has to look at in a commit's text. The `kept` group is
+ * what must stay as it is: a code span (between two runs of as many backticks), an autolink
+ * (`<…>`), a bare URL, or a character that is already escaped. Otherwise the match is a `*`
+ * or a `_` to escape.
+ */
+const REGEX_EMPHASIS =
+  /(?<kept>(?<!`)(?<backticks>`+)(?!`).+?(?<!`)\k<backticks>(?!`)|<[^\s<>]+>|https?:\/\/\S+|\\.)|[*_]/g
 
 /** Matches the heading of any version entry in `CHANGELOG.md` (`# [1.0.0](…)`, `## [1.0.1](…)`). */
 const REGEX_VERSION_HEADING = /^#{1,2} \[/
 
-/** Matches the line that opens or closes a fenced code block. */
-const REGEX_CODE_FENCE = /^\s*(?:```|~~~)/
+/**
+ * Matches the line that opens a fenced code block, capturing its fence: at least three
+ * backticks or tildes, indented by three spaces at most. A backtick fence cannot be followed
+ * by another backtick on its line (that would be a code span).
+ */
+const REGEX_CODE_FENCE_OPENING = /^ {0,3}(?<fence>`{3,}(?=[^`]*$)|~{3,})/
 
 /** Matches the compare link of a version entry heading, capturing its URL and its tag range. */
 const REGEX_COMPARE_LINK = /\]\((?<url>[^()\s]+\/compare\/(?<range>[^()\s/]+))\)/
@@ -186,17 +200,18 @@ export const getRepositoryUrl = (packageRepositoryUrl: string): string => {
  *   the release commit, …).
  */
 const parseCommit = (commit: GitCommit): ListedCommit | undefined => {
-  const revertedSubject = REGEX_REVERT_SUBJECT.exec(commit.subject)?.groups?.subject
-  if (revertedSubject !== undefined) {
+  const undo = REGEX_UNDO_SUBJECT.exec(commit.subject)?.groups
+  if (undo?.action === 'Revert') {
     return {
       hash: commit.hash,
       type: REVERT_TYPE,
       scope: undefined,
-      description: revertedSubject,
+      description: undo.subject,
       breakingNote: undefined,
     }
   }
-  const groups = REGEX_COMMIT_SUBJECT.exec(commit.subject)?.groups
+  // A reapplied commit is listed as the commit it brings back.
+  const groups = REGEX_COMMIT_SUBJECT.exec(undo?.subject ?? commit.subject)?.groups
   if (groups === undefined) {
     return undefined
   }
@@ -214,9 +229,23 @@ const parseCommit = (commit: GitCommit): ListedCommit | undefined => {
 }
 
 /**
+ * Check whether a commit undoes another one: its subject is the one git gives a revert
+ * (`Revert "…"`, `Reapply "…"`) or has the Conventional Commits type `revert`.
+ *
+ * @param commit - The commit to check.
+ *
+ * @returns `true` if the commit is a revert.
+ */
+const isUndoCommit = (commit: GitCommit): boolean =>
+  REGEX_UNDO_SUBJECT.test(commit.subject) ||
+  REGEX_COMMIT_SUBJECT.exec(commit.subject)?.groups?.type === REVERT_TYPE
+
+/**
  * Parse the commits the changelog can list, leaving out what was undone before the release: a
- * revert commit and the commit it reverts are both dropped when both are in the list. A revert
- * of a commit that is not in the list (it was released before) is kept.
+ * revert and the commit it names (`This reverts commit <hash>`) are both dropped when both are
+ * in the list. A revert of a commit that is not in the list is kept: the commit was released
+ * before, or it is a merge commit, which the list never has (the commits of a reverted merge
+ * stay listed, next to the revert).
  *
  * @param commits - The commits made since the previous version, newest first.
  *
@@ -227,15 +256,13 @@ const parseCommits = (commits: GitCommit[]): ListedCommit[] => {
   // Newest first, so that a revert which was itself reverted is dropped before it can drop
   // the commit it reverted.
   for (const commit of commits) {
-    const revertedHash = REGEX_REVERTED_HASH.exec(commit.body)?.groups?.hash
-    if (revertedHash === undefined || droppedHashes.has(commit.hash)) {
+    const undoneHash = REGEX_UNDONE_HASH.exec(commit.body)?.groups?.hash
+    if (undoneHash === undefined || !isUndoCommit(commit) || droppedHashes.has(commit.hash)) {
       continue
     }
-    const revertedCommit = commits.find(
-      (candidate) => candidate.hash.startsWith(revertedHash) && !droppedHashes.has(candidate.hash)
-    )
-    if (revertedCommit !== undefined) {
-      droppedHashes.add(commit.hash).add(revertedCommit.hash)
+    const undoneCommit = commits.find((candidate) => candidate.hash.startsWith(undoneHash))
+    if (undoneCommit !== undefined) {
+      droppedHashes.add(commit.hash).add(undoneCommit.hash)
     }
   }
   return commits
@@ -246,18 +273,17 @@ const parseCommits = (commits: GitCommit[]): ListedCommit[] => {
 
 /**
  * Escape the characters of a commit's text that Markdown reads as emphasis (`*` and `_`), so
- * that `__proto__` is not rendered as a bold "proto". Code spans are left as they are.
+ * that `__proto__` is not rendered as a bold "proto". Code spans, URLs and characters that are
+ * already escaped are left as they are; nothing else of Markdown is escaped.
  *
  * @param text - The text to escape.
  *
- * @returns The text, safe to write in a Markdown list item.
+ * @returns The text, with its `*` and `_` written as literal characters.
  */
 const escapeEmphasis = (text: string): string =>
-  text
-    .split(REGEX_CODE_SPAN)
-    // Splitting on a capturing group puts the code spans at the odd indexes.
-    .map((part, index) => (index % 2 === 1 ? part : part.replaceAll(/[*_]/g, String.raw`\$&`)))
-    .join('')
+  text.replaceAll(REGEX_EMPHASIS, (match, kept?: string) =>
+    kept === undefined ? `\\${match}` : match
+  )
 
 /**
  * Render one changelog list item for a commit.
@@ -337,6 +363,24 @@ export const renderChangelogEntry = (input: ChangelogEntryInput): string => {
 }
 
 /**
+ * Check whether a line closes a fenced code block: nothing but the characters of the opening
+ * fence, at least as many of them, indented by three spaces at most.
+ *
+ * @param line - The line to check.
+ * @param openFence - The fence that opened the code block.
+ *
+ * @returns `true` if the line closes the code block.
+ */
+const isClosingFence = (line: string, openFence: string): boolean => {
+  const fence = line.trim()
+  return (
+    /^ {0,3}\S/.test(line) &&
+    fence.length >= openFence.length &&
+    fence === openFence[0].repeat(fence.length)
+  )
+}
+
+/**
  * Find the headings of the version entries of a `CHANGELOG.md`. Lines inside fenced code
  * blocks are not headings, even when they look like one (a `# [section]` line in a
  * `.properties` example).
@@ -344,16 +388,26 @@ export const renderChangelogEntry = (input: ChangelogEntryInput): string => {
  * @param lines - The lines of `CHANGELOG.md`.
  *
  * @returns The index of each version entry heading, in file order.
+ *
+ * @throws If a fenced code block is never closed, since every line after its opening would
+ *   then be code.
  */
 const findVersionHeadings = (lines: string[]): number[] => {
   const headingIndexes: number[] = []
-  let isInCodeBlock = false
+  // The fence of the code block the current line is in, if it is in one.
+  let openFence: string | undefined
   for (const [index, line] of lines.entries()) {
-    if (REGEX_CODE_FENCE.test(line)) {
-      isInCodeBlock = !isInCodeBlock
-    } else if (!isInCodeBlock && REGEX_VERSION_HEADING.test(line)) {
-      headingIndexes.push(index)
+    if (openFence === undefined) {
+      openFence = REGEX_CODE_FENCE_OPENING.exec(line)?.groups?.fence
+      if (openFence === undefined && REGEX_VERSION_HEADING.test(line)) {
+        headingIndexes.push(index)
+      }
+    } else if (isClosingFence(line, openFence)) {
+      openFence = undefined
     }
+  }
+  if (openFence !== undefined) {
+    throw new Error('🚨 CHANGELOG.md has a fenced code block that is never closed')
   }
   return headingIndexes
 }

@@ -1,6 +1,6 @@
 /**
- * The entry point of `npm run release -- <major | minor | patch | x.y.z> [--dry-run]`
- * (see ./release.ts for what a release does).
+ * The entry point of `npm run release -- <major | minor | patch | x.y.z> [--confirm]`
+ * (see ./release.ts for what a release does, and why it is a dry run without `--confirm`).
  */
 import { isNormalizedError, noThrow } from '../utilities/no-throw'
 
@@ -10,6 +10,7 @@ const outcome = noThrow(() =>
   release({
     ...parseReleaseArguments(process.argv.slice(2), process.env),
     directoryPath: process.cwd(),
+    environment: process.env,
     date: new Date(),
     shouldStreamOutput: true,
     log: (message) => {
