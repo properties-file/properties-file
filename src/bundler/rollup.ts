@@ -1,5 +1,7 @@
 import { getProperties } from '..'
 
+import { serializeProperties } from './serialize'
+
 import type { Plugin } from 'rollup'
 
 /** The file extension matched by this plugin. */
@@ -17,7 +19,7 @@ const rollupPlugin = (): Plugin => ({
       return null
     }
     return {
-      code: `export const properties = ${JSON.stringify(getProperties(content))};`,
+      code: `export const properties = ${serializeProperties(getProperties(content))};`,
       map: null,
     }
   },

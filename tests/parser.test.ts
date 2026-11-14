@@ -39,6 +39,12 @@ const untypedNormalizeOptions = (options: unknown): NormalizeOptions => {
 }
 
 /**
+ * Every name a plain object inherits from `Object.prototype` (`constructor`, `toString`,
+ * `__proto__`…), as provided by the engine running the tests.
+ */
+const OBJECT_PROTOTYPE_MEMBER_NAMES = Object.getOwnPropertyNames(Object.prototype)
+
+/**
  * Assert that parsing and re-formatting the input produces the exact same string.
  *
  * @param input - The `.properties` file content to round-trip.
@@ -373,6 +379,25 @@ describe('Query methods', () => {
     expect(new Properties('# comment\na = 1\nb = 2').getKeyCollisions()).toStrictEqual([])
   })
 
+  it.each(OBJECT_PROTOTYPE_MEMBER_NAMES)(
+    'getKeyCollisions() treats the `Object.prototype` member name `%s` as a regular key',
+    (key) => {
+      expect(new Properties(`${key} = only\nother = x`).getKeyCollisions()).toStrictEqual([])
+
+      const collisions = new Properties(
+        `${key} = first\nother = x\n${key} = second`
+      ).getKeyCollisions()
+      expect(collisions).toHaveLength(1)
+      expect(collisions[0].key).toBe(key)
+      expect(collisions[0].nodes.map((node) => node.value)).toStrictEqual(['first', 'second'])
+    }
+  )
+
+  it('getKeyCollisions() reports keys in order of first occurrence', () => {
+    const collisions = new Properties('b = 1\n2 = 1\nb = 2\n1 = 1\n1 = 2\n2 = 2').getKeyCollisions()
+    expect(collisions.map((collision) => collision.key)).toStrictEqual(['b', '2', '1'])
+  })
+
   it('getLeadingNodes(key) returns comment + blank nodes before a property', () => {
     const leading = new Properties('a = 1\n# about b\n\nb = 2').getLeadingNodes('b')
     expect(leading).toHaveLength(2)
@@ -418,15 +443,29 @@ describe('format() with normalization options', () => {
         untypedNormalizeOptions({ deduplicateKeys: 1, deduplicateKeysKeepLeadingNodes: 'yes' })
       )
     ).toBe('  # note\n\na = 2\n# lead\nb = 3')
-    // On its own, a truthy non-`true` `removeLeadingWhitespace` strips comment lines only:
-    // property lines are rebuilt when another option requires it (here, `separatorChar`).
+    // Comment lines and property lines alike, with or without another option that rebuilds
+    // property lines (here, `separatorChar`).
     expect(properties.format(untypedNormalizeOptions({ removeLeadingWhitespace: 1 }))).toBe(
-      '# note\n\n  a = 1\na = 2\n# lead\nb = 3'
+      '# note\n\na = 1\na = 2\n# lead\nb = 3'
     )
     expect(
       properties.format(untypedNormalizeOptions({ removeLeadingWhitespace: 1, separatorChar: ':' }))
     ).toBe('# note\n\na : 1\na : 2\n# lead\nb : 3')
   })
+
+  it.each(OBJECT_PROTOTYPE_MEMBER_NAMES)(
+    'deduplicateKeys treats the `Object.prototype` member name `%s` as a regular key',
+    (key) => {
+      expect(new Properties(`${key} = only\nother = x`).format({ deduplicateKeys: true })).toBe(
+        `${key} = only\nother = x`
+      )
+      expect(
+        new Properties(`${key} = first\nother = x\n${key} = second`).format({
+          deduplicateKeys: true,
+        })
+      ).toBe(`other = x\n${key} = second`)
+    }
+  )
 
   it('removeComments strips all comment lines', () => {
     const result = new Properties('# comment\nkey = value\n! another').format({

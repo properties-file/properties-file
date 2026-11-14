@@ -96,12 +96,9 @@ export const unescapeContent = (content: string): string => {
         break
       }
       case CH_LOWER_U: {
-        // \uXXXX — require exactly 4 hex digits after the 'u'.
-        if (cursor + 4 >= length) {
-          throw new Error(
-            `malformed escaped unicode characters '${content.slice(cursor - 1, cursor + 5)}'`
-          )
-        }
+        // \uXXXX — require exactly 4 hex digits after the 'u'. A digit missing because the
+        // content ends too early reads as `NaN`, which `hexValue` rejects like any other
+        // non-hex character.
         const h1 = hexValue(content.charCodeAt(cursor + 1))
         const h2 = hexValue(content.charCodeAt(cursor + 2))
         const h3 = hexValue(content.charCodeAt(cursor + 3))

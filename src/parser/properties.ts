@@ -77,7 +77,23 @@ export class Properties {
   toObject(): KeyValuePairObject {
     const result: KeyValuePairObject = {}
     for (const node of this.nodes) {
-      if (node.type === 'property') {
+      if (node.type !== 'property') {
+        continue
+      }
+
+      if (node.key === '__proto__') {
+        // A plain assignment to `__proto__` goes through the setter inherited from
+        // `Object.prototype`, which ignores a string: the key would be silently dropped.
+        // Defining it creates a regular own property instead, as `JSON.parse` does on the
+        // same engines. On Node.js 0.4, where `__proto__` is built into every object, the key
+        // still does not appear in the result.
+        Object.defineProperty(result, node.key, {
+          value: node.value,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        })
+      } else {
         result[node.key] = node.value
       }
     }
@@ -117,35 +133,49 @@ export class Properties {
   /**
    * Get keys that appear more than once, with all their property nodes.
    *
-   * @returns An array of {@link KeyCollisions} for duplicate keys.
+   * @returns An array of {@link KeyCollisions} for duplicate keys, in order of each key's
+   *   first occurrence in the file.
    */
   getKeyCollisions(): KeyCollisions[] {
-    // Typed as `| undefined` so TS-strict `no-unnecessary-condition` matches runtime reality:
-    // accessing a missing key returns `undefined`. `Map` would be cleaner but is ES2015 and not
-    // available in shipped ES5 output.
-    const nodesByKey: Record<string, PropertyNode[] | undefined> = {}
+    // One group of nodes per distinct key, in order of first occurrence.
+    const groups: PropertyNode[][] = []
+    // A plain object used as a dictionary (`Map` would be cleaner but is ES2015 and not
+    // available in shipped ES5 output). It inherits `constructor`, `toString` and the other
+    // `Object.prototype` members, so only its own properties are read. The group of a
+    // `__proto__` key (the name of the prototype accessor) is kept apart: assigning an array
+    // to that name replaces the dictionary's prototype instead of storing a property, and
+    // Node.js 0.4 reports the name as an own property of every object.
+    const groupByKey: Record<string, PropertyNode[]> = {}
+    let prototypeAccessorKeyGroup: PropertyNode[] | undefined
     for (const node of this.nodes) {
       if (node.type !== 'property') {
         continue
       }
 
-      const existing = nodesByKey[node.key]
-      if (existing === undefined) {
-        nodesByKey[node.key] = [node]
+      const isPrototypeAccessorKey = node.key === '__proto__'
+      let group = isPrototypeAccessorKey ? prototypeAccessorKeyGroup : undefined
+      if (!isPrototypeAccessorKey && Object.prototype.hasOwnProperty.call(groupByKey, node.key)) {
+        group = groupByKey[node.key]
+      }
+
+      if (group !== undefined) {
+        group.push(node)
+        continue
+      }
+
+      group = [node]
+      groups.push(group)
+      if (isPrototypeAccessorKey) {
+        prototypeAccessorKeyGroup = group
       } else {
-        existing.push(node)
+        groupByKey[node.key] = group
       }
     }
 
     const collisions: KeyCollisions[] = []
-    // Keyed lookup instead of `Object.entries()`: the downleveled `entries()` form would emit a
-    // helper that allocates a `[key, value]` pair array per key into the shipped bundle; this
-    // form keeps the ES5 output allocation-free.
-    // eslint-disable-next-line unicorn/prefer-object-iterable-methods
-    for (const key of Object.keys(nodesByKey)) {
-      const nodes = nodesByKey[key]
-      if (nodes !== undefined && nodes.length > 1) {
-        collisions.push({ key, nodes })
+    for (const nodes of groups) {
+      if (nodes.length > 1) {
+        collisions.push({ key: nodes[0].key, nodes })
       }
     }
     return collisions

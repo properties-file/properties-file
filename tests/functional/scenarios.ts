@@ -126,6 +126,29 @@ const duplicateKeysInput = [
   'dup = four',
 ].join('\n')
 
+// Keys named like `Object.prototype` members are regular keys: a plain object used as a
+// dictionary must not find them before they are stored.
+const prototypeMemberKeysInput = [
+  'constructor = one',
+  'toString = two',
+  '__proto__ = three',
+  'constructor = four',
+  '# leads the last __proto__',
+  '__proto__ = five',
+  'hasOwnProperty = six',
+].join('\n')
+
+// The same without `__proto__`, for scenarios that return the parsed object. These scenarios
+// are also replayed on Node.js 0.4, whose engine treats `__proto__` as built into every object
+// rather than as a property an object can own, so `getProperties()` cannot return that key
+// there.
+const storablePrototypeMemberKeysInput = [
+  'constructor = one',
+  'toString = two',
+  'constructor = four',
+  'hasOwnProperty = six',
+].join('\n')
+
 const parseScenarios: ParseScenario[] = [
   parseScenario('parse-fixture', fixture),
   parseScenario('parse-fixture-bom', fixtureWithBom),
@@ -135,6 +158,7 @@ const parseScenarios: ParseScenario[] = [
   parseScenario('parse-comment-only', '# just a comment\n! another comment\n   # indented comment'),
   parseScenario('parse-continuation-heavy', continuationHeavyInput),
   parseScenario('parse-duplicate-keys', duplicateKeysInput),
+  parseScenario('parse-prototype-member-keys', storablePrototypeMemberKeysInput),
   // Astral (outside-BMP) characters are represented as UTF-16 surrogate pairs, per the Java
   // .properties format (a \uXXXX escape is one code unit; astral characters take two escapes).
   parseScenario(
@@ -148,17 +172,22 @@ const parseScenarios: ParseScenario[] = [
 // ---------------------------------------------------------------------------
 
 /**
- * Build a `format` scenario definition against the fixture content.
+ * Build a `format` scenario definition.
  *
  * @param id - Unique scenario id.
  * @param options - Normalization options to pass to `format()`.
+ * @param input - The `.properties` content to format (the fixture content by default).
  *
  * @returns The {@link FormatScenario} definition.
  */
-const formatScenario = (id: string, options: NormalizeOptions): FormatScenario => ({
+const formatScenario = (
+  id: string,
+  options: NormalizeOptions,
+  input: string = fixture
+): FormatScenario => ({
   id,
   kind: 'format',
-  input: fixture,
+  input,
   options,
 })
 
@@ -180,6 +209,11 @@ const formatScenarios: FormatScenario[] = [
     deduplicateKeys: true,
     deduplicateKeysKeepLeadingNodes: true,
   }),
+  formatScenario(
+    'format-deduplicate-prototype-member-keys',
+    { deduplicateKeys: true },
+    prototypeMemberKeysInput
+  ),
   formatScenario('format-remove-leading-whitespace', { removeLeadingWhitespace: true }),
   formatScenario('format-eol-crlf', { endOfLineCharacter: '\r\n' }),
   formatScenario('format-combo-escape-colon-wrap', {

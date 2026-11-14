@@ -117,6 +117,16 @@ export const formatNormalized = (
   options: NormalizeOptions
 ): string => {
   const eol = options.endOfLineCharacter ?? eolCharacter
+
+  // The optional boolean options tested by truthiness, read once. `Boolean()` rather than
+  // `=== true`: for these checks any truthy value counts, including out-of-type ones from
+  // untyped JavaScript callers (`1`).
+  const shouldDeduplicateKeys = Boolean(options.deduplicateKeys)
+  const shouldKeepLeadingNodes = Boolean(options.deduplicateKeysKeepLeadingNodes)
+  const shouldRemoveComments = Boolean(options.removeComments)
+  const shouldRemoveBlankLines = Boolean(options.removeBlankLines)
+  const shouldRemoveLeadingWhitespace = Boolean(options.removeLeadingWhitespace)
+
   const requiresPropertyRebuild =
     options.separatorChar !== undefined ||
     options.separatorLeading !== undefined ||
@@ -125,32 +135,39 @@ export const formatNormalized = (
     options.collapseMultiline === true ||
     options.wrapKeysAt !== undefined ||
     options.wrapValuesAt !== undefined ||
-    options.removeLeadingWhitespace === true
-
-  // The optional boolean options tested by truthiness below, read once. `Boolean()` rather than
-  // `=== true`: for these checks any truthy value counts, including out-of-type ones from
-  // untyped JavaScript callers (`1`). `requiresPropertyRebuild` above is stricter (`=== true`),
-  // so a truthy non-`true` `removeLeadingWhitespace` on its own only strips comment lines.
-  const shouldDeduplicateKeys = Boolean(options.deduplicateKeys)
-  const shouldKeepLeadingNodes = Boolean(options.deduplicateKeysKeepLeadingNodes)
-  const shouldRemoveComments = Boolean(options.removeComments)
-  const shouldRemoveBlankLines = Boolean(options.removeBlankLines)
-  const shouldRemoveLeadingWhitespace = Boolean(options.removeLeadingWhitespace)
+    // Same truthiness test as for comment lines below, so that the option always applies to
+    // both kinds of lines or to neither.
+    shouldRemoveLeadingWhitespace
 
   // Pre-compute which node indices to keep when deduplicating.
   let skipIndices: Record<number, boolean> | undefined
   if (shouldDeduplicateKeys) {
-    // Walk backward to find the last occurrence of each key.
+    // Walk backward to find the last occurrence of each key. `seen` is a plain object used as
+    // a dictionary (`Map` is ES2015 and not available in shipped ES5 output), so it inherits
+    // `constructor`, `toString` and the other `Object.prototype` members: only its own
+    // properties count as seen. A `__proto__` key (the name of the prototype accessor) is tracked
+    // apart: assigning to that name does not store a property, and Node.js 0.4 reports it as an
+    // own property of every object, so it would always count as seen there.
     const seen: Record<string, boolean> = {}
+    let hasSeenPrototypeAccessorKey = false
     const duplicateIndices: number[] = []
     for (let index = nodes.length - 1; index >= 0; index--) {
       const node = nodes[index]
-      if (node.type === 'property') {
-        if (seen[node.key]) {
-          duplicateIndices.push(index)
-        } else {
-          seen[node.key] = true
-        }
+      if (node.type !== 'property') {
+        continue
+      }
+
+      const isPrototypeAccessorKey = node.key === '__proto__'
+      if (
+        isPrototypeAccessorKey
+          ? hasSeenPrototypeAccessorKey
+          : Object.prototype.hasOwnProperty.call(seen, node.key)
+      ) {
+        duplicateIndices.push(index)
+      } else if (isPrototypeAccessorKey) {
+        hasSeenPrototypeAccessorKey = true
+      } else {
+        seen[node.key] = true
       }
     }
 
