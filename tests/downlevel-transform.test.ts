@@ -2005,12 +2005,48 @@ describe('ES5 output gate (verify-es5-output)', () => {
     }
   )
 
+  it('reports a post-ES5 global used as a shorthand property, besides the shorthand itself', () => {
+    // A shorthand property is one node with exactly its identifier's range, so the shorthand
+    // finding sits at the very position and extent of the global ban's finding. It is about the
+    // syntax, not the global: `Temporal` and `Intl`, which no es-x rule reports, must still be
+    // named. `Map` is reported by its own es-x rule, so the ban's duplicate is dropped. Module
+    // mode only: at ES5 a shorthand property is a parse error.
+    const { reportLines } = runGate((directory) => {
+      writeFileSync(
+        path.join(directory, 'index.js'),
+        'var first = { Temporal }\nvar second = { Intl }\nvar third = { Map }\n'
+      )
+    }, 'module')
+
+    /**
+     * List the rules the gate reported on one line of `index.js`, sorted.
+     *
+     * @param lineNumber - The 1-based line number.
+     *
+     * @returns The parenthesized rule name ending each report line for that line.
+     */
+    const rulesReportedOnLine = (lineNumber: number): string[] =>
+      reportLines
+        .filter((reportLine) => reportLine.includes(`index.js:${lineNumber}:`))
+        .map((reportLine) => reportLine.slice(reportLine.lastIndexOf('(')))
+        .toSorted((left, right) => left.localeCompare(right))
+
+    expect(rulesReportedOnLine(1)).toStrictEqual([
+      '(es-x/no-property-shorthands)',
+      '(no-restricted-globals)',
+    ])
+    expect(rulesReportedOnLine(2)).toStrictEqual([
+      '(es-x/no-property-shorthands)',
+      '(no-restricted-globals)',
+    ])
+    expect(rulesReportedOnLine(3)).toStrictEqual(['(es-x/no-map)', '(es-x/no-property-shorthands)'])
+  })
+
   it('counts a file ESLint does not lint (under node_modules) as a violation, without crashing', () => {
     // ESLint's default ignores (`node_modules/`, `.git/`) apply inside the verified directory:
     // such a file gets a single non-fatal "No matching configuration" message and no
-    // `SourceCode`. It is listed after `a.js`: a gate that only treated fatal messages as
-    // "not linted" would resolve this file's line-0 message against a `SourceCode` that is not
-    // this file's, and crash instead of reporting it.
+    // `SourceCode`. A gate that only treated fatal messages as "not linted" would look for
+    // this file's `SourceCode`, find none, and throw instead of reporting it.
     const { verdict, reportLines } = runGate((directory) => {
       writeFileSync(path.join(directory, 'a.js'), 'var value = 1\n')
       mkdirSync(path.join(directory, 'node_modules', 'dependency'), { recursive: true })

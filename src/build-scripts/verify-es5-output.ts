@@ -22,8 +22,8 @@
  * `Array#keys`) is not reported, while a post-ES5 call on its result
  * (`Object.keys(o).includes(k)`, an array receiver) is. No es-x finding is filtered after the
  * fact: every one outside the SWC helpers below fails the build. The only finding not counted
- * is the global ban's report of an identifier that an es-x rule already reports (the very same
- * identifier, start to end) — the same construct, counted once.
+ * is the global ban's report of an identifier that an es-x rule about globals already reports
+ * (the very same identifier, start to end) — the same construct, counted once.
  *
  * The one allowed location is inside SWC's own emitted compatibility helpers: those reference
  * modern globals deliberately, behind `typeof` guards and try/catch feature detection, to use
@@ -91,6 +91,13 @@ const POST_ES5_GLOBAL_RULE_ID = 'no-restricted-globals'
  * derivation alone misses it. Once a `globals` upgrade adds it to an edition, the explicit name
  * is a harmless duplicate in the set.
  */
+/**
+ * The one es-x rule that is not about a global and still reports a node with exactly an
+ * identifier's range: a shorthand property (`{ Temporal }`) is a single node spanning just its
+ * identifier. Its finding is about the shorthand syntax, not about the global.
+ */
+const SHORTHAND_PROPERTY_RULE_ID = 'es-x/no-property-shorthands'
+
 const POST_ES5_GLOBAL_NAMES = new Set([
   ...Object.keys(globals.builtin).filter((name) => !Object.hasOwn(globals.es5, name)),
   'Temporal',
@@ -294,14 +301,16 @@ export const verifyEs5Output = async (
       }
       // Where an es-x rule reports a post-ES5 global, `no-restricted-globals` reports the very
       // same identifier (same start, same end): that second finding is the same construct, not
-      // another one. A finding that merely starts at the same position (e.g. a prototype-method
-      // rule on `Temporal.includes(...)`, which spans the whole member expression) is a
-      // different construct and replaces nothing.
+      // another one. A finding about anything else replaces nothing: one that merely starts at
+      // the same position (e.g. a prototype-method rule on `Temporal.includes(...)`, which
+      // spans the whole member expression), or the shorthand-property rule, whose node has the
+      // identifier's exact range (see SHORTHAND_PROPERTY_RULE_ID).
       if (
         message.ruleId === POST_ES5_GLOBAL_RULE_ID &&
         messages.some(
           (otherMessage) =>
             otherMessage.ruleId?.startsWith('es-x/') === true &&
+            otherMessage.ruleId !== SHORTHAND_PROPERTY_RULE_ID &&
             otherMessage.line === message.line &&
             otherMessage.column === message.column &&
             otherMessage.endLine === message.endLine &&
