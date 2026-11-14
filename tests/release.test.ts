@@ -61,14 +61,19 @@ const HTTP_URL = 'http://example.com/a_b'
 const COMMAND_TIMEOUT = 60_000
 
 /**
- * The environment of every command the tests run. Two things are taken out of this process's
- * own: every `GIT_*` variable (these tests run in the pre-commit hook of this repository, for
- * which git sets variables pointing at the index of the commit being made), and the git
- * configuration of the machine (identity, signing, hooks, push settings), so that only what a
- * scratch repository sets itself plays a part.
+ * The environment of every command the tests run. Three things are taken out of this
+ * process's own: every `GIT_*` variable (these tests run in the pre-commit hook of this
+ * repository, for which git sets variables pointing at the index of the commit being made),
+ * the options an outer `npm run` was given, which the release command reads
+ * (`npm run --dry-run build`), and the git configuration of the machine (identity, signing,
+ * hooks, push settings), so that only what a scratch repository sets itself plays a part.
  */
 const ENVIRONMENT = {
-  ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_'))),
+  ...Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) => !name.startsWith('GIT_') && !/^npm_config_(?:confirm|dry_?run)$/.test(name)
+    )
+  ),
   GIT_CONFIG_GLOBAL: '/dev/null',
   GIT_CONFIG_NOSYSTEM: '1',
 }
@@ -513,6 +518,19 @@ describe('changelog entry', () => {
         ].join('\n') + '\n',
       ].join('\n\n')
     )
+  })
+
+  it('keeps an email address at the start of the text, and escapes a long word quickly', () => {
+    expect(renderEntry([toCommit('fix: a_b@example.com (c_d@example.com) is e_f')])).toContain(
+      String.raw`- a_b@example.com (c_d@example.com) is e\_f ${COMMIT_LINK}`
+    )
+
+    // A word without `@` must not be scanned for an email address from each of its
+    // characters: that took seconds for a word of this length.
+    const start = performance.now()
+    renderEntry([toCommit(`fix: ${'a'.repeat(40_000)}_b`)])
+
+    expect(performance.now() - start).toBeLessThan(500)
   })
 
   it('ends a breaking change note at a line that only has whitespace', () => {
@@ -1574,9 +1592,10 @@ describe('release', () => {
         'push',
         '--quiet',
         '--atomic',
+        '--no-follow-tags',
         'origin',
-        'refs/heads/main',
-        'refs/tags/v1.2.4'
+        'refs/heads/main:refs/heads/main',
+        'refs/tags/v1.2.4:refs/tags/v1.2.4'
       )
 
       expect(git(repository.originPath, 'rev-parse', 'refs/tags/v1.2.4^{commit}')).toBe(

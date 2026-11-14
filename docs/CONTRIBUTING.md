@@ -194,9 +194,14 @@ the Publish job, the version is published first, then the GitHub release is crea
 - **The cause is inside the repository** (a failing test, a mistake in the workflow), or
   outside of it but there to stay (a new Node.js version the build does not pass on): a re-run
   cannot fix it, because it runs the tagged commit again, workflow file included. If the
-  version is not on npm, publish it from a fixed commit, as described below. If it is on npm,
-  it cannot be published again and its tag must stay where it is: create the missing GitHub
-  release by hand, and fix the problem for the next version.
+  version is not on npm (`npm view properties-file@<version> version` prints nothing but an
+  error), publish it from a fixed commit, as described below. If it is on npm, it cannot be
+  published again and its tag must stay where it is: fix the problem for the next version, and
+  create the missing GitHub release by hand, from a checkout of the tag:
+
+  ```bash
+  npx tsx release/notes.ts <version> | gh release create v<version> --verify-tag --title "Release <version>" --notes-file -
+  ```
 
 To publish a version that failed from a fixed commit:
 

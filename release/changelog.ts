@@ -31,7 +31,8 @@ const REGEX_UNDONE_HASH = /^This reverts commit (?<hash>[\da-f]{7,40})\b/m
  * Matches what {@link escapeEmphasis} has to look at in a commit's text. The `kept` group is
  * what must stay as it is: a code span (between two runs of as many backticks), a URL
  * (`http://`, `https://` or `www.`, then a letter or a digit, up to whitespace, a backtick,
- * an angle bracket or a `*`), an email address, or a character that is already escaped.
+ * an angle bracket or a `*`), an email address (from the start of a word), or a character
+ * that is already escaped.
  * Otherwise the match is a `*` or a `_` to escape. Letters match in either case.
  */
 const REGEX_EMPHASIS =
