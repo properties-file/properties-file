@@ -1,19 +1,22 @@
 name: Release
 
 # The second half of the release flow. The first half, `npm run release` (see release/), pushes
-# a release commit to `main` together with its `v*` tag; that tag starts this workflow, which
-# tests the tagged commit, publishes it to npm and creates the GitHub release.
+# a release commit to `main` together with its `v<version>` tag; that tag starts this workflow,
+# which tests the tagged commit, publishes it to npm and creates the GitHub release.
 on:
   push:
-    tags: ['v*']
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
 
-# One release at a time, and never cancel one that may be in the middle of publishing.
+# One release at a time, in the order the tags were pushed: a running release is never
+# cancelled, and `queue: max` keeps every waiting one (by default only the latest would be
+# kept).
 concurrency:
   group: release
   cancel-in-progress: false
+  queue: max
 
 jobs:
-  # The full test workflow (every Node.js version, plus Node.js 0.4.0), on the tagged commit.
+  # The whole test workflow (its Node.js versions, plus Node.js 0.4.0), on the tagged commit.
   test:
     name: Test
     uses: ./.github/workflows/test.yml
@@ -21,8 +24,7 @@ jobs:
       contents: read
       actions: write
 
-  # Builds the package and packs it, without any permission to publish: everything that runs
-  # repository code or development dependencies happens here.
+  # Builds the package and packs it, without the permissions to publish it.
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -39,8 +41,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # No dependency cache in a release: what is installed comes from the registry, checked
-      # against the lockfile.
+      # Without a dependency cache, as npm recommends for a workflow that publishes.
       - name: Setup node
         uses: actions/setup-node@v7
         with:
@@ -49,7 +50,8 @@ jobs:
 
       # A tag is only released if it is `v` + the `package.json` version, a plain
       # major.minor.patch version (anything else would need an npm dist-tag other than
-      # `latest`), on a commit that is part of `main`.
+      # `latest`), on a commit that is part of `main`. These checks catch mistakes; they are
+      # not what restricts who can publish (see "Releasing" in docs/CONTRIBUTING.md).
       - name: Check the tag
         id: tag
         env:
@@ -88,42 +90,48 @@ jobs:
       - name: Build
         run: npm run build
 
-      # The build formats files and rewrites the README size badge. On a releasable commit it
-      # changes nothing; if it does, what would be published is not what was tagged.
-      - name: Check that the build changed no tracked file
+      # The build formats files and rewrites the README size badge. `npm run release` only
+      # tags a commit on which it changes nothing, but that was checked on another machine:
+      # if it changes a tracked file here, say so and publish the file as it was tagged.
+      - name: Restore the tracked files the build changed
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             git status --porcelain
-            echo "::error::The build changed files: the tagged commit is not what would be published."
-            exit 1
+            echo "::warning::The build changed the files listed in this step's log. They are published as they were tagged."
+            git checkout -- .
           fi
 
       # The exact archive that gets published: `<name>-<version>.tgz`.
       - name: Pack
         run: npm pack --pack-destination "$RUNNER_TEMP/release"
 
+      # `overwrite`, so that the job can run again when the whole workflow is re-run.
       - name: Upload the package and the release notes
         uses: actions/upload-artifact@v7
         with:
           name: release
           path: ${{ runner.temp }}/release
           if-no-files-found: error
-          retention-days: 7
+          overwrite: true
 
-  # Publishes what the build job packed, once the tests pass. This job holds the permissions
-  # to publish, so it checks out nothing, installs nothing and runs no package script.
+  # Publishes what the build job packed, once the tests pass. This is the only job with the
+  # permissions to publish, and nothing from the repository or its dependencies runs in it:
+  # it checks out nothing and installs nothing.
   publish:
     name: Publish
     needs: [test, build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # The trusted publisher on npmjs.com names this environment, so npm refuses a publish from
+    # a job that is not in it, and the environment's own rules decide which tags may use it.
+    environment: npm
     permissions:
       # Create the GitHub release.
       contents: write
-      # npm trusted publishing: the job proves to npm which repository and workflow it is with
-      # a short-lived OIDC token, so no npm token is stored and no one-time password is asked.
-      # This only works once the package lists this workflow file as a trusted publisher on
-      # npmjs.com (see docs/CONTRIBUTING.md).
+      # npm trusted publishing: the job proves to npm which repository, workflow file and
+      # environment it runs in with a short-lived OIDC token, so no npm token is stored and no
+      # one-time password is asked. This only works once the package lists them as a trusted
+      # publisher on npmjs.com (see "Releasing" in docs/CONTRIBUTING.md).
       id-token: write
     env:
       NAME: ${{ needs.build.outputs.name }}
@@ -136,8 +144,8 @@ jobs:
           name: release
           path: release
 
-      # Trusted publishing needs Node.js >= 22.14.0 and npm >= 11.5.1; Node.js 24 has both
-      # (the `.nvmrc` version, Node.js 22, comes with npm 10).
+      # Trusted publishing needs Node.js >= 22.14.0 and npm >= 11.5.1. Node.js 24 comes with
+      # such an npm since 24.5.0 (the `.nvmrc` version, Node.js 22, comes with npm 10).
       - name: Setup node
         uses: actions/setup-node@v7
         with:

@@ -8,7 +8,7 @@ import { parseReleaseArguments, release } from './release'
 
 const outcome = noThrow(() =>
   release({
-    ...parseReleaseArguments(process.argv.slice(2)),
+    ...parseReleaseArguments(process.argv.slice(2), process.env),
     directoryPath: process.cwd(),
     date: new Date(),
     shouldStreamOutput: true,

@@ -12,25 +12,38 @@ const REGEX_COMMIT_SUBJECT =
   /^(?<type>[a-z]+)(?:\((?<scope>[^()]+)\))?(?<breakingMark>!)?: (?<description>.+)$/
 
 /**
- * Matches a breaking change footer in a commit body, capturing its paragraph (up to the next
- * blank line).
+ * Matches a line of a commit body that starts a breaking change note, capturing the note up to
+ * the next blank line.
  */
-const REGEX_BREAKING_CHANGE_FOOTER = /^BREAKING[ -]CHANGE: (?<note>.+(?:\n.+)*)/m
+const REGEX_BREAKING_CHANGE_NOTE = /^BREAKING[ -]CHANGE: (?<note>.+(?:\n.+)*)/m
+
+/** Matches the subject git gives a revert commit, capturing the subject of the reverted one. */
+const REGEX_REVERT_SUBJECT = /^Revert "(?<subject>.+)"$/
+
+/** Matches the body line git gives a revert commit, capturing the hash of the reverted one. */
+const REGEX_REVERTED_HASH = /^This reverts commit (?<hash>[\da-f]{7,40})\b/m
+
+/** Matches a Markdown code span, which is kept as it is when a commit's text is escaped. */
+const REGEX_CODE_SPAN = /(`[^`]*`)/
 
 /** Matches the heading of any version entry in `CHANGELOG.md` (`# [1.0.0](…)`, `## [1.0.1](…)`). */
 const REGEX_VERSION_HEADING = /^#{1,2} \[/
 
-/** Matches the first version entry heading of a whole `CHANGELOG.md`. */
-const REGEX_FIRST_VERSION_HEADING = /^#{1,2} \[/m
+/** Matches the line that opens or closes a fenced code block. */
+const REGEX_CODE_FENCE = /^\s*(?:```|~~~)/
 
 /** Matches the compare link of a version entry heading, capturing its URL and its tag range. */
 const REGEX_COMPARE_LINK = /\]\((?<url>[^()\s]+\/compare\/(?<range>[^()\s/]+))\)/
+
+/** The type given to revert commits, whichever of their two subject forms they use. */
+const REVERT_TYPE = 'revert'
 
 /** The changelog sections built from commit types, in the order they are written. */
 const COMMIT_SECTIONS = [
   { type: 'fix', title: 'Bug Fixes' },
   { type: 'feat', title: 'Features' },
   { type: 'perf', title: 'Performance Improvements' },
+  { type: REVERT_TYPE, title: 'Reverts' },
 ]
 
 /** The title of the changelog section listing breaking changes, written last. */
@@ -46,15 +59,15 @@ export type GitCommit = {
   body: string
 }
 
-/** A commit whose subject follows Conventional Commits. */
-type ConventionalCommit = {
+/** A commit the changelog can list. */
+type ListedCommit = {
   /** The full commit hash. */
   hash: string
   /** The commit type (`feat`, `fix`, …). */
   type: string
   /** The scope between parentheses, when there is one. */
   scope: string | undefined
-  /** The description after the colon. */
+  /** The description after the colon (for a `Revert "…"` commit, the reverted subject). */
   description: string
   /** What the commit breaks, when it is marked as a breaking change. */
   breakingNote: string | undefined
@@ -70,7 +83,7 @@ export type ChangelogEntryInput = {
   date: string
   /** The repository's web URL (see {@link getRepositoryUrl}). */
   repositoryUrl: string
-  /** The commits made since the previous version. */
+  /** The commits made since the previous version, newest first (the order of `git log`). */
   commits: GitCommit[]
 }
 
@@ -164,29 +177,87 @@ export const getRepositoryUrl = (packageRepositoryUrl: string): string => {
 }
 
 /**
- * Parse a commit whose subject follows Conventional Commits.
+ * Parse a commit the changelog can list: one whose subject follows Conventional Commits, or a
+ * revert commit with the subject git gives it (`Revert "…"`).
  *
  * @param commit - The commit to parse.
  *
  * @returns The parsed commit, or `undefined` when its subject has another form (a merge commit,
  *   the release commit, …).
  */
-const parseCommit = (commit: GitCommit): ConventionalCommit | undefined => {
+const parseCommit = (commit: GitCommit): ListedCommit | undefined => {
+  const revertedSubject = REGEX_REVERT_SUBJECT.exec(commit.subject)?.groups?.subject
+  if (revertedSubject !== undefined) {
+    return {
+      hash: commit.hash,
+      type: REVERT_TYPE,
+      scope: undefined,
+      description: revertedSubject,
+      breakingNote: undefined,
+    }
+  }
   const groups = REGEX_COMMIT_SUBJECT.exec(commit.subject)?.groups
   if (groups === undefined) {
     return undefined
   }
-  // The footer says what breaks; a `!` alone leaves the description as the only explanation.
-  const footerNote = REGEX_BREAKING_CHANGE_FOOTER.exec(commit.body)?.groups?.note
-  const markNote = groups.breakingMark === '!' ? groups.description : undefined
+  const description = groups.description.trim()
+  // The note says what breaks; a `!` alone leaves the description as the only explanation.
+  const note = REGEX_BREAKING_CHANGE_NOTE.exec(commit.body.replaceAll('\r\n', '\n'))?.groups?.note
+  const markNote = groups.breakingMark === '!' ? description : undefined
   return {
     hash: commit.hash,
     type: groups.type,
     scope: groups.scope,
-    description: groups.description,
-    breakingNote: footerNote?.replaceAll(/\s*\n\s*/g, ' ').trim() ?? markNote,
+    description,
+    breakingNote: note?.replaceAll(/\s*\n\s*/g, ' ').trim() ?? markNote,
   }
 }
+
+/**
+ * Parse the commits the changelog can list, leaving out what was undone before the release: a
+ * revert commit and the commit it reverts are both dropped when both are in the list. A revert
+ * of a commit that is not in the list (it was released before) is kept.
+ *
+ * @param commits - The commits made since the previous version, newest first.
+ *
+ * @returns The commits to list.
+ */
+const parseCommits = (commits: GitCommit[]): ListedCommit[] => {
+  const droppedHashes = new Set<string>()
+  // Newest first, so that a revert which was itself reverted is dropped before it can drop
+  // the commit it reverted.
+  for (const commit of commits) {
+    const revertedHash = REGEX_REVERTED_HASH.exec(commit.body)?.groups?.hash
+    if (revertedHash === undefined || droppedHashes.has(commit.hash)) {
+      continue
+    }
+    const revertedCommit = commits.find(
+      (candidate) => candidate.hash.startsWith(revertedHash) && !droppedHashes.has(candidate.hash)
+    )
+    if (revertedCommit !== undefined) {
+      droppedHashes.add(commit.hash).add(revertedCommit.hash)
+    }
+  }
+  return commits
+    .filter((commit) => !droppedHashes.has(commit.hash))
+    .map((commit) => parseCommit(commit))
+    .filter((commit) => commit !== undefined)
+}
+
+/**
+ * Escape the characters of a commit's text that Markdown reads as emphasis (`*` and `_`), so
+ * that `__proto__` is not rendered as a bold "proto". Code spans are left as they are.
+ *
+ * @param text - The text to escape.
+ *
+ * @returns The text, safe to write in a Markdown list item.
+ */
+const escapeEmphasis = (text: string): string =>
+  text
+    .split(REGEX_CODE_SPAN)
+    // Splitting on a capturing group puts the code spans at the odd indexes.
+    .map((part, index) => (index % 2 === 1 ? part : part.replaceAll(/[*_]/g, String.raw`\$&`)))
+    .join('')
 
 /**
  * Render one changelog list item for a commit.
@@ -197,12 +268,9 @@ const parseCommit = (commit: GitCommit): ConventionalCommit | undefined => {
  *
  * @returns The list item: optional bold scope, the text, and a link to the commit.
  */
-const renderCommitItem = (
-  commit: ConventionalCommit,
-  text: string,
-  repositoryUrl: string
-): string =>
-  `- ${commit.scope === undefined ? '' : `**${commit.scope}:** `}${text} ` +
+const renderCommitItem = (commit: ListedCommit, text: string, repositoryUrl: string): string =>
+  `- ${commit.scope === undefined ? '' : `**${escapeEmphasis(commit.scope)}:** `}` +
+  `${escapeEmphasis(text)} ` +
   `([${commit.hash.slice(0, 7)}](${repositoryUrl}/commit/${commit.hash}))`
 
 /**
@@ -214,26 +282,27 @@ const renderCommitItem = (
  *
  * @returns A negative number, `0` or a positive number, as `Array.prototype.sort` expects.
  */
-const compareCommits = (first: ConventionalCommit, second: ConventionalCommit): number => {
+const compareCommits = (first: ListedCommit, second: ListedCommit): number => {
   const scopeOrder = (first.scope ?? '').localeCompare(second.scope ?? '')
   return scopeOrder === 0 ? first.description.localeCompare(second.description) : scopeOrder
 }
 
 /**
  * Count the commits marked as breaking changes (a `!` after the type or scope, or a
- * `BREAKING CHANGE:` footer).
+ * `BREAKING CHANGE:` note in the body), not counting those reverted since.
  *
- * @param commits - The commits to look at.
+ * @param commits - The commits made since the previous version, newest first.
  *
  * @returns The number of breaking commits.
  */
 export const countBreakingCommits = (commits: GitCommit[]): number =>
-  commits.filter((commit) => parseCommit(commit)?.breakingNote !== undefined).length
+  parseCommits(commits).filter((commit) => commit.breakingNote !== undefined).length
 
 /**
  * Render the `CHANGELOG.md` entry of a release: a heading with the compare link and the date,
- * then one section per commit type that has commits (`fix`, `feat` and `perf`; other types
- * and commits that do not follow Conventional Commits are left out), then the breaking changes.
+ * then one section per commit type that has commits (`fix`, `feat`, `perf` and reverts; other
+ * types and commits that do not follow Conventional Commits are left out, and so are commits
+ * reverted since), then the breaking changes.
  *
  * @param input - The release the entry describes.
  *
@@ -242,10 +311,7 @@ export const countBreakingCommits = (commits: GitCommit[]): number =>
  */
 export const renderChangelogEntry = (input: ChangelogEntryInput): string => {
   const { version, previousVersion, date, repositoryUrl } = input
-  const commits = input.commits
-    .map((commit) => parseCommit(commit))
-    .filter((commit) => commit !== undefined)
-    .toSorted(compareCommits)
+  const commits = parseCommits(input.commits).toSorted(compareCommits)
 
   const blocks = [
     `## [${version}](${repositoryUrl}/compare/v${previousVersion}...v${version}) (${date})`,
@@ -271,6 +337,28 @@ export const renderChangelogEntry = (input: ChangelogEntryInput): string => {
 }
 
 /**
+ * Find the headings of the version entries of a `CHANGELOG.md`. Lines inside fenced code
+ * blocks are not headings, even when they look like one (a `# [section]` line in a
+ * `.properties` example).
+ *
+ * @param lines - The lines of `CHANGELOG.md`.
+ *
+ * @returns The index of each version entry heading, in file order.
+ */
+const findVersionHeadings = (lines: string[]): number[] => {
+  const headingIndexes: number[] = []
+  let isInCodeBlock = false
+  for (const [index, line] of lines.entries()) {
+    if (REGEX_CODE_FENCE.test(line)) {
+      isInCodeBlock = !isInCodeBlock
+    } else if (!isInCodeBlock && REGEX_VERSION_HEADING.test(line)) {
+      headingIndexes.push(index)
+    }
+  }
+  return headingIndexes
+}
+
+/**
  * Check whether a `CHANGELOG.md` line is the heading of a given version's entry.
  *
  * @param line - The line to check.
@@ -293,13 +381,18 @@ const isHeadingOfVersion = (line: string, version: string): boolean =>
  * @throws If the changelog already has an entry for that version.
  */
 export const insertChangelogEntry = (changelog: string, version: string, entry: string): string => {
-  if (changelog.split(/\r?\n/).some((line) => isHeadingOfVersion(line, version))) {
+  // Split on `\n` alone: with Windows line endings each line keeps its `\r`, so joining the
+  // lines back gives the original content.
+  const lines = changelog.split('\n')
+  const headingIndexes = findVersionHeadings(lines)
+  if (headingIndexes.some((index) => isHeadingOfVersion(lines[index], version))) {
     throw new Error(`🚨 CHANGELOG.md already has an entry for version ${version}`)
   }
-  const position = changelog.search(REGEX_FIRST_VERSION_HEADING)
-  return position === -1
-    ? `${changelog.trimEnd()}\n\n${entry}`
-    : `${changelog.slice(0, position)}${entry}\n${changelog.slice(position)}`
+  if (headingIndexes.length === 0) {
+    return `${changelog.trimEnd()}\n\n${entry}`
+  }
+  const [firstHeadingIndex] = headingIndexes
+  return [...lines.slice(0, firstHeadingIndex), entry, ...lines.slice(firstHeadingIndex)].join('\n')
 }
 
 /**
@@ -316,16 +409,15 @@ export const insertChangelogEntry = (changelog: string, version: string, entry: 
  */
 export const extractReleaseNotes = (changelog: string, version: string): string => {
   const lines = changelog.split(/\r?\n/)
-  const headingIndex = lines.findIndex((line) => isHeadingOfVersion(line, version))
-  if (headingIndex === -1) {
+  const headingIndexes = findVersionHeadings(lines)
+  const headingIndex = headingIndexes.find((index) => isHeadingOfVersion(lines[index], version))
+  if (headingIndex === undefined) {
     throw new Error(`🚨 CHANGELOG.md has no entry for version ${version}`)
   }
-  const nextHeadingIndex = lines.findIndex(
-    (line, index) => index > headingIndex && REGEX_VERSION_HEADING.test(line)
-  )
+  const nextHeadingIndex = headingIndexes.find((index) => index > headingIndex) ?? lines.length
   const blocks = [
     lines
-      .slice(headingIndex + 1, nextHeadingIndex === -1 ? lines.length : nextHeadingIndex)
+      .slice(headingIndex + 1, nextHeadingIndex)
       .join('\n')
       .trim(),
   ]

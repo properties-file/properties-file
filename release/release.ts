@@ -4,8 +4,9 @@
  * entry, then commits, tags and pushes. Pushing the tag starts the other half,
  * `.github/workflows/release.yml`, which publishes to npm and creates the GitHub release.
  *
- * It only needs `git` and `npm` (plus the repository's own `prettier`), is not interactive, and
- * with `--dry-run` goes through the same steps while changing nothing.
+ * It only needs `git` and `npm` (plus the repository's own `prettier`), asks no question (git
+ * itself may still ask for credentials or a signing passphrase), and with `--dry-run` goes
+ * through the same steps while changing nothing.
  */
 import { spawnSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -74,13 +75,22 @@ type CommandResult = {
 /**
  * Parse the arguments of `npm run release`.
  *
+ * `--dry-run` is also an option of npm itself: in `npm run release patch --dry-run`, without
+ * the `--` separator, npm keeps the option for itself and only tells the script through the
+ * `npm_config_dry_run` environment variable. Both forms are a dry run here, so that a forgotten
+ * `--` cannot turn a preview into a release.
+ *
  * @param commandArguments - The command line arguments, without the executable and script.
+ * @param environment - The environment variables of the process.
  *
  * @returns The parsed arguments.
  *
  * @throws If there is an unknown option, or not exactly one version argument.
  */
-export const parseReleaseArguments = (commandArguments: string[]): ReleaseArguments => {
+export const parseReleaseArguments = (
+  commandArguments: string[],
+  environment: Record<string, string | undefined>
+): ReleaseArguments => {
   const options = commandArguments.filter((argument) => argument.startsWith('-'))
   const requests = commandArguments.filter((argument) => !argument.startsWith('-'))
   const unknownOption = options.find((option) => option !== '--dry-run')
@@ -90,7 +100,10 @@ export const parseReleaseArguments = (commandArguments: string[]): ReleaseArgume
   if (requests.length !== 1) {
     throw new Error(`🚨 expected exactly one version argument\n${USAGE}`)
   }
-  return { request: requests[0], isDryRun: options.includes('--dry-run') }
+  return {
+    request: requests[0],
+    isDryRun: options.includes('--dry-run') || environment.npm_config_dry_run === 'true',
+  }
 }
 
 /**
@@ -207,16 +220,33 @@ const hasLocalTag = (directoryPath: string, tag: string): boolean =>
     .isSuccess
 
 /**
+ * List the changed and the untracked files of the working tree. Untracked files are always
+ * listed, whatever the `status.showUntrackedFiles` setting of the person releasing.
+ *
+ * @param directoryPath - The root directory of the repository.
+ *
+ * @returns The output of `git status --porcelain` (empty when the working tree is clean).
+ */
+const readWorkingTreeChanges = (directoryPath: string): string =>
+  readGit(directoryPath, ['status', '--porcelain', '--untracked-files=normal'])
+
+/**
  * List what stands in the way of a release: the checkout must be on the release branch, clean
- * and at the tip of the remote branch, and the new tag must not exist anywhere yet. The remote
- * is read with `git ls-remote`, so nothing is fetched and the local repository is not changed.
+ * and at the tip of the remote branch, the tag of the current version must be part of its
+ * history, and the new tag must not exist anywhere yet. The remote is read with
+ * `git ls-remote`, so nothing is fetched and the local repository is not changed.
  *
  * @param directoryPath - The root directory of the repository.
  * @param tag - The tag of the version to release.
+ * @param previousTag - The tag of the current version.
  *
  * @returns One line per problem (empty when the release can go ahead).
  */
-const getPreflightProblems = (directoryPath: string, tag: string): string[] => {
+const getPreflightProblems = (
+  directoryPath: string,
+  tag: string,
+  previousTag: string
+): string[] => {
   const problems: string[] = []
 
   const branch = readGit(directoryPath, ['rev-parse', '--abbrev-ref', 'HEAD'])
@@ -224,8 +254,22 @@ const getPreflightProblems = (directoryPath: string, tag: string): string[] => {
     problems.push(`the current branch is "${branch}", releases are made from "${RELEASE_BRANCH}"`)
   }
 
-  if (readGit(directoryPath, ['status', '--porcelain']) !== '') {
+  if (readWorkingTreeChanges(directoryPath) !== '') {
     problems.push('the working tree has uncommitted changes')
+  }
+
+  // The changelog entry lists the commits made since that tag: if the tag is not in the
+  // history of HEAD, it would also list commits the current version already has.
+  if (
+    hasLocalTag(directoryPath, previousTag) &&
+    !runCommand(directoryPath, 'git', [
+      'merge-base',
+      '--is-ancestor',
+      `refs/tags/${previousTag}`,
+      'HEAD',
+    ]).isSuccess
+  ) {
+    problems.push(`the tag of the current version (${previousTag}) is not an ancestor of HEAD`)
   }
 
   if (hasLocalTag(directoryPath, tag)) {
@@ -289,8 +333,11 @@ const readCommitsSince = (directoryPath: string, tag: string): GitCommit[] =>
 /**
  * Release a new version: check the checkout, build, bump the version, write the changelog
  * entry, commit, tag and push. In a dry run the same steps are reported and nothing is changed
- * (no file, no git object, no reference, locally or on the remote); problems that would stop a
- * real release are reported as warnings so the remaining steps can still be previewed.
+ * (no file, no git object, no reference, locally or on the remote). What is wrong with the
+ * checkout (see {@link getPreflightProblems}) is then reported as a warning, so that the
+ * remaining steps can still be previewed; what the steps cannot be worked out without (the
+ * release files, the tag of the current version, a version without a changelog entry) stops a
+ * dry run too.
  *
  * @param options - What to release and how.
  *
@@ -323,6 +370,15 @@ export const release = (options: ReleaseOptions): string => {
     }
   }
 
+  // The three files are committed together, and restored together if a step fails.
+  const trackedFiles = new Set(
+    readGit(directoryPath, ['ls-files', '--', ...RELEASE_FILES]).split('\n')
+  )
+  const untrackedFiles = RELEASE_FILES.filter((file) => !trackedFiles.has(file))
+  if (untrackedFiles.length > 0) {
+    throw new Error(`🚨 not tracked by git in this directory: ${untrackedFiles.join(', ')}`)
+  }
+
   const { version: currentVersion, packageRepositoryUrl } = readPackageManifest(directoryPath)
   const repositoryUrl = getRepositoryUrl(packageRepositoryUrl)
   const version = resolveNextVersion(currentVersion, options.request)
@@ -332,20 +388,20 @@ export const release = (options: ReleaseOptions): string => {
     `📦 Releasing ${currentVersion} → ${version}${isDryRun ? ' (dry run: nothing is changed)' : ''}`
   )
 
-  // The changelog entry lists the commits made since the previous release's tag.
-  if (!hasLocalTag(directoryPath, previousTag)) {
-    throw new Error(
-      `🚨 the tag of the current version (${previousTag}) does not exist locally (try \`git fetch --tags\`)`
-    )
-  }
-
-  const problems = getPreflightProblems(directoryPath, tag)
+  const problems = getPreflightProblems(directoryPath, tag, previousTag)
   if (problems.length > 0) {
     const list = problems.map((problem) => `   - ${problem}`).join('\n')
     if (!isDryRun) {
       throw new Error(`🚨 cannot release:\n${list}`)
     }
     log(`⚠️  A real release would stop here:\n${list}`)
+  }
+
+  // The changelog entry lists the commits made since the tag of the current version.
+  if (!hasLocalTag(directoryPath, previousTag)) {
+    throw new Error(
+      `🚨 the tag of the current version (${previousTag}) does not exist locally (try \`git fetch --tags\`)`
+    )
   }
 
   const commits = readCommitsSince(directoryPath, previousTag)
@@ -370,9 +426,9 @@ export const release = (options: ReleaseOptions): string => {
   // The full gate (lint, compile, tests, package checks), before anything is committed.
   execute('npm', ['run', 'build'])
   if (!isDryRun) {
-    // The build formats files and rewrites the README size badge; a release must not carry
-    // such changes along, nor leave them behind.
-    const changes = readGit(directoryPath, ['status', '--porcelain'])
+    // The build formats files and rewrites the README size badge. Such changes belong in a
+    // commit of their own, not in the release commit: they are left in the working tree.
+    const changes = readWorkingTreeChanges(directoryPath)
     if (changes !== '') {
       throw new Error(`🚨 \`npm run build\` changed files, commit them first:\n${changes}`)
     }
@@ -386,7 +442,8 @@ export const release = (options: ReleaseOptions): string => {
     }
     execute('npx', ['--no-install', 'prettier', '--write', 'CHANGELOG.md'])
     execute('git', ['add', ...RELEASE_FILES])
-    // The pre-commit hook is the build, which just ran on this exact tree.
+    // The pre-commit hook is the build, which just ran: only the version and the changelog
+    // entry changed since.
     execute('git', ['commit', '--no-verify', '--message', `🔖 release ${tag}`])
   })
   if (isNormalizedError(committed)) {
@@ -419,6 +476,7 @@ export const release = (options: ReleaseOptions): string => {
         '   To undo, if nothing was pushed:',
         `     git tag --delete ${tag}`,
         '     git reset --hard HEAD~1',
+        `   If the push was rejected because ${REMOTE}/${RELEASE_BRANCH} has new commits: undo, pull, and release again.`,
       ].join('\n')
     )
   }

@@ -6,8 +6,8 @@ on:
   pull_request:
     branches: ['**']
   workflow_dispatch:
-  # Release tags (`v*`) are tested through release.yml, which calls this workflow and only
-  # publishes if it passes.
+  # Release tags are tested through release.yml, which calls this workflow and only publishes
+  # if it passes.
   workflow_call:
 
 jobs:

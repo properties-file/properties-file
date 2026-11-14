@@ -5,13 +5,14 @@
  * (`release/release.ts`) runs real `git` and `npm` commands, so each of its tests works on a
  * scratch repository in a temporary directory: a work tree with a `package.json`, a
  * `package-lock.json` and a `CHANGELOG.md`, and a bare repository next to it standing in for
- * the `origin` remote. Nothing here touches this repository or the network. `release/` is
+ * the `origin` remote. Nothing here changes this repository or uses the network. `release/` is
  * outside of `src/`, so it is not part of the coverage threshold: these tests are what
  * exercises its error branches.
  */
 import { execFileSync } from 'node:child_process'
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -42,8 +43,8 @@ const REPOSITORY_URL = 'https://github.com/scratch/scratch'
 /** A full commit hash for the changelog fixtures. */
 const HASH = '1234567890abcdef1234567890abcdef12345678'
 
-/** The date every test release is made on (still March 4 in UTC, already March 5 in UTC+14). */
-const RELEASE_DATE = new Date('2026-03-04T23:00:00Z')
+/** When the test releases are made, unless a test says otherwise: March 4, 2026 in UTC. */
+const RELEASE_DATE = new Date('2026-03-04T12:00:00Z')
 
 /** The changelog a scratch repository starts with: the title and the entry of version 1.2.3. */
 const INITIAL_CHANGELOG = `# Changelog
@@ -260,6 +261,133 @@ describe('changelog entry', () => {
     )
   })
 
+  it('takes the breaking change note over the description when a commit has both', () => {
+    expect(
+      renderEntry([toCommit('feat!: change a thing', 'BREAKING CHANGE: call it differently')])
+    ).toBe(
+      [
+        ENTRY_HEADING,
+        '### Features',
+        `- change a thing ${COMMIT_LINK}`,
+        '### BREAKING CHANGES',
+        `- call it differently ${COMMIT_LINK}\n`,
+      ].join('\n\n')
+    )
+  })
+
+  it('reads a breaking change note from a body with Windows line endings', () => {
+    expect(
+      renderEntry([
+        toCommit('fix: correct a thing', 'BREAKING CHANGE: it now\r\nthrows.\r\n\r\nRefs: #1'),
+      ])
+    ).toContain(`### BREAKING CHANGES\n\n- it now throws. ${COMMIT_LINK}`)
+  })
+
+  it('does not list a subject whose scope or spacing is not conventional', () => {
+    expect(
+      renderEntry([toCommit('feat(a(b)): nested scope'), toCommit('feat(): empty scope')])
+    ).toBe(`${ENTRY_HEADING}\n`)
+    expect(renderEntry([toCommit('feat:  two spaces')])).toContain(`- two spaces ${COMMIT_LINK}`)
+  })
+
+  it('escapes what Markdown would read as emphasis, except in code spans', () => {
+    expect(
+      renderEntry([
+        toCommit('fix: keep __proto__ keys and *stars*'),
+        toCommit('fix(snake_case): keep `__proto__` and a_b'),
+        toCommit('feat!: rename', 'BREAKING CHANGE: use new_name, not `old_name`'),
+      ])
+    ).toBe(
+      [
+        ENTRY_HEADING,
+        '### Bug Fixes',
+        [
+          String.raw`- keep \_\_proto\_\_ keys and \*stars\* ${COMMIT_LINK}`,
+          String.raw`- **snake\_case:** keep ${'`__proto__`'} and a\_b ${COMMIT_LINK}`,
+        ].join('\n'),
+        '### Features',
+        `- rename ${COMMIT_LINK}`,
+        '### BREAKING CHANGES',
+        String.raw`- use new\_name, not ${'`old_name`'} ${COMMIT_LINK}` + '\n',
+      ].join('\n\n')
+    )
+  })
+
+  it('leaves out a commit and its revert when both are in the release', () => {
+    const featureHash = 'a'.repeat(40)
+    const revertHash = 'b'.repeat(40)
+
+    // Newest first, as `git log` lists them.
+    expect(
+      renderEntry([
+        toCommit('fix: correct a thing'),
+        {
+          hash: revertHash,
+          subject: 'Revert "feat!: add a thing"',
+          body: `This reverts commit ${featureHash}.`,
+        },
+        { hash: featureHash, subject: 'feat!: add a thing', body: '' },
+      ])
+    ).toBe([ENTRY_HEADING, '### Bug Fixes', `- correct a thing ${COMMIT_LINK}\n`].join('\n\n'))
+    expect(
+      countBreakingCommits([
+        {
+          hash: revertHash,
+          subject: 'Revert "feat!: add a thing"',
+          body: `This reverts commit ${featureHash}.`,
+        },
+        { hash: featureHash, subject: 'feat!: add a thing', body: '' },
+      ])
+    ).toBe(0)
+  })
+
+  it('lists a commit again when its revert was itself reverted', () => {
+    const featureHash = 'a'.repeat(40)
+    const revertHash = 'b'.repeat(40)
+    const reapplyHash = 'c'.repeat(40)
+
+    expect(
+      renderEntry([
+        {
+          hash: reapplyHash,
+          subject: 'Revert "Revert "feat: add a thing""',
+          body: `This reverts commit ${revertHash.slice(0, 12)}.`,
+        },
+        {
+          hash: revertHash,
+          subject: 'Revert "feat: add a thing"',
+          body: `This reverts commit ${featureHash}.`,
+        },
+        { hash: featureHash, subject: 'feat: add a thing', body: '' },
+      ])
+    ).toBe(
+      [
+        ENTRY_HEADING,
+        '### Features',
+        `- add a thing ([aaaaaaa](${REPOSITORY_URL}/commit/${featureHash}))\n`,
+      ].join('\n\n')
+    )
+  })
+
+  it('lists the revert of a commit that was released before', () => {
+    const releasedHash = 'd'.repeat(40)
+
+    expect(
+      renderEntry([
+        toCommit('Revert "feat(parser): add a thing"', `This reverts commit ${releasedHash}.`),
+        toCommit('revert: the other thing'),
+      ])
+    ).toBe(
+      [
+        ENTRY_HEADING,
+        '### Reverts',
+        [`- feat(parser): add a thing ${COMMIT_LINK}`, `- the other thing ${COMMIT_LINK}\n`].join(
+          '\n'
+        ),
+      ].join('\n\n')
+    )
+  })
+
   it('counts no breaking commit when none is marked', () => {
     expect(
       countBreakingCommits([toCommit('feat: add a thing'), toCommit('not conventional')])
@@ -296,6 +424,32 @@ describe('changelog file', () => {
         'CHANGELOG.md already has an entry for version 1.2.3'
       )
     }
+  })
+
+  it('keeps the Windows line endings of the existing content', () => {
+    const changelog = INITIAL_CHANGELOG.replaceAll('\n', '\r\n')
+
+    expect(insertChangelogEntry(changelog, '1.2.4', `${ENTRY_HEADING}\n`)).toBe(
+      `# Changelog\r\n\r\n${ENTRY_HEADING}\n\n${changelog.slice('# Changelog\r\n\r\n'.length)}`
+    )
+  })
+
+  it('does not take a line of a fenced code block for an entry heading', () => {
+    const changelog = [
+      '# Changelog',
+      'An example:',
+      '```properties\n# [1.2.4] is a comment here\n## [section]\n```',
+      '## [1.2.3](url) (date)',
+      '~~~\n# [1.2.2] in another fence\n~~~',
+      '',
+    ].join('\n\n')
+
+    // Neither a duplicate of 1.2.4, nor the place to add the entry at.
+    expect(insertChangelogEntry(changelog, '1.2.4', 'entry\n')).toBe(
+      changelog.replace('## [1.2.3]', 'entry\n\n## [1.2.3]')
+    )
+    expect(extractReleaseNotes(changelog, '1.2.3')).toBe('~~~\n# [1.2.2] in another fence\n~~~\n')
+    expect(() => extractReleaseNotes(changelog, '1.2.2')).toThrow('has no entry for version 1.2.2')
   })
 
   it('does not mistake a version for another one that starts with it', () => {
@@ -346,6 +500,15 @@ describe('release notes', () => {
     )
   })
 
+  it('include the deeper headings of the entry, whatever they look like', () => {
+    expect(
+      extractReleaseNotes(
+        '# Changelog\n\n## [2.0.0](url) (date)\n\n### [Renamed] options\n\nText.\n',
+        '2.0.0'
+      )
+    ).toBe('### [Renamed] options\n\nText.\n')
+  })
+
   it('have no full changelog link when the heading has no compare link', () => {
     expect(extractReleaseNotes(changelog, '1.0.0')).toBe('The first release.\n')
   })
@@ -390,30 +553,51 @@ describe('release notes', () => {
 
 describe('release arguments', () => {
   it('are one version argument and an optional --dry-run', () => {
-    expect(parseReleaseArguments(['patch'])).toStrictEqual({ request: 'patch', isDryRun: false })
-    expect(parseReleaseArguments(['--dry-run', '1.2.4'])).toStrictEqual({
+    expect(parseReleaseArguments(['patch'], {})).toStrictEqual({
+      request: 'patch',
+      isDryRun: false,
+    })
+    expect(parseReleaseArguments(['--dry-run', '1.2.4'], {})).toStrictEqual({
       request: '1.2.4',
       isDryRun: true,
     })
-    expect(parseReleaseArguments(['minor', '--dry-run'])).toStrictEqual({
+    expect(parseReleaseArguments(['minor', '--dry-run'], {})).toStrictEqual({
       request: 'minor',
       isDryRun: true,
     })
   })
 
+  it('are a dry run when npm kept --dry-run for itself (no -- before the arguments)', () => {
+    // `npm run release patch --dry-run` runs the script with `patch` alone and this variable.
+    expect(parseReleaseArguments(['patch'], { npm_config_dry_run: 'true' })).toStrictEqual({
+      request: 'patch',
+      isDryRun: true,
+    })
+    expect(parseReleaseArguments(['patch'], { npm_config_dry_run: 'false' })).toStrictEqual({
+      request: 'patch',
+      isDryRun: false,
+    })
+    expect(parseReleaseArguments(['patch'], { npm_config_dry_run: '' })).toStrictEqual({
+      request: 'patch',
+      isDryRun: false,
+    })
+  })
+
   it('must have exactly one version argument', () => {
-    expect(() => parseReleaseArguments([])).toThrow('expected exactly one version argument')
-    expect(() => parseReleaseArguments(['--dry-run'])).toThrow(
+    expect(() => parseReleaseArguments([], {})).toThrow('expected exactly one version argument')
+    expect(() => parseReleaseArguments(['--dry-run'], {})).toThrow(
       'expected exactly one version argument'
     )
-    expect(() => parseReleaseArguments(['patch', 'minor'])).toThrow(
+    expect(() => parseReleaseArguments(['patch', 'minor'], {})).toThrow(
       'expected exactly one version argument'
     )
   })
 
   it('must not have an unknown option', () => {
-    expect(() => parseReleaseArguments(['patch', '--force'])).toThrow('unknown option "--force"')
-    expect(() => parseReleaseArguments(['patch', '-n'])).toThrow('unknown option "-n"')
+    expect(() => parseReleaseArguments(['patch', '--force'], {})).toThrow(
+      'unknown option "--force"'
+    )
+    expect(() => parseReleaseArguments(['patch', '-n'], {})).toThrow('unknown option "-n"')
   })
 })
 
@@ -423,6 +607,8 @@ type Repository = {
   workPath: string
   /** The bare repository the work tree knows as `origin`. */
   originPath: string
+  /** Where the work tree looks for its git hooks (it has none unless a test writes one). */
+  hooksPath: string
   /** Every line the releases run on this repository reported. */
   logs: string[]
 }
@@ -506,6 +692,7 @@ const createRepository = (buildScript = 'node --version'): Repository => {
   const repository = {
     workPath: path.join(rootPath, 'work'),
     originPath: path.join(rootPath, 'origin.git'),
+    hooksPath: path.join(rootPath, 'hooks'),
     logs: [],
   }
   git(rootPath, 'init', '--quiet', '--bare', '--initial-branch=main', repository.originPath)
@@ -517,7 +704,7 @@ const createRepository = (buildScript = 'node --version'): Repository => {
     ['user.email', 'release-test@example.com'],
     ['commit.gpgsign', 'false'],
     ['tag.gpgsign', 'false'],
-    ['core.hooksPath', path.join(rootPath, 'no-hooks')],
+    ['core.hooksPath', repository.hooksPath],
   ]) {
     git(repository.workPath, 'config', name, value)
   }
@@ -551,6 +738,19 @@ const createRepository = (buildScript = 'node --version'): Repository => {
   git(repository.workPath, 'tag', '--annotate', 'v1.2.3', '--message', 'Release 1.2.3')
   git(repository.workPath, 'push', '--quiet', 'origin', 'main', 'v1.2.3')
   return repository
+}
+
+/**
+ * Write an executable git hook.
+ *
+ * @param hooksPath - The hooks directory of the repository the hook is for.
+ * @param name - The hook's name (`pre-commit`, `update`, …).
+ * @param script - The shell commands of the hook.
+ */
+const writeHook = (hooksPath: string, name: string, script: string): void => {
+  mkdirSync(hooksPath, { recursive: true })
+  writeFileSync(path.join(hooksPath, name), `#!/bin/sh\n${script}\n`)
+  chmodSync(path.join(hooksPath, name), 0o755)
 }
 
 /**
@@ -589,15 +789,21 @@ const getState = (repository: Repository): RepositoryState => {
  * @param repository - The scratch repository.
  * @param request - `major`, `minor`, `patch`, or an explicit version.
  * @param isDryRun - Whether to go through the steps without changing anything.
+ * @param date - When the release is made.
  *
  * @returns The released version.
  */
-const releaseIn = (repository: Repository, request: string, isDryRun = false): string =>
+const releaseIn = (
+  repository: Repository,
+  request: string,
+  isDryRun = false,
+  date = RELEASE_DATE
+): string =>
   release({
     directoryPath: repository.workPath,
     request,
     isDryRun,
-    date: RELEASE_DATE,
+    date,
     shouldStreamOutput: false,
     log: (message) => {
       repository.logs.push(message)
@@ -619,6 +825,8 @@ describe('release', () => {
       const fixHash = commitFile(repository, 'fix.txt', 'fix: correct a thing')
       commitFile(repository, 'docs.txt', 'docs: explain a thing')
       pushMain(repository)
+      // The release commit skips the pre-commit hook (in this repository, the build).
+      writeHook(repository.hooksPath, 'pre-commit', 'exit 1')
 
       expect(releaseIn(repository, 'patch')).toBe('1.2.4')
 
@@ -723,7 +931,13 @@ describe('release', () => {
   it('reports what would stop a real release in a dry run, without stopping', () => {
     const repository = createRepository()
     git(repository.workPath, 'checkout', '--quiet', '-b', 'feature')
-    commitFile(repository, 'feature.txt', 'feat!: change a thing')
+    // The note is in the body of the commit, which is read from `git log` like its subject.
+    commitFile(
+      repository,
+      'feature.txt',
+      'feat: change a thing',
+      'BREAKING CHANGE: call it\ndifferently'
+    )
     writeFileSync(path.join(repository.workPath, 'untracked.txt'), '')
     const stateBefore = getState(repository)
 
@@ -743,16 +957,91 @@ describe('release', () => {
     expect(report).toContain(
       '1 commit(s) since v1.2.3 are marked as breaking changes, but 1.2.4 is not a major version'
     )
-    expect(report).toContain('### BREAKING CHANGES\n\n- change a thing')
+    expect(report).toContain('### BREAKING CHANGES\n\n- call it differently')
   })
 
-  it('does not warn about breaking changes when releasing a major version', () => {
+  it('warns about breaking changes unless a major version is released', () => {
     const repository = createRepository()
     commitFile(repository, 'feature.txt', 'feat!: change a thing')
     pushMain(repository)
 
+    expect(releaseIn(repository, 'minor', true)).toBe('1.3.0')
+    expect(repository.logs.join('\n')).toContain(
+      'marked as breaking changes, but 1.3.0 is not a major version'
+    )
+
+    repository.logs.length = 0
+
     expect(releaseIn(repository, 'major', true)).toBe('2.0.0')
     expect(repository.logs.join('\n')).not.toContain('marked as breaking changes')
+  })
+
+  it('does not list merge commits, and is not confused by a branch named like the tag', () => {
+    const repository = createRepository()
+    git(repository.workPath, 'checkout', '--quiet', '-b', 'v1.2.4')
+    commitFile(repository, 'feature.txt', 'feat: add a thing')
+    git(repository.workPath, 'checkout', '--quiet', 'main')
+    git(
+      repository.workPath,
+      'merge',
+      '--quiet',
+      '--no-ff',
+      '--message',
+      'feat: merge a branch',
+      'v1.2.4'
+    )
+    pushMain(repository)
+
+    expect(releaseIn(repository, 'patch', true)).toBe('1.2.4')
+
+    const report = repository.logs.join('\n')
+
+    expect(report).not.toContain('A real release would stop here')
+    expect(report).toContain('### Features\n\n- add a thing')
+    expect(report).not.toContain('merge a branch')
+  })
+
+  it('dates the changelog entry in UTC, wherever the release is made', () => {
+    const repository = createRepository()
+
+    // The first and the last half hour of March 4 in UTC: another day in most other time zones.
+    for (const date of [new Date('2026-03-04T00:30:00Z'), new Date('2026-03-04T23:30:00Z')]) {
+      repository.logs.length = 0
+      releaseIn(repository, 'patch', true, date)
+
+      expect(repository.logs.join('\n')).toContain('...v1.2.4) (2026-03-04)')
+    }
+  })
+
+  it('refuses to release when the tag of the current version is not in the history of HEAD', () => {
+    const repository = createRepository()
+    // Version 1.2.3 was released from a branch that `main` does not contain.
+    git(repository.workPath, 'checkout', '--quiet', '-b', 'hotfix')
+    commitFile(repository, 'hotfix.txt', 'fix: correct a thing')
+    git(repository.workPath, 'tag', '--force', '--annotate', 'v1.2.3', '--message', 'Release 1.2.3')
+    git(repository.workPath, 'checkout', '--quiet', 'main')
+    const stateBefore = getState(repository)
+
+    expect(() => releaseIn(repository, 'patch')).toThrow(
+      'cannot release:\n   - the tag of the current version (v1.2.3) is not an ancestor of HEAD'
+    )
+    expect(getState(repository)).toStrictEqual(stateBefore)
+  })
+
+  it('refuses to release when one of the release files is not tracked', () => {
+    const repository = createRepository()
+    git(repository.workPath, 'rm', '--quiet', '--cached', 'package-lock.json')
+    git(repository.workPath, 'commit', '--quiet', '--message', 'chore: stop tracking the lockfile')
+    pushMain(repository)
+    const stateBefore = getState(repository)
+
+    for (const isDryRun of [false, true]) {
+      expect(() => releaseIn(repository, 'patch', isDryRun)).toThrow(
+        'not tracked by git in this directory: package-lock.json'
+      )
+    }
+
+    expect(getState(repository)).toStrictEqual(stateBefore)
   })
 
   it('refuses to release from another branch', () => {
@@ -768,6 +1057,8 @@ describe('release', () => {
 
   it('refuses to release with uncommitted changes, tracked or not', () => {
     const repository = createRepository()
+    // Untracked files count even for someone whose `git status` does not show them.
+    git(repository.workPath, 'config', 'status.showUntrackedFiles', 'no')
     writeFileSync(path.join(repository.workPath, 'untracked.txt'), '')
 
     expect(() => releaseIn(repository, 'patch')).toThrow(
@@ -916,13 +1207,30 @@ describe('release', () => {
   )
 
   it(
+    'restores the release files, staged or not, when the commit fails',
+    () => {
+      const repository = createRepository()
+      const stateBefore = getState(repository)
+      // A hook that `--no-verify` does not skip, run once the three files are staged.
+      writeHook(repository.hooksPath, 'prepare-commit-msg', 'exit 1')
+
+      expect(() => releaseIn(repository, 'patch')).toThrow(
+        /`git commit --no-verify --message "🔖 release v1\.2\.4"` failed[\s\S]*CHANGELOG\.md, package\.json, package-lock\.json were restored, nothing was committed\./
+      )
+      expect(getState(repository)).toStrictEqual(stateBefore)
+    },
+    COMMAND_TIMEOUT
+  )
+
+  it(
     'says how to retry or undo when the push is rejected, and both work',
     () => {
       const repository = createRepository()
       const stateBefore = getState(repository)
-      const hookPath = path.join(repository.originPath, 'hooks', 'pre-receive')
-      writeFileSync(hookPath, '#!/bin/sh\nexit 1\n')
-      chmodSync(hookPath, 0o755)
+      // The remote refuses the tag only: the push being atomic, the branch must not go through
+      // either.
+      const rejectTags = 'case "$1" in refs/tags/*) exit 1 ;; esac'
+      writeHook(path.join(repository.originPath, 'hooks'), 'update', rejectTags)
 
       expect(() => releaseIn(repository, 'patch')).toThrow(
         [
@@ -934,6 +1242,7 @@ describe('release', () => {
           '   To undo, if nothing was pushed:',
           '     git tag --delete v1.2.4',
           '     git reset --hard HEAD~1',
+          '   If the push was rejected because origin/main has new commits: undo, pull, and release again.',
         ].join('\n')
       )
 
@@ -946,8 +1255,8 @@ describe('release', () => {
         stateRejected.head
       )
 
-      // Retry, once the remote accepts pushes again.
-      unlinkSync(hookPath)
+      // Retry, once the remote accepts the tag.
+      unlinkSync(path.join(repository.originPath, 'hooks', 'update'))
       git(
         repository.workPath,
         'push',
@@ -965,9 +1274,7 @@ describe('release', () => {
       // Undo (on a second repository, where nothing was pushed).
       const otherRepository = createRepository()
       const otherStateBefore = getState(otherRepository)
-      const otherHookPath = path.join(otherRepository.originPath, 'hooks', 'pre-receive')
-      writeFileSync(otherHookPath, '#!/bin/sh\nexit 1\n')
-      chmodSync(otherHookPath, 0o755)
+      writeHook(path.join(otherRepository.originPath, 'hooks'), 'update', rejectTags)
 
       expect(() => releaseIn(otherRepository, 'patch')).toThrow('To undo, if nothing was pushed:')
 
