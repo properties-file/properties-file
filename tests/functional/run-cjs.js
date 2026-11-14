@@ -23,29 +23,96 @@
  *
  * Usage:
  *   node tests/functional/run-cjs.js [distRoot]
+ *   node tests/functional/run-cjs.js --package-name
  *
- * `distRoot` defaults to `<repo>/dist/cjs` (resolved relative to this file) and
- * can be overridden to an absolute path, which the Node.js 0.4.0 Docker
- * container uses to point at `/dist/cjs`.
+ * By path (default): every entry point is loaded by file path from `distRoot`,
+ * which defaults to `<repo>/dist/cjs` (resolved relative to this file) and can
+ * be overridden to an absolute path (the Node.js 0.4.0 Docker container points
+ * it at its installed copy of `dist/cjs`).
+ *
+ * By package name (`--package-name`): every entry point is loaded the way a
+ * consumer loads it — `require('properties-file')`,
+ * `require('properties-file/editor')`, … — resolved through a
+ * `node_modules/properties-file` directory next to this file or above it. On a
+ * runtime that predates the `exports` map (all of Node.js before 12.7, including
+ * 0.4), that exercises the root `package.json` `main` field and the generated
+ * legacy subpath stubs (`editor/package.json`, …; see
+ * `src/build-scripts/generate-subpath-stubs.ts`), not just the compiled files.
+ * The Docker container installs that layout and runs both modes. A subpath that
+ * cannot be resolved fails loudly with the request that failed, before any
+ * scenario runs.
  */
 
 var fs = require('fs')
 var path = require('path')
 
 // ---------------------------------------------------------------------------
-// Locate golden.json and the dist/cjs root
+// Locate golden.json and the entry points
 // ---------------------------------------------------------------------------
 
-var distRoot = process.argv[2] || path.join(__dirname, '..', '..', 'dist', 'cjs')
+var PACKAGE_NAME = 'properties-file'
+var isPackageNameMode = process.argv[2] === '--package-name'
+var distRoot = isPackageNameMode
+  ? null
+  : process.argv[2] || path.join(__dirname, '..', '..', 'dist', 'cjs')
 var goldenPath = path.join(__dirname, 'golden.json')
 
 var scenarios = JSON.parse(fs.readFileSync(goldenPath, 'utf8'))
 
-var getProperties = require(path.join(distRoot, 'index.js')).getProperties
-var Properties = require(path.join(distRoot, 'parser', 'index.js')).Properties
-var PropertiesEditor = require(path.join(distRoot, 'editor', 'index.js')).PropertiesEditor
-var escapeModule = require(path.join(distRoot, 'escape', 'index.js'))
-var unescapeContent = require(path.join(distRoot, 'unescape', 'index.js')).unescapeContent
+/**
+ * Load one entry point, by file path from `distRoot`, or by package name.
+ *
+ * `subpath` is the public subpath (`''` for the root entry, `'editor'`, …) and
+ * `distFile` the file it maps to inside `dist/cjs`. In package-name mode a
+ * resolution failure exits immediately with the failing request, so a runtime
+ * that cannot resolve the legacy layout is reported as exactly that rather than
+ * as a generic stack trace.
+ *
+ * Only a module-not-found error for the request itself counts as a resolution
+ * failure: its message starts with `Cannot find module '<request>'` on every
+ * Node.js version from 0.4 (which throws exactly that message) to current ones
+ * (which append the require stack). Anything else, including an error thrown
+ * while the resolved module evaluates or a module-not-found error for a file it
+ * requires in turn, is rethrown unchanged.
+ */
+function loadEntryPoint(subpath, distFile) {
+  if (!isPackageNameMode) {
+    return require(path.join(distRoot, distFile))
+  }
+  var request = subpath === '' ? PACKAGE_NAME : PACKAGE_NAME + '/' + subpath
+  try {
+    return require(request)
+  } catch (error) {
+    var message = error && typeof error.message === 'string' ? error.message : ''
+    if (message.indexOf("Cannot find module '" + request + "'") !== 0) {
+      throw error
+    }
+    console.log(
+      '[run-cjs] Node ' +
+        process.version +
+        ': cannot load "' +
+        request +
+        '" by package name: ' +
+        message
+    )
+    console.log(
+      '[run-cjs] Expected node_modules/' +
+        PACKAGE_NAME +
+        '/' +
+        (subpath === '' ? 'package.json "main"' : subpath + '/package.json "main"') +
+        ' to resolve to dist/cjs/' +
+        distFile +
+        ' — FAILED'
+    )
+    process.exit(1)
+  }
+}
+
+var getProperties = loadEntryPoint('', 'index.js').getProperties
+var Properties = loadEntryPoint('parser', 'parser/index.js').Properties
+var PropertiesEditor = loadEntryPoint('editor', 'editor/index.js').PropertiesEditor
+var escapeModule = loadEntryPoint('escape', 'escape/index.js')
+var unescapeContent = loadEntryPoint('unescape', 'unescape/index.js').unescapeContent
 
 // ---------------------------------------------------------------------------
 // Deep equality (objects, arrays, primitives; key-set equality for objects)
@@ -212,6 +279,7 @@ function runScenario(scenario) {
 // Run all scenarios
 // ---------------------------------------------------------------------------
 
+var modeLabel = isPackageNameMode ? 'by package name' : 'by path'
 var passCount = 0
 var failCount = 0
 
@@ -243,7 +311,9 @@ if (failCount > 0) {
   console.log(
     '\n[run-cjs] Node ' +
       process.version +
-      ': ' +
+      ' (' +
+      modeLabel +
+      '): ' +
       passCount +
       '/' +
       (passCount + failCount) +
@@ -253,5 +323,13 @@ if (failCount > 0) {
 }
 
 console.log(
-  '[run-cjs] Node ' + process.version + ': ' + passCount + '/' + passCount + ' scenarios passed'
+  '[run-cjs] Node ' +
+    process.version +
+    ' (' +
+    modeLabel +
+    '): ' +
+    passCount +
+    '/' +
+    passCount +
+    ' scenarios passed'
 )

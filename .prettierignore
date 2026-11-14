@@ -4,6 +4,14 @@
 # Distribution (compiled code)
 /dist
 
+# Legacy subpath resolution stubs (generated from the `exports` map by
+# src/build-scripts/generate-subpath-stubs.ts)
+/bundler
+/editor
+/escape
+/parser
+/unescape
+
 # Downlevel transform shadow tree (see src/build-scripts/downlevel/)
 /.transformed-src
 

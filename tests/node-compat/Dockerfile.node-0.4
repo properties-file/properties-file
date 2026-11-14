@@ -32,8 +32,27 @@ RUN sed -i 's|archive.ubuntu.com|old-releases.ubuntu.com|g' /etc/apt/sources.lis
 
 COPY --from=builder /usr/local/bin/node /usr/local/bin/node
 
-COPY dist/cjs /dist/cjs
-COPY tests/functional/golden.json /golden.json
-COPY tests/functional/run-cjs.js /run-cjs.js
+# Install the package the way npm lays it out for a consumer: the root package.json (whose
+# `main` serves `require('properties-file')`), the generated legacy subpath stubs (whose `main`
+# serves `require('properties-file/editor')` etc. on runtimes that predate the `exports` map,
+# like this one), and the CommonJS build. Run `npm run build-artifacts` first: the stubs are
+# generated, not checked in. The bundler stubs are left out on purpose: the bundler
+# integrations run inside modern build tools, never on Node.js 0.4.
+COPY package.json /app/node_modules/properties-file/package.json
+COPY editor /app/node_modules/properties-file/editor
+COPY escape /app/node_modules/properties-file/escape
+COPY parser /app/node_modules/properties-file/parser
+COPY unescape /app/node_modules/properties-file/unescape
+COPY dist/cjs /app/node_modules/properties-file/dist/cjs
+COPY tests/functional/golden.json /app/golden.json
+COPY tests/functional/run-cjs.js /app/run-cjs.js
 
-RUN node /run-cjs.js /dist/cjs
+# 1. Load every entry point by file path: proves the compiled code itself runs on Node.js 0.4.
+RUN node /app/run-cjs.js /app/node_modules/properties-file/dist/cjs
+
+# 2. Load every entry point by package name (`require('properties-file/editor')`, …), resolved
+#    from /app/node_modules through package.json `main` fields: proves the published layout
+#    resolves on a runtime without `exports` support. Kept as its own step so a resolution
+#    failure is reported separately from a behavioral one; run-cjs.js names the request that
+#    failed and exits non-zero, which fails the image build.
+RUN node /app/run-cjs.js --package-name

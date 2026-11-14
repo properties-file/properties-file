@@ -126,6 +126,13 @@ export default defineConfig(
     ignores: [
       // Distribution (compiled code).
       'dist/',
+      // Legacy subpath resolution stubs, generated from the `exports` map by the build (see
+      // src/build-scripts/generate-subpath-stubs.ts).
+      'bundler/',
+      'editor/',
+      'escape/',
+      'parser/',
+      'unescape/',
       // Downlevel transform shadow tree (see src/build-scripts/downlevel/), regenerated per build.
       '.transformed-src/',
       // Jest files.

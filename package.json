@@ -124,14 +124,19 @@
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
   "files": [
-    "dist"
+    "bundler",
+    "dist",
+    "editor",
+    "escape",
+    "parser",
+    "unescape"
   ],
   "scripts": {
     "benchmark": "npx tsx performance/benchmarks/compare.ts",
     "build": "npm run check-nvm-node-version && npm run prettier-write && npm run eslint-fix && npm run typecheck && npm run knip && npm run build-artifacts && npm run check-package && npm run test && npm run test-functional && npm run size",
     "build-artifacts": "rm -Rf ./dist && npx tsx src/build-scripts/downlevel/transform.ts && tsc -p tsconfig.build.json && npx tsx src/build-scripts/build.ts",
     "check-nvm-node-version": "node -e \"var c=process.versions.node.split('-')[0],r=require('fs').readFileSync('.nvmrc','utf8').trim().replace(/^v/,'');if(c.localeCompare(r,void 0,{numeric:true})<0){console.error('Node.js >='+r+' is required, but this is '+process.version+'.');process.exit(1)}\"",
-    "check-package": "publint --strict && attw --pack . --profile node16",
+    "check-package": "publint --strict && attw --pack .",
     "eslint-fix": "eslint --fix --max-warnings 0",
     "functional-generate": "npx tsx tests/functional/generate.ts",
     "knip": "knip",
