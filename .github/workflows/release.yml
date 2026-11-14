@@ -1,0 +1,167 @@
+name: Release
+
+# The second half of the release flow. The first half, `npm run release` (see release/), pushes
+# a release commit to `main` together with its `v*` tag; that tag starts this workflow, which
+# tests the tagged commit, publishes it to npm and creates the GitHub release.
+on:
+  push:
+    tags: ['v*']
+
+# One release at a time, and never cancel one that may be in the middle of publishing.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # The full test workflow (every Node.js version, plus Node.js 0.4.0), on the tagged commit.
+  test:
+    name: Test
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+      actions: write
+
+  # Builds the package and packs it, without any permission to publish: everything that runs
+  # repository code or development dependencies happens here.
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      name: ${{ steps.tag.outputs.name }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      # The whole history, to check below that the tagged commit is on `main`.
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # No dependency cache in a release: what is installed comes from the registry, checked
+      # against the lockfile.
+      - name: Setup node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      # A tag is only released if it is `v` + the `package.json` version, a plain
+      # major.minor.patch version (anything else would need an npm dist-tag other than
+      # `latest`), on a commit that is part of `main`.
+      - name: Check the tag
+        id: tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          name="$(node --print "require('./package.json').name")"
+          version="$(node --print "require('./package.json').version")"
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::The tag ($TAG) is not v + the package.json version ($version)."
+            exit 1
+          fi
+          if ! printf '%s' "$version" | grep --quiet --extended-regexp '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+            echo "::error::$version is not a plain major.minor.patch version."
+            exit 1
+          fi
+          git fetch --quiet --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          if ! git merge-base --is-ancestor HEAD refs/remotes/origin/main; then
+            echo "::error::The tagged commit is not part of the main branch."
+            exit 1
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      # Before the build, so that a version without a changelog entry stops here.
+      - name: Read the release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          mkdir "$RUNNER_TEMP/release"
+          npx tsx release/notes.ts "$VERSION" > "$RUNNER_TEMP/release/notes.md"
+
+      # Builds what gets published, through the same gate as every other build.
+      - name: Build
+        run: npm run build
+
+      # The build formats files and rewrites the README size badge. On a releasable commit it
+      # changes nothing; if it does, what would be published is not what was tagged.
+      - name: Check that the build changed no tracked file
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain
+            echo "::error::The build changed files: the tagged commit is not what would be published."
+            exit 1
+          fi
+
+      # The exact archive that gets published: `<name>-<version>.tgz`.
+      - name: Pack
+        run: npm pack --pack-destination "$RUNNER_TEMP/release"
+
+      - name: Upload the package and the release notes
+        uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: ${{ runner.temp }}/release
+          if-no-files-found: error
+          retention-days: 7
+
+  # Publishes what the build job packed, once the tests pass. This job holds the permissions
+  # to publish, so it checks out nothing, installs nothing and runs no package script.
+  publish:
+    name: Publish
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Create the GitHub release.
+      contents: write
+      # npm trusted publishing: the job proves to npm which repository and workflow it is with
+      # a short-lived OIDC token, so no npm token is stored and no one-time password is asked.
+      # This only works once the package lists this workflow file as a trusted publisher on
+      # npmjs.com (see docs/CONTRIBUTING.md).
+      id-token: write
+    env:
+      NAME: ${{ needs.build.outputs.name }}
+      VERSION: ${{ needs.build.outputs.version }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Download the package and the release notes
+        uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: release
+
+      # Trusted publishing needs Node.js >= 22.14.0 and npm >= 11.5.1; Node.js 24 has both
+      # (the `.nvmrc` version, Node.js 22, comes with npm 10).
+      - name: Setup node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      # Skipped when the version is already on npm, so that a run can be re-run after a later
+      # step failed. Provenance is attached automatically by trusted publishing.
+      - name: Publish to npm
+        run: |
+          if [ "$(npm view "$NAME@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+            echo "::notice::$NAME@$VERSION is already on npm, not publishing again."
+          else
+            npm publish "release/$NAME-$VERSION.tgz" --ignore-scripts
+          fi
+
+      # Skipped when the release already exists, for the same reason.
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::notice::The GitHub release $TAG already exists, not creating it again."
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Release $VERSION" --notes-file release/notes.md
+          fi

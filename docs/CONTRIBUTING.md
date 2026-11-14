@@ -123,6 +123,7 @@ npm run knip              # Report unused files, exports and dependencies
 npm run check-package     # Validate the built package's exports map and type resolution
 npm run benchmark         # Compare benchmarks against latest published version
 npm run size              # Compare bundle sizes against latest published version
+npm run release -- patch  # Release a new version (see Releasing)
 ```
 
 `check-package` runs `publint` and `attw` against the packed tarball, in every resolution mode
@@ -135,9 +136,74 @@ generator itself fails the build if any stub's `main`, `module` or `types` does 
 existing file, and the Node.js 0.4 check (`tests/node-compat/`) loads the non-bundler entry
 points through their stubs' `main`.
 
+## Releasing
+
+A release has two halves: a script run locally (`release/`), and a GitHub Actions workflow
+(`.github/workflows/release.yml`) started by the tag the script pushes. Neither is interactive,
+and neither needs an npm token or a one-time password.
+
+```bash
+npm run release -- patch --dry-run   # Preview: reports every step and the changelog entry, changes nothing
+npm run release -- patch             # Or `minor`, `major`, or an explicit version such as `5.1.0`
+```
+
+The script:
+
+1. Stops unless the checkout is on `main`, clean, and at the tip of `origin/main`, and unless
+   the new version's tag exists neither locally nor on `origin`.
+2. Runs `npm run build`, and stops if the build fails or changes a file.
+3. Bumps the version in `package.json` and `package-lock.json`.
+4. Adds the version's entry to `CHANGELOG.md`: a heading with the compare link and the date
+   (UTC), then the `fix`, `feat` and `perf` commits made since the previous version's tag, and
+   the commits marked as breaking changes. Other commit types are not listed, so an entry can
+   be its heading alone.
+5. Commits the three files as `🔖 release v<version>`, creates the annotated `v<version>` tag,
+   and pushes the branch and the tag together.
+
+If a step fails before the commit, the three files are restored. If the tag or the push fails,
+the error says how to retry or undo.
+
+The workflow then has three jobs, all on the tagged commit:
+
+- **Test** runs the whole test workflow (every Node.js version, plus Node.js 0.4.0).
+- **Build** checks that the tag is `v` + the `package.json` version and that its commit is part
+  of `main`, runs `npm run build`, stops if the build changed a file, and packs the package
+  (`npm pack`). This job cannot publish anything.
+- **Publish** runs once both pass: it publishes the packed archive to npm and creates the
+  GitHub release, with the version's `CHANGELOG.md` entry as its notes. It is the only job
+  allowed to publish, and it runs no code from the repository or its dependencies.
+
+A failed run can be re-run from the Actions tab: publishing is skipped when the version is
+already on npm, and so is creating a GitHub release that already exists. A tag cannot be moved
+to another commit once its version is published, so a problem that needs a code change is fixed
+in the next version.
+
+To edit the notes of a release, edit its `CHANGELOG.md` entry and its GitHub release; the
+workflow only writes them once.
+
+Pre-release versions (`5.1.0-beta.1`) are not supported: the script and the workflow both
+refuse anything but a plain `major.minor.patch` version.
+
+### One-time setup: npm trusted publishing
+
+Publishing uses npm [trusted publishing](https://docs.npmjs.com/trusted-publishers): npm
+accepts the publish because GitHub vouches for the repository and the workflow file it comes
+from. Only a maintainer of the package on npmjs.com can set this up, in the package's
+**Settings** → **Trusted Publisher** → **GitHub Actions**:
+
+- Organization or user: `properties-file`
+- Repository: `properties-file`
+- Workflow filename: `release.yml` (the file name only; it is case-sensitive)
+- Environment name: empty
+- Allowed actions: publishing with `npm publish`
+
+npm does not check the entry when it is saved, a mistake only shows as a failed publish. A new
+entry also expires if it is not used for a successful publish within 2 days (it then has to be
+deleted and created again), so create it when a release is about to be made.
+
 ## Pull Request Checklist
 
 - [ ] `npm run build` passes (includes linting, unused-code and package checks, tests, 100% coverage, and size measurement)
 - [ ] Performance-sensitive changes include `npm run benchmark` results
 - [ ] Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
-      (drives automated changelog via `release-it`)
+      (`fix`, `feat` and `perf` commits are listed in the changelog by `npm run release`)
