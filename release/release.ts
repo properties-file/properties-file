@@ -389,8 +389,9 @@ const getPreflightProblems = (workspace: Workspace, tag: string, previousTag: st
 
 /**
  * Read the commits made since a tag, newest first, without merge commits. Only what the
- * format asks for is printed, even for someone whose `log.showSignature` setting adds the
- * signature of each commit to every `git log`.
+ * format asks for is printed, in UTF-8, even for someone whose git settings add the
+ * signature of each commit to every `git log` (`log.showSignature`) or print it in another
+ * encoding (`i18n.logOutputEncoding`).
  *
  * @param workspace - The repository.
  * @param tag - The tag to start after.
@@ -402,6 +403,7 @@ const readCommitsSince = (workspace: Workspace, tag: string): GitCommit[] =>
     'log',
     '--no-merges',
     '--no-show-signature',
+    '--encoding=UTF-8',
     '--format=%H%x1f%s%x1f%b%x1e',
     `refs/tags/${tag}..HEAD`,
   ])
@@ -551,14 +553,15 @@ export const release = (options: ReleaseOptions): string => {
   }
 
   // Atomic: the branch and the tag are both accepted, or neither is. Nothing else is pushed,
-  // even for someone whose `push.followTags` setting sends every reachable tag along.
+  // even for someone whose `push.followTags` setting sends every reachable tag along, and
+  // each reference is pushed to its own name, whatever `remote.origin.push` maps it to.
   const pushArguments = [
     'push',
     '--atomic',
     '--no-follow-tags',
     REMOTE,
-    `refs/heads/${RELEASE_BRANCH}`,
-    `refs/tags/${tag}`,
+    `refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH}`,
+    `refs/tags/${tag}:refs/tags/${tag}`,
   ]
   const pushed = noThrow(() => {
     execute('git', ['tag', '--annotate', tag, '--message', `Release ${version}`])

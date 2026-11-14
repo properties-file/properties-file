@@ -157,7 +157,7 @@ The script:
 1. Stops unless the checkout is on `main`, clean, and at the tip of `origin/main`; unless the
    current version's tag is in the history of `HEAD`; and unless the new version's tag exists
    neither locally nor on `origin` (which must have a single push URL). A dry run reports
-   these as warnings and goes on.
+   these as warnings and goes on, as long as the current version's tag exists locally.
 2. Runs `npm run build`, and stops if the build fails or changes a file.
 3. Bumps the version in `package.json` and `package-lock.json`.
 4. Adds the version's entry to `CHANGELOG.md`: a heading with the compare link and the date
@@ -184,8 +184,8 @@ The workflow then has three jobs, all on the tagged commit:
   GitHub release, with the version's `CHANGELOG.md` entry as its notes. It is the only job
   allowed to publish, and nothing from the repository or its dependencies runs in it.
 
-Nothing is published before the last job, so a failed run leaves npm untouched. What it leaves
-is the release commit on `main` and the `v<version>` tag:
+When a run fails, what to do depends on its cause and on whether the version reached npm (in
+the Publish job, the version is published first, then the GitHub release is created):
 
 - **The cause is outside the repository** (the trusted publisher is not set up, npm or GitHub
   is unavailable): fix it and re-run the failed jobs from the Actions tab, which GitHub allows
@@ -193,30 +193,27 @@ is the release commit on `main` and the `v<version>` tag:
   GitHub release that already exists, so re-running is safe wherever the run stopped.
 - **The cause is inside the repository** (a failing test, a mistake in the workflow), or
   outside of it but there to stay (a new Node.js version the build does not pass on): a re-run
-  cannot fix it, because it runs the tagged commit again, workflow file included. Fix the
-  problem on `main`, then publish the version from the fixed commit, as follows.
+  cannot fix it, because it runs the tagged commit again, workflow file included. If the
+  version is not on npm, publish it from a fixed commit, as described below. If it is on npm,
+  it cannot be published again and its tag must stay where it is: create the missing GitHub
+  release by hand, and fix the problem for the next version.
 
-Delete the failed run (in the Actions tab), then move the version's tag to the fixed commit:
+To publish a version that failed from a fixed commit:
 
-```bash
-git switch main && git pull --ff-only
-git tag --force --annotate v<version> --message "Release <version>"
-git push --force origin v<version>
-```
+1. Delete the failed run, in the Actions tab. Its jobs could otherwise be re-run later and
+   publish what that run had built.
+2. Fix the problem on `main`. If the fix belongs in the release notes, add it to the version's
+   `CHANGELOG.md` entry in the same way: the entry was written before the fix. Push.
+3. Move the version's tag to the fixed commit, which starts a new run:
 
-The pushed tag starts a new run. The failed run is deleted first because its Publish job, if
-it is the one that failed, could otherwise be re-run later and publish what that run had
-built. The fix was committed after the version's `CHANGELOG.md` entry was written: add it to
-the entry by hand if it belongs there. Other clones keep the old tag until they run
-`git fetch --tags --force`; a release made from one of them before that would list the fix
-again.
+   ```bash
+   git switch main && git pull --ff-only
+   git tag --force --annotate v<version> --message "Release <version>"
+   git push --force origin v<version>
+   ```
 
-The other way out is to leave the failed version unpublished and release the next one
-(`npm run release -- patch --confirm`). Its entry only lists what was committed since the
-failed version's tag, so move the items of the failed version's entry into it first.
-
-Once a version is on npm it cannot be published again: from then on a fix is always the next
-version.
+Other clones keep the old tag until they run `git fetch --tags --force`; a release made from
+one of them before that would list the fix again.
 
 To edit the notes of a release, edit its `CHANGELOG.md` entry and its GitHub release; the
 workflow only writes them once.
@@ -242,7 +239,8 @@ in this order, so that the package is never publishable from an unprotected envi
    enable "Restrict creations", "Restrict updates" and "Restrict deletions", put the
    repository admin role in the bypass list (and the organization admin role, if releases are
    pushed by an owner of the organization), and set the enforcement status to **Active**: a
-   new ruleset is disabled until then. Only those who bypass the ruleset can then push, move
+   new ruleset is disabled until then. The rules that are already enabled in a new ruleset
+   can stay. Only those who bypass the ruleset can then push, move
    or delete a release tag, which `npm run release` and moving a tag (see above) both need.
 3. **The trusted publisher**, on npmjs.com, in the package's **Settings** → **Trusted
    Publisher** → **GitHub Actions**:

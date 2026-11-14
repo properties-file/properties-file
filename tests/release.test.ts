@@ -9,7 +9,7 @@
  * outside of `src/`, so it is not part of the coverage threshold: these tests are what
  * exercises its error branches.
  */
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import {
   chmodSync,
   mkdirSync,
@@ -52,6 +52,10 @@ const INITIAL_CHANGELOG = `# Changelog
 
 ## [1.2.3](${REPOSITORY_URL}/compare/v1.2.2...v1.2.3) (2026-01-01)
 `
+
+/** A URL without TLS, which the changelog must leave alone like any other. */
+// eslint-disable-next-line unicorn/prefer-https -- the plain-HTTP form is what is tested
+const HTTP_URL = 'http://example.com/a_b'
 
 /** How long a test that runs real `npm` commands may take. */
 const COMMAND_TIMEOUT = 60_000
@@ -488,6 +492,8 @@ describe('changelog entry', () => {
         toCommit('fix: mail first_last@example.com or see www.example.com/some_page'),
         toCommit('fix: not a URL https://*.a.com and https://__b__ nor a span ```c_d``e'),
         toCommit('fix: operators <__proto__> and Map<K_T, V>'),
+        toCommit(`fix: plain ${HTTP_URL}, HTTPS://EXAMPLE.COM/C_D and WWW.EXAMPLE.COM/E_F`),
+        toCommit('fix: reach A_B@EXAMPLE.COM,c_d or `e_f`` g_h'),
         toCommit('fix: unbalanced ` backtick_here'),
       ])
     ).toBe(
@@ -501,6 +507,8 @@ describe('changelog entry', () => {
           `- mail first_last@example.com or see www.example.com/some_page ${COMMIT_LINK}`,
           String.raw`- not a URL https://\*.a.com and https://\_\_b\_\_ nor a span ${'```'}c\_d${'``'}e ${COMMIT_LINK}`,
           String.raw`- operators <\_\_proto\_\_> and Map<K\_T, V> ${COMMIT_LINK}`,
+          `- plain ${HTTP_URL}, HTTPS://EXAMPLE.COM/C_D and WWW.EXAMPLE.COM/E_F ${COMMIT_LINK}`,
+          String.raw`- reach A_B@EXAMPLE.COM,c\_d or ${'`'}e\_f${'``'} g\_h ${COMMIT_LINK}`,
           String.raw`- unbalanced ${'`'} backtick\_here ${COMMIT_LINK}`,
         ].join('\n') + '\n',
       ].join('\n\n')
@@ -536,9 +544,11 @@ describe('changelog file', () => {
   })
 
   it('adds the first entry of a changelog that only has its title', () => {
-    expect(insertChangelogEntry('# Changelog\n', '1.0.0', '## [1.0.0](url)\n')).toBe(
-      '# Changelog\n\n## [1.0.0](url)\n'
-    )
+    for (const changelog of ['# Changelog\n', '# Changelog', '# Changelog\n\n\n']) {
+      expect(insertChangelogEntry(changelog, '1.0.0', '## [1.0.0](url)\n')).toBe(
+        '# Changelog\n\n## [1.0.0](url)\n'
+      )
+    }
   })
 
   it('refuses to add a second entry for a version', () => {
@@ -567,6 +577,7 @@ describe('changelog file', () => {
       'An example, whose comments are not entries:',
       '```properties\n# [1.2.4] is a comment here\n## [section]\n```',
       '## [Unreleased]',
+      '## [Unreleased](url)',
       '## [1.2.3](url) (date)',
       '### [1.2.2](url) is a deeper heading',
       '## 1.2.1 has no link',
@@ -999,6 +1010,8 @@ describe('release', () => {
       writeHook(repository.hooksPath, 'pre-commit', 'exit 1')
       // Only the release tag is pushed, even with a setting that pushes every reachable tag.
       git(repository.workPath, 'config', 'push.followTags', 'true')
+      // The branch is pushed to `main`, even with a setting that maps it to another name.
+      git(repository.workPath, 'config', 'remote.origin.push', 'refs/heads/main:refs/heads/other')
       git(repository.workPath, 'tag', '--annotate', 'unrelated', '--message', 'Not a release')
 
       // The build only passes with a variable of the environment the release is given.
@@ -1006,6 +1019,7 @@ describe('release', () => {
 
       expect(releaseIn(repository, 'patch', false, RELEASE_DATE, environment)).toBe('1.2.4')
       expect(git(repository.originPath, 'tag', '--list')).toBe('v1.2.3\nv1.2.4')
+      expect(git(repository.originPath, 'branch', '--format=%(refname)')).toBe('refs/heads/main')
 
       const state = getState(repository)
 
@@ -1094,7 +1108,7 @@ describe('release', () => {
       'git add CHANGELOG.md package.json package-lock.json',
       'git commit --no-verify --message "🔖 release v1.2.4"',
       'git tag --annotate v1.2.4 --message "Release 1.2.4"',
-      'git push --atomic --no-follow-tags origin refs/heads/main refs/tags/v1.2.4',
+      'git push --atomic --no-follow-tags origin refs/heads/main:refs/heads/main refs/tags/v1.2.4:refs/tags/v1.2.4',
     ]) {
       expect(report).toContain(`would run: ${command}`)
     }
@@ -1123,7 +1137,8 @@ describe('release', () => {
 
   it('reads the commits as they are, whatever `git log` is set to add to them', () => {
     const repository = createRepository()
-    // Signed commits, and the setting that prints the signature of each one in `git log`.
+    // Signed commits, and the settings that print the signature of each one in `git log`, in
+    // another encoding than UTF-8.
     const keyPath = path.join(repository.originPath, '..', 'signing-key')
     execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', keyPath])
     // The key is trusted for the identity of the scratch repository, so that git has a
@@ -1138,16 +1153,17 @@ describe('release', () => {
       ['gpg.ssh.allowedSignersFile', `${keyPath}.allowed`],
       ['commit.gpgSign', 'true'],
       ['log.showSignature', 'true'],
+      ['i18n.logOutputEncoding', 'ISO-8859-1'],
     ]) {
       git(repository.workPath, 'config', name, value)
     }
-    const fixHash = commitFile(repository, 'fix.txt', 'fix: correct a thing')
+    const fixHash = commitFile(repository, 'fix.txt', 'fix: correct a thing é')
     pushMain(repository)
 
     releaseIn(repository, 'patch', true)
 
     expect(repository.logs.join('\n')).toContain(
-      `### Bug Fixes\n\n- correct a thing ([${fixHash.slice(0, 7)}](${REPOSITORY_URL}/commit/${fixHash}))\n`
+      `### Bug Fixes\n\n- correct a thing é ([${fixHash.slice(0, 7)}](${REPOSITORY_URL}/commit/${fixHash}))\n`
     )
   })
 
@@ -1394,7 +1410,7 @@ describe('release', () => {
     const stateBefore = getState(repository)
 
     expect(() => releaseIn(repository, 'patch')).toThrow(
-      'cannot release:\n   - the remote "origin" has several push URLs, a release needs one'
+      /^🚨 cannot release:\n {3}- the remote "origin" has several push URLs, a release needs one$/
     )
     expect(getState(repository)).toStrictEqual(stateBefore)
   })
@@ -1534,7 +1550,7 @@ describe('release', () => {
           '     git ls-remote "$(git remote get-url --push origin)" refs/heads/main refs/tags/v1.2.4',
           '   To retry (create the tag first if `git tag --list v1.2.4` prints nothing):',
           '     git tag --annotate v1.2.4 --message "Release 1.2.4"',
-          '     git push --atomic --no-follow-tags origin refs/heads/main refs/tags/v1.2.4',
+          '     git push --atomic --no-follow-tags origin refs/heads/main:refs/heads/main refs/tags/v1.2.4:refs/tags/v1.2.4',
           '   To undo, if nothing was pushed:',
           '     git tag --delete v1.2.4',
           '     git reset --hard HEAD~1',
@@ -1578,6 +1594,82 @@ describe('release', () => {
       git(otherRepository.workPath, 'reset', '--quiet', '--hard', 'HEAD~1')
 
       expect(getState(otherRepository)).toStrictEqual(otherStateBefore)
+    },
+    COMMAND_TIMEOUT
+  )
+})
+
+/**
+ * Run the release command (`release/cli.ts`, what `npm run release` runs) in a scratch
+ * repository.
+ *
+ * @param repository - The scratch repository.
+ * @param commandArguments - What to pass to it (`patch`, `--confirm`, …).
+ * @param environment - Variables to add to the environment of the command.
+ *
+ * @returns The exit code of the command, and what it printed to each of its outputs.
+ */
+const runReleaseCommand = (
+  repository: Repository,
+  commandArguments: string[],
+  environment: Record<string, string> = {}
+): { status: number | null; output: string; errors: string } => {
+  const result = spawnSync(
+    path.resolve('node_modules/.bin/tsx'),
+    [path.resolve('release/cli.ts'), ...commandArguments],
+    { cwd: repository.workPath, env: { ...ENVIRONMENT, ...environment }, encoding: 'utf8' }
+  )
+  return { status: result.status, output: result.stdout, errors: result.stderr }
+}
+
+describe('release command', () => {
+  it(
+    'reports a dry run and succeeds',
+    () => {
+      const repository = createRepository()
+      const stateBefore = getState(repository)
+      const result = runReleaseCommand(repository, ['patch'])
+
+      expect(result.errors).toBe('')
+      expect(result.status).toBe(0)
+      expect(result.output).toMatch(
+        /^📦 Releasing 1\.2\.3 → 1\.2\.4 \(dry run: nothing is changed\)\n[\s\S]+To release it: npm run release -- patch --confirm\n$/
+      )
+      expect(getState(repository)).toStrictEqual(stateBefore)
+    },
+    COMMAND_TIMEOUT
+  )
+
+  it(
+    'says so when npm kept --confirm for itself',
+    () => {
+      const repository = createRepository()
+      const result = runReleaseCommand(repository, ['patch'], { npm_config_confirm: 'true' })
+
+      expect(result.status).toBe(0)
+      expect(result.output).toMatch(
+        /^⚠️ {2}npm kept --confirm for itself: write it after a `--` \(.+\)\.\n📦 Releasing 1\.2\.3 → 1\.2\.4 \(dry run/
+      )
+    },
+    COMMAND_TIMEOUT
+  )
+
+  it(
+    'reports an error and fails',
+    () => {
+      const repository = createRepository()
+
+      expect(runReleaseCommand(repository, [])).toStrictEqual({
+        status: 1,
+        output: '',
+        errors:
+          '🚨 expected exactly one version argument\nUsage: npm run release -- <major | minor | patch | x.y.z> [--confirm]\n',
+      })
+      expect(runReleaseCommand(repository, ['1.2.3', '--confirm'])).toStrictEqual({
+        status: 1,
+        output: '',
+        errors: '🚨 1.2.3 is not higher than the current version (1.2.3)\n',
+      })
     },
     COMMAND_TIMEOUT
   )
