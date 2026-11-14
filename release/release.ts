@@ -46,16 +46,20 @@ const CONFIRM_OPTION = '--confirm'
 const DRY_RUN_OPTION = '--dry-run'
 
 /**
- * The variables npm sets when it is given `--dry-run` (or the `--dryrun` it also accepts)
- * itself, which is what happens to that option without a `--` before the script's arguments.
+ * The variables npm sets when it is given `--dry-run` itself, or the likely typo `--dryrun`
+ * (not an option of npm, which passes it on the same way). Without a `--` before the script's
+ * arguments, that is where these options end up.
  */
 const NPM_DRY_RUN_VARIABLES = ['npm_config_dry_run', 'npm_config_dryrun']
 
+/** The variable npm sets when it is given `--confirm` itself, for want of a `--` before it. */
+const NPM_CONFIRM_VARIABLE = 'npm_config_confirm'
+
 /**
  * The variables git sets for the hooks it runs, pointing git at the repository and the index
- * of the operation in progress. The release must not inherit them: this repository's
- * pre-commit hook runs the tests, whose releases would otherwise write to the index of the
- * commit being made instead of the one of their scratch repository.
+ * of the operation in progress. The commands of a release must not inherit them: run from a
+ * hook, as the tests of the release are by this repository's pre-commit hook, they would act
+ * on the index of the commit being made instead of the one of the repository to release.
  */
 const GIT_HOOK_VARIABLES = new Set(['GIT_DIR', 'GIT_INDEX_FILE', 'GIT_PREFIX', 'GIT_WORK_TREE'])
 
@@ -106,6 +110,17 @@ type CommandResult = {
 }
 
 /**
+ * List the variables through which npm says that it was asked for a dry run.
+ *
+ * @param environment - The environment variables of the process.
+ *
+ * @returns The names of the {@link NPM_DRY_RUN_VARIABLES} that are set to anything but an
+ *   empty string or `false`.
+ */
+const getNpmDryRunVariables = (environment: Environment): string[] =>
+  NPM_DRY_RUN_VARIABLES.filter((name) => ![undefined, '', 'false'].includes(environment[name]))
+
+/**
  * Parse the arguments of `npm run release`.
  *
  * A release is only real with `--confirm`: anything else is a dry run. This is what keeps a
@@ -140,10 +155,35 @@ export const parseReleaseArguments = (
   if (requests.length !== 1) {
     throw new Error(`🚨 expected exactly one version argument\n${USAGE}`)
   }
-  const isNpmDryRun = NPM_DRY_RUN_VARIABLES.some(
-    (name) => ![undefined, '', 'false'].includes(environment[name])
-  )
-  return { request: requests[0], isDryRun: !options.includes(CONFIRM_OPTION) || isNpmDryRun }
+  return {
+    request: requests[0],
+    isDryRun: !options.includes(CONFIRM_OPTION) || getNpmDryRunVariables(environment).length > 0,
+  }
+}
+
+/**
+ * Explain a dry run that the person releasing may not have meant: npm kept `--confirm` for
+ * itself, or was asked for a dry run while the script was given `--confirm`.
+ *
+ * @param commandArguments - The command line arguments, without the executable and script.
+ * @param environment - The environment variables of the process.
+ *
+ * @returns What to tell the person releasing, or `undefined` when there is nothing to explain.
+ */
+export const explainDryRun = (
+  commandArguments: string[],
+  environment: Environment
+): string | undefined => {
+  if (commandArguments.includes(CONFIRM_OPTION)) {
+    const variables = getNpmDryRunVariables(environment)
+    return variables.length > 0
+      ? `⚠️  ${CONFIRM_OPTION} was given, but npm was asked for a dry run ` +
+          `(${variables.join(', ')}).`
+      : undefined
+  }
+  return environment[NPM_CONFIRM_VARIABLE] === undefined
+    ? undefined
+    : `⚠️  npm kept ${CONFIRM_OPTION} for itself: write it after a \`--\` (${USAGE.slice('Usage: '.length)}).`
 }
 
 /**
@@ -314,12 +354,16 @@ const getPreflightProblems = (workspace: Workspace, tag: string, previousTag: st
   }
 
   // The push URL, which is not the URL `git ls-remote origin` reads when the two differ.
-  const pushUrl = runCommand(workspace, 'git', ['remote', 'get-url', '--push', REMOTE])
+  const pushUrls = runCommand(workspace, 'git', ['remote', 'get-url', '--push', '--all', REMOTE])
+  if (pushUrls.isSuccess && pushUrls.output.includes('\n')) {
+    // A push goes to each of them, and is only atomic for one at a time.
+    return [...problems, `the remote "${REMOTE}" has several push URLs, a release needs one`]
+  }
   const branchReference = `refs/heads/${RELEASE_BRANCH}`
   const tagReference = `refs/tags/${tag}`
-  const remote = pushUrl.isSuccess
-    ? runCommand(workspace, 'git', ['ls-remote', pushUrl.output, branchReference, tagReference])
-    : pushUrl
+  const remote = pushUrls.isSuccess
+    ? runCommand(workspace, 'git', ['ls-remote', pushUrls.output, branchReference, tagReference])
+    : pushUrls
   if (!remote.isSuccess) {
     return [...problems, `the remote "${REMOTE}" could not be read (${remote.failure})`]
   }
@@ -344,7 +388,9 @@ const getPreflightProblems = (workspace: Workspace, tag: string, previousTag: st
 }
 
 /**
- * Read the commits made since a tag, newest first, without merge commits.
+ * Read the commits made since a tag, newest first, without merge commits. Only what the
+ * format asks for is printed, even for someone whose `log.showSignature` setting adds the
+ * signature of each commit to every `git log`.
  *
  * @param workspace - The repository.
  * @param tag - The tag to start after.
@@ -355,6 +401,7 @@ const readCommitsSince = (workspace: Workspace, tag: string): GitCommit[] =>
   readGit(workspace, [
     'log',
     '--no-merges',
+    '--no-show-signature',
     '--format=%H%x1f%s%x1f%b%x1e',
     `refs/tags/${tag}..HEAD`,
   ])
@@ -386,9 +433,14 @@ export const release = (options: ReleaseOptions): string => {
   const { directoryPath, isDryRun, log } = options
   const workspace = {
     directoryPath,
-    environment: Object.fromEntries(
-      Object.entries(options.environment).filter(([name]) => !GIT_HOOK_VARIABLES.has(name))
-    ),
+    environment: {
+      ...Object.fromEntries(
+        Object.entries(options.environment).filter(([name]) => !GIT_HOOK_VARIABLES.has(name))
+      ),
+      // Keeps the commands that only read (`git status`) from refreshing the index file on
+      // the way: a dry run writes nothing at all.
+      GIT_OPTIONAL_LOCKS: '0',
+    },
   }
 
   /**
@@ -517,7 +569,7 @@ export const release = (options: ReleaseOptions): string => {
       [
         pushed.message,
         `   The release commit exists locally. Check what reached "${REMOTE}" with:`,
-        `     git ls-remote ${REMOTE} refs/heads/${RELEASE_BRANCH} refs/tags/${tag}`,
+        `     git ls-remote "$(git remote get-url --push ${REMOTE})" refs/heads/${RELEASE_BRANCH} refs/tags/${tag}`,
         `   To retry (create the tag first if \`git tag --list ${tag}\` prints nothing):`,
         `     git tag --annotate ${tag} --message "Release ${version}"`,
         `     git ${pushArguments.join(' ')}`,

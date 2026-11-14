@@ -36,8 +36,8 @@ jobs:
       version: ${{ steps.tag.outputs.version }}
     steps:
       # The whole history, to check below that the tagged commit is on `main`. The token is not
-      # kept in the git configuration: nothing after this step needs it, and the steps below
-      # run every development dependency.
+      # kept in the git configuration: nothing after this step needs it (the repository is
+      # public), and the steps below run every development dependency.
       - name: Checkout
         uses: actions/checkout@v7
         with:

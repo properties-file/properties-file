@@ -156,7 +156,8 @@ The script:
 
 1. Stops unless the checkout is on `main`, clean, and at the tip of `origin/main`; unless the
    current version's tag is in the history of `HEAD`; and unless the new version's tag exists
-   neither locally nor on `origin`. A dry run reports these as warnings and goes on.
+   neither locally nor on `origin` (which must have a single push URL). A dry run reports
+   these as warnings and goes on.
 2. Runs `npm run build`, and stops if the build fails or changes a file.
 3. Bumps the version in `package.json` and `package-lock.json`.
 4. Adds the version's entry to `CHANGELOG.md`: a heading with the compare link and the date
@@ -190,13 +191,12 @@ is the release commit on `main` and the `v<version>` tag:
   is unavailable): fix it and re-run the failed jobs from the Actions tab, which GitHub allows
   for 30 days. Publishing is skipped when the version is already on npm, and so is creating a
   GitHub release that already exists, so re-running is safe wherever the run stopped.
-- **The cause is inside the repository** (a failing test, a mistake in the workflow): a re-run
+- **The cause is inside the repository** (a failing test, a mistake in the workflow), or
+  outside of it but there to stay (a new Node.js version the build does not pass on): a re-run
   cannot fix it, because it runs the tagged commit again, workflow file included. Fix the
-  problem on `main`, then release the next version (`npm run release -- patch --confirm`). The
-  version
-  that failed is never published: say so in its `CHANGELOG.md` entry.
+  problem on `main`, then publish the version from the fixed commit, as follows.
 
-To publish the failed version itself instead of the next one, move its tag to the fixed commit:
+Delete the failed run (in the Actions tab), then move the version's tag to the fixed commit:
 
 ```bash
 git switch main && git pull --ff-only
@@ -204,10 +204,19 @@ git tag --force --annotate v<version> --message "Release <version>"
 git push --force origin v<version>
 ```
 
-The pushed tag starts a new run. Do not re-run the old one afterwards: it would still build
-the commit the tag pointed to before. Other clones keep the old tag until they run
-`git fetch --tags --force`. Once a version is on npm it cannot be published again, so from
-then on a fix is always the next version.
+The pushed tag starts a new run. The failed run is deleted first because its Publish job, if
+it is the one that failed, could otherwise be re-run later and publish what that run had
+built. The fix was committed after the version's `CHANGELOG.md` entry was written: add it to
+the entry by hand if it belongs there. Other clones keep the old tag until they run
+`git fetch --tags --force`; a release made from one of them before that would list the fix
+again.
+
+The other way out is to leave the failed version unpublished and release the next one
+(`npm run release -- patch --confirm`). Its entry only lists what was committed since the
+failed version's tag, so move the items of the failed version's entry into it first.
+
+Once a version is on npm it cannot be published again: from then on a fix is always the next
+version.
 
 To edit the notes of a release, edit its `CHANGELOG.md` entry and its GitHub release; the
 workflow only writes them once.
@@ -224,14 +233,17 @@ The GitHub settings below are therefore part of what protects the package. Set e
 in this order, so that the package is never publishable from an unprotected environment:
 
 1. **The `npm` environment**, in the repository's **Settings** → **Environments**: create it,
-   and limit its deployment branches and tags to the tag pattern `v*`. Without that limit a
-   workflow on any branch could publish from the environment, and GitHub creates a missing
-   environment without any limit the first time a workflow names it. A required reviewer can
-   be added there too, to approve each publish by hand.
+   set its deployment branches and tags to "Selected branches and tags", and add a single
+   rule, of ref type **Tag**, with the pattern `v*`. No branch rule: a workflow on a branch
+   that matches one could publish from the environment. GitHub creates a missing environment
+   without any rule the first time a workflow names it, hence doing this first. A required
+   reviewer can be added there too, to approve each publish by hand.
 2. **A tag ruleset**, in **Settings** → **Rules** → **Rulesets**: target the tags `v*`,
-   restrict their creation, update and deletion, and put the repository admin role in the
-   bypass list. Only those who bypass the ruleset can then push, move or delete a release
-   tag, which `npm run release` and moving a tag (see above) both need.
+   enable "Restrict creations", "Restrict updates" and "Restrict deletions", put the
+   repository admin role in the bypass list (and the organization admin role, if releases are
+   pushed by an owner of the organization), and set the enforcement status to **Active**: a
+   new ruleset is disabled until then. Only those who bypass the ruleset can then push, move
+   or delete a release tag, which `npm run release` and moving a tag (see above) both need.
 3. **The trusted publisher**, on npmjs.com, in the package's **Settings** → **Trusted
    Publisher** → **GitHub Actions**:
    - Organization or user: `properties-file`

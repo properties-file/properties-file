@@ -29,22 +29,20 @@ const REGEX_UNDONE_HASH = /^This reverts commit (?<hash>[\da-f]{7,40})\b/m
 
 /**
  * Matches what {@link escapeEmphasis} has to look at in a commit's text. The `kept` group is
- * what must stay as it is: a code span (between two runs of as many backticks), an autolink
- * (`<…>`), a bare URL, or a character that is already escaped. Otherwise the match is a `*`
- * or a `_` to escape.
+ * what must stay as it is: a code span (between two runs of as many backticks), a URL (from
+ * `http://`, `https://` or `www.` up to a space, a backtick, an angle bracket or a `*`), an
+ * email address, or a character that is already escaped. Otherwise the match is a `*` or a
+ * `_` to escape.
  */
 const REGEX_EMPHASIS =
-  /(?<kept>(?<!`)(?<backticks>`+)(?!`).+?(?<!`)\k<backticks>(?!`)|<[^\s<>]+>|https?:\/\/\S+|\\.)|[*_]/g
-
-/** Matches the heading of any version entry in `CHANGELOG.md` (`# [1.0.0](…)`, `## [1.0.1](…)`). */
-const REGEX_VERSION_HEADING = /^#{1,2} \[/
+  /(?<kept>(?<!`)(?<backticks>`+)(?!`).+?(?<!`)\k<backticks>(?!`)|(?:https?:\/\/|www\.)[a-z\d][^\s*<>`]*|[a-z\d][\w.+-]*@[a-z\d][\w.-]*|\\.)|[*_]/gi
 
 /**
- * Matches the line that opens a fenced code block, capturing its fence: at least three
- * backticks or tildes, indented by three spaces at most. A backtick fence cannot be followed
- * by another backtick on its line (that would be a code span).
+ * Matches the heading of any version entry in `CHANGELOG.md`: a level 1 or 2 heading that
+ * starts with a version as a link (`# [1.0.0](…)`, `## [1.0.1](…)`, `## [1.0.2 — 1.0.9](…)`).
+ * Nothing else is taken for one, such as a `# [section]` line in a `.properties` example.
  */
-const REGEX_CODE_FENCE_OPENING = /^ {0,3}(?<fence>`{3,}(?=[^`]*$)|~{3,})/
+const REGEX_VERSION_HEADING = /^#{1,2} \[\d+\.\d+\.\d[^\]]*\]\(/
 
 /** Matches the compare link of a version entry heading, capturing its URL and its tag range. */
 const REGEX_COMPARE_LINK = /\]\((?<url>[^()\s]+\/compare\/(?<range>[^()\s/]+))\)/
@@ -363,54 +361,14 @@ export const renderChangelogEntry = (input: ChangelogEntryInput): string => {
 }
 
 /**
- * Check whether a line closes a fenced code block: nothing but the characters of the opening
- * fence, at least as many of them, indented by three spaces at most.
- *
- * @param line - The line to check.
- * @param openFence - The fence that opened the code block.
- *
- * @returns `true` if the line closes the code block.
- */
-const isClosingFence = (line: string, openFence: string): boolean => {
-  const fence = line.trim()
-  return (
-    /^ {0,3}\S/.test(line) &&
-    fence.length >= openFence.length &&
-    fence === openFence[0].repeat(fence.length)
-  )
-}
-
-/**
- * Find the headings of the version entries of a `CHANGELOG.md`. Lines inside fenced code
- * blocks are not headings, even when they look like one (a `# [section]` line in a
- * `.properties` example).
+ * Find the headings of the version entries of a `CHANGELOG.md`.
  *
  * @param lines - The lines of `CHANGELOG.md`.
  *
  * @returns The index of each version entry heading, in file order.
- *
- * @throws If a fenced code block is never closed, since every line after its opening would
- *   then be code.
  */
-const findVersionHeadings = (lines: string[]): number[] => {
-  const headingIndexes: number[] = []
-  // The fence of the code block the current line is in, if it is in one.
-  let openFence: string | undefined
-  for (const [index, line] of lines.entries()) {
-    if (openFence === undefined) {
-      openFence = REGEX_CODE_FENCE_OPENING.exec(line)?.groups?.fence
-      if (openFence === undefined && REGEX_VERSION_HEADING.test(line)) {
-        headingIndexes.push(index)
-      }
-    } else if (isClosingFence(line, openFence)) {
-      openFence = undefined
-    }
-  }
-  if (openFence !== undefined) {
-    throw new Error('🚨 CHANGELOG.md has a fenced code block that is never closed')
-  }
-  return headingIndexes
-}
+const findVersionHeadings = (lines: string[]): number[] =>
+  lines.flatMap((line, index) => (REGEX_VERSION_HEADING.test(line) ? index : []))
 
 /**
  * Check whether a `CHANGELOG.md` line is the heading of a given version's entry.
@@ -421,7 +379,7 @@ const findVersionHeadings = (lines: string[]): number[] => {
  * @returns `true` if the line is that version's heading.
  */
 const isHeadingOfVersion = (line: string, version: string): boolean =>
-  line.startsWith(`# [${version}]`) || line.startsWith(`## [${version}]`)
+  line.startsWith(`# [${version}](`) || line.startsWith(`## [${version}](`)
 
 /**
  * Add a release entry to a `CHANGELOG.md`, above the entries it already has.

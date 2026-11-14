@@ -4,11 +4,18 @@
  */
 import { isNormalizedError, noThrow } from '../utilities/no-throw'
 
-import { parseReleaseArguments, release } from './release'
+import { explainDryRun, parseReleaseArguments, release } from './release'
 
-const outcome = noThrow(() =>
-  release({
-    ...parseReleaseArguments(process.argv.slice(2), process.env),
+const commandArguments = process.argv.slice(2)
+
+const outcome = noThrow(() => {
+  const releaseArguments = parseReleaseArguments(commandArguments, process.env)
+  const explanation = explainDryRun(commandArguments, process.env)
+  if (explanation !== undefined) {
+    console.log(explanation)
+  }
+  return release({
+    ...releaseArguments,
     directoryPath: process.cwd(),
     environment: process.env,
     date: new Date(),
@@ -17,7 +24,7 @@ const outcome = noThrow(() =>
       console.log(message)
     },
   })
-)
+})
 
 if (isNormalizedError(outcome)) {
   console.error(outcome.message)
