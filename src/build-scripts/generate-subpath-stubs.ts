@@ -241,10 +241,11 @@ const getSubpathStub = (subpath: string, entry: unknown): SubpathStub => {
 const REGEX_STUB_TARGET = /^(?:\.\.\/)+dist\//
 
 /**
- * Check whether a file is a stub this step generated: valid JSON for an object with exactly the
- * {@link StubManifest} keys, each a string pointing up into the build output as every generated
- * stub does (see {@link REGEX_STUB_TARGET}). Any other content, unparseable JSON included, is
- * someone else's file — a manifest that merely has the same three fields is not ours.
+ * Check whether a file has the shape of a stub this step generates: valid JSON for an object
+ * with exactly the {@link StubManifest} keys, each a string pointing up into the build output
+ * as every generated stub does (see {@link REGEX_STUB_TARGET}). Any other content, unparseable
+ * JSON included, is someone else's file — a manifest that merely has the same three fields is
+ * not ours.
  *
  * @param filePath - The `package.json` file to inspect.
  *
@@ -352,11 +353,13 @@ export const generateSubpathStubs = (packageJsonPath: string): void => {
     // `lstat`, not `exists`: a symbolic link counts as existing even when it is broken.
     .filter((stubRootPath) => lstatSync(stubRootPath, { throwIfNoEntry: false }) !== undefined)
 
-  // Never delete a directory this step did not create (e.g. an exports key colliding with a
-  // source directory): a previously generated stub tree is a real directory (not a file, and
-  // not a symbolic link, which would be followed into someone else's directory) holding
-  // generated stubs only (see `hasOnlyStubFiles`). All of them are checked before any is
-  // deleted, so a refusal leaves the tree untouched.
+  // Only clear what looks exactly like a previously generated stub tree, so that an exports key
+  // colliding with a source directory deletes nothing: a real directory (not a file, and not a
+  // symbolic link, which would be followed into someone else's directory) holding nothing but
+  // stub-shaped manifests and directories (see `hasOnlyStubFiles`). The check goes by content,
+  // not by origin: a directory of empty directories, or a hand-written manifest identical in
+  // shape to a stub, is replaced too. All of them are checked before any is deleted, so a
+  // refusal leaves the tree untouched.
   for (const stubRootPath of existingStubRootPaths) {
     if (!lstatSync(stubRootPath).isDirectory()) {
       throw new Error(
