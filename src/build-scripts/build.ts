@@ -226,8 +226,9 @@ writeFileSync('dist/cjs/package.json', '{ "type": "commonjs" }')
  * +------------------------------------------------------------------+
  *
  * Authoritative artifact-level compatibility gate — see `verify-es5-output.ts` for the full
- * design (aggressive-mode es-x, the SWC-helper allowlist exemption, and the static-global
- * false-positive filter). Extracted into its own module so the gate itself is unit-testable.
+ * design (aggressive-mode es-x, the derived ban on every post-ES5 built-in global, the
+ * SWC-helper allowlist exemption, and the fail-closed handling of files it cannot verify).
+ * Extracted into its own module so the gate itself is unit-testable.
  */
 
 console.log(`${EOL}🏃 Running build step: verify ES5 output via es-x.${EOL}`)
