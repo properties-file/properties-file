@@ -146,7 +146,8 @@ export const formatNormalized = (
     // a dictionary (`Map` is ES2015 and not available in shipped ES5 output), so it inherits
     // `constructor`, `toString` and the other `Object.prototype` members: only its own
     // properties count as seen. A `__proto__` key (the name of the prototype accessor) is tracked
-    // apart: assigning to that name goes to the prototype setter instead of storing a property.
+    // apart: assigning to that name does not store a property, and Node.js 0.4 reports it as an
+    // own property of every object, so it would always count as seen there.
     const seen: Record<string, boolean> = {}
     let hasSeenPrototypeAccessorKey = false
     const duplicateIndices: number[] = []

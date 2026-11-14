@@ -142,8 +142,9 @@ export class Properties {
     // A plain object used as a dictionary (`Map` would be cleaner but is ES2015 and not
     // available in shipped ES5 output). It inherits `constructor`, `toString` and the other
     // `Object.prototype` members, so only its own properties are read. The group of a
-    // `__proto__` key (the name of the prototype accessor) is kept apart: assigning to that
-    // name would replace the dictionary's prototype instead of storing a property.
+    // `__proto__` key (the name of the prototype accessor) is kept apart: assigning an array
+    // to that name replaces the dictionary's prototype instead of storing a property, and
+    // Node.js 0.4 reports the name as an own property of every object.
     const groupByKey: Record<string, PropertyNode[]> = {}
     let prototypeAccessorKeyGroup: PropertyNode[] | undefined
     for (const node of this.nodes) {
