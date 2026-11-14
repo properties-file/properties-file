@@ -242,10 +242,10 @@ const REGEX_STUB_TARGET = /^(?:\.\.\/)+dist\//
 
 /**
  * Check whether a file has the shape of a stub this step generates: valid JSON for an object
- * with exactly the {@link StubManifest} keys, each a string pointing up into the build output
- * as every generated stub does (see {@link REGEX_STUB_TARGET}). Any other content, unparseable
- * JSON included, is someone else's file — a manifest that merely has the same three fields is
- * not ours.
+ * with exactly the {@link StubManifest} keys, each a string of the form every generated stub
+ * uses, one or more `../` followed by `dist/` (see {@link REGEX_STUB_TARGET}; the number of
+ * `../` is not compared with the file's depth). Any other content, unparseable JSON included,
+ * is someone else's file — a manifest that merely has the same three fields is not ours.
  *
  * @param filePath - The `package.json` file to inspect.
  *
@@ -353,7 +353,7 @@ export const generateSubpathStubs = (packageJsonPath: string): void => {
     // `lstat`, not `exists`: a symbolic link counts as existing even when it is broken.
     .filter((stubRootPath) => lstatSync(stubRootPath, { throwIfNoEntry: false }) !== undefined)
 
-  // Only clear what looks exactly like a previously generated stub tree, so that an exports key
+  // Only clear what has the form of a previously generated stub tree, so that an exports key
   // colliding with a source directory deletes nothing: a real directory (not a file, and not a
   // symbolic link, which would be followed into someone else's directory) holding nothing but
   // stub-shaped manifests and directories (see `hasOnlyStubFiles`). The check goes by content,
