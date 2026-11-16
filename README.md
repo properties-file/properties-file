@@ -238,7 +238,7 @@ Both parsers are fully compliant with the Java `Properties` specification and pr
 
 ## Contributing
 
-See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for project principles, architecture, code style, and development commands.
+See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for project principles, architecture, code style, development commands, and how releases are made.
 
 ## Additional references
 

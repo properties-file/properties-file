@@ -375,6 +375,8 @@ export const release = (options: ReleaseOptions): string => {
     // its form.
     const notesProblems = findNotesProblems(cleanNotes, notesRules, notesContext).filter(
       (problem) =>
+        // What the repository forbids is said in any case: it is another thing to correct.
+        notesRules.forbidden.some((forbidden) => problem.message.startsWith(forbidden.reason)) ||
         notesHazards.content?.includes(
           `line ${String(problem.lineNumber ?? 0)}: ${problem.line}`
         ) !== true

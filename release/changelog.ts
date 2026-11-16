@@ -42,10 +42,21 @@ const REGEX_LINK_DEFINITION =
   /^(?:[\t >]|[*+-][\t ]|\d+[.)][\t ])*(?:\[\^(?:\\.|[^\]\\])+\]:|\[[^\]]+\]:[\t ]*(?:(?:<[^>]*>|[^\t ]+)(?:[\t ]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[\t ]*)?$)/
 
 /** Matches a footnote, which GitHub adds to Markdown: its reference or its definition. */
-const REGEX_FOOTNOTE = /(?<!\\)\[\^[^\]\s][^\]]*\]/
+const REGEX_FOOTNOTE = /(?<!\\)\[\^[^\]\t\n\r ][^\]]*\]/
 
-/** Matches the start of the text of a footnote, anywhere in a line: `[^label]:`. */
-const REGEX_FOOTNOTE_TEXT = /\[\^[^\]\s][^\]]*\]:/
+/**
+ * Check whether a line could hold the text of a footnote, `[^label]: …`, wherever GitHub
+ * would find one. Nothing is asked of what the label is made of: GitHub and JavaScript do not
+ * agree on which characters are spaces, and a rule that reads characters could be got around.
+ *
+ * @param line - A line of release notes, as it is written.
+ *
+ * @returns `true` if the line has `[^` and, after it, `]:`.
+ */
+const hasFootnoteText = (line: string): boolean => {
+  const start = line.indexOf('[^')
+  return start !== -1 && line.includes(']:', start)
+}
 
 /** Matches the definition of a footnote, at the beginning of a line of a file. */
 const REGEX_FOOTNOTE_DEFINITION = /^(?:[\t >]|[*+-][\t ]|\d+[.)][\t ])*\[\^[^\]]+\]:/
@@ -233,7 +244,12 @@ export const readCodeBlockLines = (lines: string[]): CodeBlockLine[] => {
       }
     } else if (line.trim() !== '' && indentation < opening.indentation) {
       codeBlockLines.push('escaped')
-    } else if (marker !== undefined && marker.startsWith(opening.marker) && rest.trim() === '') {
+    } else if (
+      marker !== undefined &&
+      marker.startsWith(opening.marker) &&
+      // Only spaces and tabs can follow the fence that closes a block.
+      /^[\t ]*$/.test(rest)
+    ) {
       opening = undefined
       codeBlockLines.push('closing')
     } else {
@@ -478,8 +494,8 @@ const findCodeBlockHazard = (lines: string[]): string | undefined => {
       (line, index) =>
         index > openingIndex &&
         codeBlockLines[index] === 'escaped' &&
-        line.trim().startsWith(marker) &&
-        line.trim().replaceAll(marker.charAt(0), '') === ''
+        line.replaceAll(/[\t ]/g, '').startsWith(marker) &&
+        line.replaceAll(/[\t ]/g, '').replaceAll(marker.charAt(0), '') === ''
     )
     return closingIndex !== -1
       ? `🚨 the release notes have a code block (line ${String(openingIndex + 1)}: ${lines[openingIndex]}) ` +
@@ -525,15 +541,17 @@ const describeHtmlHazard = (places: string[]): string =>
  * @param normalizedNotes - The notes (see {@link cleanReleaseNotes}).
  * @param lines - Their lines.
  *
- * @returns What is wrong with the first such thing and what to do about it, or `undefined`.
+ * @returns What is wrong with each such thing and what to do about it, or `undefined`.
  */
 const findContentHazard = (normalizedNotes: string, lines: string[]): string | undefined => {
+  // Everything there is, so that one run says all of it.
+  const hazards: string[] = []
   const headingIndex = lines.findIndex((line) => REGEX_VERSION_HEADING.test(line))
   if (headingIndex !== -1) {
-    return (
+    hazards.push(
       '🚨 the release notes have a line in the form of a changelog entry heading ' +
-      `(line ${String(headingIndex + 1)}: ${lines[headingIndex]}): remove it, the release writes ` +
-      'the heading of the entry itself'
+        `(line ${String(headingIndex + 1)}: ${lines[headingIndex]}): remove it, the release writes ` +
+        'the heading of the entry itself'
     )
   }
   // What the parser does not always tell, looked for in the text that is not code: the HTML
@@ -552,42 +570,49 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
   const footnotePlaces = lines.flatMap((line, index) =>
     // The text of a footnote is looked for in code too: where code ends is not read in the
     // same way by everything that reads Markdown, and GitHub is what counts for footnotes.
-    REGEX_FOOTNOTE.test(textLines[index]) || REGEX_FOOTNOTE_TEXT.test(line)
+    REGEX_FOOTNOTE.test(textLines[index]) || hasFootnoteText(line)
       ? `line ${String(index + 1)}: ${line}`
       : []
   )
   if (footnotePlaces.length > 0) {
-    return (
+    hazards.push(
       `🚨 the release notes have a footnote (${footnotePlaces.join('; ')}): GitHub numbers the ` +
-      'footnotes of the whole changelog together, so one in the notes changes those of the ' +
-      'older entries, and it is not rendered in the release. Write what it says in the item ' +
-      'itself and take out both its mark and its text, or put it in backticks if it is code ' +
-      '(part of a regular expression, for instance). A line with "[^label]:" is refused in ' +
-      'code too: write that example in another way.'
+        'footnotes of the whole changelog together, so one in the notes changes those of the ' +
+        'older entries, and it is not rendered in the release. Write what it says in the item ' +
+        'itself and take out both its mark and its text, or put it in backticks if it is code ' +
+        '(part of a regular expression, for instance). A line that has "[^" and, further on, ' +
+        '"]:" is refused in code too, whatever is between them: put the two on different ' +
+        'lines, or write that example in another way.'
     )
   }
-  const definitionIndex = textLines.findIndex((line) => REGEX_LINK_DEFINITION.test(line))
-  if (definitionIndex !== -1) {
+  // Every line that defines a link; the text of a footnote, which looks like one, was named
+  // as what it is.
+  const definitionPlaces = lines.flatMap((line, index) =>
+    REGEX_LINK_DEFINITION.test(textLines[index]) && !hasFootnoteText(line)
+      ? `line ${String(index + 1)}: ${line}`
+      : []
+  )
+  if (definitionPlaces.length > 0) {
     // With the links that use it, which are to write in another way too: one run says both.
     const referencePlaces = lines.flatMap((line, index) =>
       REGEX_LINK_REFERENCE.test(textLines[index]) ? `line ${String(index + 1)}: ${line}` : []
     )
-    return (
-      `🚨 the release notes define a link for the whole changelog (line ${String(definitionIndex + 1)}: ` +
-      `${lines[definitionIndex]}): a line "[label]: url" changes every "[label]" of the older ` +
-      'entries. Write the link where it is used: [text](url).' +
-      (referencePlaces.length === 0 ? '' : ` That is here: ${referencePlaces.join('; ')}.`)
+    hazards.push(
+      `🚨 the release notes define a link for the whole changelog (${definitionPlaces.join('; ')}): ` +
+        'a line "[label]: url" changes every "[label]" of the older ' +
+        'entries. Write the link where it is used: [text](url).' +
+        (referencePlaces.length === 0 ? '' : ` Where it is used: ${referencePlaces.join('; ')}`)
     )
   }
   // A link by reference, whose definition the notes cannot have: it would use one of the
   // older entries in the changelog, and none in the release.
   const referenceIndex = textLines.findIndex((line) => REGEX_LINK_REFERENCE.test(line))
-  if (referenceIndex !== -1) {
-    return (
+  if (referenceIndex !== -1 && definitionPlaces.length === 0) {
+    hazards.push(
       `🚨 the release notes have a link by reference (line ${String(referenceIndex + 1)}: ` +
-      `${lines[referenceIndex]}): its address would be on a line of its own, "[label]: url", ` +
-      'which the notes cannot have. Write the address in the link, [text](url), or put it in ' +
-      'backticks if it is code (two pairs of brackets in a row).'
+        `${lines[referenceIndex]}): its address would be on a line of its own, "[label]: url", ` +
+        'which the notes cannot have. Write the address in the link, [text](url), or put it in ' +
+        'backticks if it is code (two pairs of brackets in a row).'
     )
   }
   // What only a parser can tell: an entry heading that is not written like the others
@@ -604,38 +629,53 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
     }
   })
   if (isNormalizedError(tokens)) {
-    return `🚨 the release notes could not be read as Markdown (${tokens.message}): they nest quotes or lists too deep. Write them more simply.`
+    return [
+      ...hazards,
+      `🚨 the release notes could not be read as Markdown (${tokens.message}): they nest quotes or lists too deep. Write them more simply.`,
+    ].join('\n\n')
   }
   // A definition the look at the lines did not find: its label is on more than one line.
   const linkLabel = tokens.linkLabels.at(0)
-  if (linkLabel !== undefined) {
+  if (linkLabel !== undefined && definitionPlaces.length === 0 && footnotePlaces.length === 0) {
     const labelIndex = lines.findIndex((line) => line.includes(']:'))
-    return (
+    hazards.push(
       '🚨 the release notes define a link for the whole changelog ' +
-      `(${labelIndex === -1 ? `the label "${linkLabel.trim()}"` : `line ${String(labelIndex + 1)}: ${lines[labelIndex]}`}): ` +
-      'a definition "[label]: url" changes every "[label]" of the older entries. Write the ' +
-      'link where it is used: [text](url).'
+        `(${labelIndex === -1 ? `the label "${linkLabel.trim()}"` : `line ${String(labelIndex + 1)}: ${lines[labelIndex]}`}): ` +
+        'a definition "[label]: url" changes every "[label]" of the older entries. Write the ' +
+        'link where it is used: [text](url).'
     )
   }
   const heading = tokens.headings.find(
     (token) => token.depth <= 2 && REGEX_VERSION_TITLE.test(token.text)
   )
-  if (heading !== undefined) {
-    return (
+  if (heading !== undefined && headingIndex === -1) {
+    hazards.push(
       '🚨 the release notes have a heading in the form of a changelog entry heading ' +
-      `(${describePlace(lines, heading.raw)}): remove it, the release writes the heading of ` +
-      'the entry itself'
+        `(${describePlace(lines, heading.raw)}): remove it, the release writes the heading of ` +
+        'the entry itself'
     )
   }
   // Every place, so that one run says all there is to take out.
   const allHtmlPlaces = [
-    ...new Set([...htmlPlaces, ...tokens.html.map((token) => describePlace(lines, token.raw))]),
+    ...new Set([
+      ...htmlPlaces,
+      // Every line of what the parser read as HTML: a block of it has several.
+      ...tokens.html.flatMap((token) =>
+        token.raw
+          .split('\n')
+          .filter((line) => line.trim() !== '')
+          .map((line) => describePlace(lines, line))
+      ),
+    ]),
   ].toSorted(
     (first, second) =>
       Number(/^line (?<number>\d+)/.exec(first)?.groups?.number ?? 0) -
       Number(/^line (?<number>\d+)/.exec(second)?.groups?.number ?? 0)
   )
-  return allHtmlPlaces.length === 0 ? undefined : describeHtmlHazard(allHtmlPlaces)
+  if (allHtmlPlaces.length > 0) {
+    hazards.push(describeHtmlHazard(allHtmlPlaces))
+  }
+  return hazards.length === 0 ? undefined : hazards.join('\n\n')
 }
 
 /**

@@ -2205,6 +2205,22 @@ describe('what release notes can do to the changelog', () => {
     expect(() => normalizeReleaseNotes('- <!-- note to self\n\n- Faster.')).toThrow(
       `🚨 the release notes have HTML (line 1: - <!-- note to self): ${message}`
     )
+    // Every line of a block of HTML is named, not only its first.
+    expect(() =>
+      normalizeReleaseNotes(
+        '- One:\n\n  <details>\n  <summary>Example</summary>\n\n  text\n\n  </details>'
+      )
+    ).toThrow(
+      '🚨 the release notes have HTML (line 3:   <details>; line 4:   <summary>Example</summary>; line 8:   </details>): '
+    )
+    // What is wrong in another way is said in the same run.
+    expect(() =>
+      normalizeReleaseNotes(
+        '- A fix.[^1] and a <br>.\n\n[docs]: https://example.com\n\n## [1.2.4](https://example.com)'
+      )
+    ).toThrow(
+      /a changelog entry heading \(line 5: [^\n]+\n\n🚨 the release notes have a footnote \(line 1: [^\n]+\n\n🚨 the release notes define a link for the whole changelog \(line 3: [^\n]+\n\n🚨 the release notes have HTML \(line 1: /
+    )
     // Every line that has some, in one message.
     expect(() =>
       normalizeReleaseNotes('- A line<br>and one.\n\n<details>\n\n- Other.\n\nText\n<?x')
@@ -2235,7 +2251,7 @@ describe('what release notes can do to the changelog', () => {
       normalizeReleaseNotes(
         `- x\n\n${String.fromCodePoint(0xa0)}~~~\n<pre>\n${String.fromCodePoint(0xa0)}~~~`
       )
-    ).toThrow('🚨 the release notes have HTML (line 4: <pre>)')
+    ).toThrow(/the release notes have HTML \([^)]*line 4: <pre>\)/)
 
     // HTML that is code, and a link between angle brackets.
     const notes =
@@ -2263,7 +2279,7 @@ describe('what release notes can do to the changelog', () => {
       String.raw`[^a\]b]: Two words.`,
     ]) {
       expect(() => normalizeReleaseNotes(`- One.\n\n${footnote}`)).toThrow(
-        `🚨 the release notes have a footnote (line 3: ${footnote}): GitHub numbers the footnotes of the whole changelog together, so one in the notes changes those of the older entries, and it is not rendered in the release. Write what it says in the item itself and take out both its mark and its text, or put it in backticks if it is code (part of a regular expression, for instance). A line with "[^label]:" is refused in code too: write that example in another way.`
+        `🚨 the release notes have a footnote (line 3: ${footnote}): GitHub numbers the footnotes of the whole changelog together, so one in the notes changes those of the older entries, and it is not rendered in the release. Write what it says in the item itself and take out both its mark and its text, or put it in backticks if it is code (part of a regular expression, for instance). A line that has "[^" and, further on, "]:" is refused in code too, whatever is between them: put the two on different lines, or write that example in another way.`
       )
     }
     // The text of a footnote is refused in code too, and after a line that closes a block
@@ -2278,8 +2294,22 @@ describe('what release notes can do to the changelog', () => {
       )
     }
     expect(() => normalizeReleaseNotes('- One:\n\n  ```\n  [^abc]: text\n  ```')).toThrow(
-      'A line with "[^label]:" is refused in code too: write that example in another way.'
+      'A line that has "[^" and, further on, "]:" is refused in code too, whatever is between them: put the two on different lines, or write that example in another way.'
     )
+    // Whatever its label is made of, and whatever would hide it from a reader of code: a
+    // space that is not one for GitHub, inline code that starts in the label, a fence that
+    // does not close a block for GitHub because of what follows it.
+    for (const notes of [
+      `- A fix[^${String.fromCodePoint(0xa0)}x].\n\n[^${String.fromCodePoint(0xa0)}x]: A note.`,
+      `- A fix[^${String.fromCodePoint(0xa0)}x\`].\n\n[^${String.fromCodePoint(0xa0)}x\`]: a note\` here.`,
+      `- One:\n\n\`\`\`\n\`\`\`${String.fromCodePoint(0xa0)}\n\`\`\`\n[^${String.fromCodePoint(0xa0)}x]: a note here.\n\`\`\`\n\`\`\`${String.fromCodePoint(0xa0)}\n\`\`\``,
+    ]) {
+      expect(() => normalizeReleaseNotes(notes)).toThrow('🚨 the release notes have a footnote (')
+    }
+    // Only spaces and tabs can follow the fence that closes a block.
+    expect(
+      readCodeBlockLines(['```', `\`\`\`${String.fromCodePoint(0xa0)}`, '```\t ', 'text'])
+    ).toStrictEqual(['opening', 'content', 'closing', 'outside'])
     // A code block in a quote is not something the checks follow.
     expect(() => normalizeReleaseNotes('> Example:\n>\n> ```js\n> const a = 1\n> ```')).toThrow(
       '🚨 the release notes have a code block in a quote (line 3: > ```js), which this release cannot check. Take the block out of the quote: put it under a list item, indented like the text of the item.'
@@ -2293,7 +2323,15 @@ describe('what release notes can do to the changelog', () => {
     expect(() =>
       normalizeReleaseNotes('- See [the docs][docs].\n\n[docs]: https://example.com')
     ).toThrow(
-      '🚨 the release notes define a link for the whole changelog (line 3: [docs]: https://example.com): a line "[label]: url" changes every "[label]" of the older entries. Write the link where it is used: [text](url). That is here: line 1: - See [the docs][docs]..'
+      '🚨 the release notes define a link for the whole changelog (line 3: [docs]: https://example.com): a line "[label]: url" changes every "[label]" of the older entries. Write the link where it is used: [text](url). Where it is used: line 1: - See [the docs][docs].'
+    )
+    // Each line is named for what it is: the text of a footnote is not also a definition.
+    expect(() =>
+      normalizeReleaseNotes(
+        '- A fix.[^1]\n\n[^1]: A note.\n[docs]: https://example.com\n[more]: <https://example.com>'
+      )
+    ).toThrow(
+      /have a footnote \(line 1: - A fix\.\[\^1\]; line 3: \[\^1\]: A note\.\): [^\n]+\n\n🚨 the release notes define a link for the whole changelog \(line 4: \[docs\]: https:\/\/example\.com; line 5: \[more\]: <https:\/\/example\.com>\): /
     )
     // A link by reference could only be defined on a line the notes cannot have.
     for (const reference of ['- See [the docs][docs].', '- See [the docs][].']) {
@@ -2379,6 +2417,19 @@ describe('what release notes can do to the changelog', () => {
       expect(
         markdown.findRenderingHazard(workspace, NOTES, previousChangelog, [changedOlderLink])
       ).toContain('the older entries of CHANGELOG.md would not render as they do now')
+
+      // A title that does not render the same by itself: it uses a link an entry defines.
+      const linkedTitleChangelog = `# Changelog\n\nSee [thing].\n\n## [1.2.3](${REPOSITORY_URL}/compare/v1.2.2...v1.2.3) (2026-01-01)\n\n- Old.\n\n[thing]: https://example.com\n`
+
+      const linkedTitleRelease = insertChangelogEntry(
+        linkedTitleChangelog,
+        '1.2.4',
+        renderEntry(NOTES)
+      )
+
+      expect(
+        markdown.findRenderingHazard(workspace, NOTES, linkedTitleChangelog, [linkedTitleRelease])
+      ).toBeUndefined()
 
       // A release, dry run or not, asks the rendering last, with the changelog as it is
       // written and as it is formatted, and stops on what it says.
@@ -3274,6 +3325,16 @@ describe('release notes rules of a repository', () => {
             '   1. line 3: * One.',
             `      ${OTHER_MARKER}`,
           ].join('\n')
+        )
+        // What the repository forbids on a line is said with what the line would do to the
+        // changelog.
+        expect(() =>
+          releaseIn(repository, 'patch', {
+            isDryRun,
+            notes: '### Bug Fixes\n\n- Returns a Promise<string> now, fix #12.',
+          })
+        ).toThrow(
+          /have HTML \(line 3: [^\n]+\n\n🚨 the release notes do not follow the rules of release\.config\.json \(1 place to correct\):\n\n {3}1\. line 3: [^\n]+\n {6}No issue number\. Here: "#12"\./
         )
         // Whatever the rules, notes cannot have HTML, or leave a code block open.
         expect(() =>
