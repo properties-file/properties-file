@@ -2026,7 +2026,7 @@ const WRONG_HEADING_START = `${ALLOWED_HEADINGS}, written exactly so.`
 const WRONG_HEADING = `${WRONG_HEADING_START}${HEADING_ADVICE}`
 
 /** What the validator says of the first line that comes before every heading. */
-const BEFORE_SECTIONS = `The notes start with one of the headings ${HEADING_LIST}. This line, and any other before the first heading, is not in a section: put what it says under one, as a list item ("- …").`
+const BEFORE_SECTIONS = `The notes start with one of the headings ${HEADING_LIST}. This line, and the line of text after it, are not in a section: put what is there under one, as list items ("- …").`
 
 /** What the validator says of a line that is neither an item nor the rest of one. */
 const NOT_AN_ITEM =
@@ -2171,7 +2171,11 @@ describe('what release notes can do to the changelog', () => {
 
   it('refuses notes that open a code block on the line of an item', () => {
     expect(() => normalizeReleaseNotes('- ```js\n  a()\n  ```')).toThrow(
-      '🚨 the release notes open a code block on the line of a list item (line 1: - ```js). Put the line that opens the block on a line of its own, indented under the item, like the rest of the block.'
+      '🚨 the release notes open a code block on a line that has something else, the start of a list item or its text (line 1: - ```js). Put the line that opens the block on a line of its own, indented under the item, like the rest of the block.'
+    )
+    // After the text of an item too.
+    expect(() => normalizeReleaseNotes('- Use `parse()`: ```js\n  parse()\n  ```')).toThrow(
+      'on a line that has something else, the start of a list item or its text (line 1: '
     )
     // Three backticks around a few words are inline code.
     expect(normalizeReleaseNotes('- ```a``` is kept.')).toBe('- ```a``` is kept.')
@@ -2184,6 +2188,12 @@ describe('what release notes can do to the changelog', () => {
     expect(() => normalizeReleaseNotes('- <!-- note to self\n\n- Faster.')).toThrow(
       `🚨 the release notes have HTML (line 1: - <!-- note to self): ${message}`
     )
+    // Every line that has some, in one message.
+    expect(() =>
+      normalizeReleaseNotes('- A line<br>and one.\n\n<details>\n\n- Other.\n\nText\n<?x')
+    ).toThrow(
+      `🚨 the release notes have HTML (line 1: - A line<br>and one.; line 3: <details>; line 8: <?x): ${message}`
+    )
     for (const notes of [
       'Fixed.\n\n<pre>',
       '- x\n\n<details>\n\n- y',
@@ -2191,17 +2201,28 @@ describe('what release notes can do to the changelog', () => {
       '- A line<br>and another.',
       // What only some readers of Markdown take for HTML, after a line of text.
       'Text\n<?x',
+      // A tag that ends the notes: other lines follow it in the changelog.
+      'Text\n\n<pre',
       'Text\n<![CDATA[ x',
       '> quoted\n<!DOCTYPE html',
-      // A line that only looks like the content of a code block: these spaces do not indent.
-      `- x\n\n${String.fromCodePoint(0xa0)}\`\`\`\n<pre>\n${String.fromCodePoint(0xa0)}\`\`\``,
     ]) {
       expect(() => normalizeReleaseNotes(notes)).toThrow('🚨 the release notes have HTML (line ')
     }
+    // Lines that only look like a code block, after spaces that do not indent, hide nothing.
+    expect(() =>
+      normalizeReleaseNotes(
+        `- x\n\n${String.fromCodePoint(0xa0)}\`\`\`\n<pre>\n${String.fromCodePoint(0xa0)}\`\`\``
+      )
+    ).toThrow('🚨 the release notes open a code block on a line that has something else')
+    expect(() =>
+      normalizeReleaseNotes(
+        `- x\n\n${String.fromCodePoint(0xa0)}~~~\n<pre>\n${String.fromCodePoint(0xa0)}~~~`
+      )
+    ).toThrow('🚨 the release notes have HTML (line 4: <pre>)')
 
     // HTML that is code, and a link between angle brackets.
     const notes =
-      '- `<pre>` and `Promise<string>` are code, <https://example.com> is a link:\n\n  ```html\n  <!--\n  ```'
+      '- `<pre>`, `<!--` and `Promise<string>` are code, <https://example.com> is a link, \\<!-- is text:\n\n  ```html\n  <!--\n  ```'
 
     expect(normalizeReleaseNotes(notes)).toBe(notes)
   })
@@ -2217,7 +2238,19 @@ describe('what release notes can do to the changelog', () => {
       )
     }
 
-    const notes = '- A [link](https://example.com), a [word]: and `[x]: y` in code.'
+    // A label on more than one line, which only the parser finds.
+    for (const definition of [
+      '[\nthing]: https://example.com',
+      '- [\n  thing]: https://example.com',
+    ]) {
+      expect(() => normalizeReleaseNotes(`- A fix.\n\n${definition}`)).toThrow(
+        '🚨 the release notes define a link for the whole changelog (line 4: '
+      )
+    }
+
+    // Brackets and a colon followed by a sentence are text.
+    const notes =
+      '- A [link](https://example.com), a [word]: and `[x]: y` in code.\n- [options]: the object passed to `getProperties`.'
 
     expect(normalizeReleaseNotes(notes)).toBe(notes)
   })
@@ -2284,10 +2317,20 @@ describe('what release notes can do to the changelog', () => {
       for (const isDryRun of [true, false]) {
         expect(() =>
           releaseIn(repository, 'patch', { isDryRun, notes: '- One.\n\n$$\nx' })
-        ).toThrow('🚨 CHANGELOG.md would not keep its older entries as they were, once formatted.')
+        ).toThrow(
+          '🚨 once CHANGELOG.md is formatted with prettier, the release notes would change its older entries, or would not be read as one entry: prettier reads something in them in its own way (a line of "$$" opens a block of mathematics, a code block can end on another line than it seems to). Write that part of the notes more plainly.\n   What the check said: 🚨 CHANGELOG.md would not keep its older entries as they were, once formatted.'
+        )
       }
 
       expect(getState(repository)).toStrictEqual(stateBefore)
+
+      // A changelog that prettier would change by itself says so, whatever the notes are.
+      commitFile(repository, 'CHANGELOG.md', `${INITIAL_CHANGELOG}\n* Old.\n`)
+      pushMain(repository)
+
+      expect(() => releaseIn(repository, 'patch', { isDryRun: true })).toThrow(
+        '🚨 CHANGELOG.md is not formatted with prettier, so the release cannot tell what its notes would change in it. Run `npx prettier --write CHANGELOG.md`, commit the result, then release.'
+      )
     },
     COMMAND_TIMEOUT
   )
@@ -2437,8 +2480,10 @@ describe('release notes rules', () => {
   })
 
   it('refuse a section without an item, and an item that says nothing of the release', () => {
-    const placeholder = 'This item is a placeholder. Write what changed for the user, or remove it.'
-    const empty = 'This item is empty. Write what changed for the user, or remove it.'
+    const placeholder =
+      'This item is a placeholder. Write what changed for the user, or remove it (with its heading, if the section has nothing else).'
+    const empty =
+      'This item is empty. Write what changed for the user, or remove it (with its heading, if the section has nothing else).'
     const copied =
       'This item is the one of the example, which only shows the form. Write what changed for the user, or remove it.'
 
@@ -2534,7 +2579,7 @@ describe('release notes rules', () => {
 
   it('tie the sections to the kind of release', () => {
     expect(problemsOf('### Features\n\n- One.', MAJOR_RELEASE)).toStrictEqual([
-      'notes: 2.0.0 is a new major version: its notes need a "### BREAKING CHANGES" section saying what breaks.',
+      'notes: 2.0.0 is a new major version: its notes need a "### BREAKING CHANGES" section saying what breaks. If nothing breaks, it is not a major version: release a minor or a patch one.',
     ])
     for (const context of [PATCH_RELEASE, MINOR_RELEASE]) {
       expect(findNotesProblems('### BREAKING CHANGES\n\n- One.', RULES, context)).toStrictEqual([
@@ -2581,7 +2626,7 @@ describe('release notes rules', () => {
         '🚨 the release notes do not follow the rules of release.config.json (2 places to correct):',
         '',
         '   1. line 1: Fixes.',
-        `      ${BEFORE_SECTIONS}`,
+        `      The notes start with one of the headings ${HEADING_LIST}. This line is not in a section: put what is there under one, as list items ("- …").`,
         // A long line is not quoted whole.
         `   2. line 5: Full changelog: ${'x'.repeat(104)}…`,
         '      No changelog link. Here: "Full changelog".',
@@ -2606,7 +2651,7 @@ describe('release notes rules', () => {
         '🚨 the release notes do not follow the rules of release.config.json (1 place to correct):',
         '',
         '   1. the notes as a whole',
-        '      2.0.0 is a new major version: its notes need a "### BREAKING CHANGES" section saying what breaks.',
+        '      2.0.0 is a new major version: its notes need a "### BREAKING CHANGES" section saying what breaks. If nothing breaks, it is not a major version: release a minor or a patch one.',
         '',
         '   Notes in the expected form:',
         '',
@@ -2891,7 +2936,7 @@ describe('release notes rules of a repository', () => {
     const rules = readRepositoryRules()
     const hash = 'This looks like a commit hash.'
     const number = 'This looks like a pull request or issue number.'
-    const link = 'This links to the history of the repository'
+    const link = 'This links to a pull request, an issue, a commit or a comparison on GitHub.'
     const changelog = 'Leave out any pointer to the full changelog'
     const mention = 'This reads as a mention of a GitHub user'
     const refused: [text: string, reason: string][] = [
@@ -2922,6 +2967,7 @@ describe('release notes rules of a repository', () => {
 
     const accepted = [
       'Now rank #1 in speed, and step #2 of 3 is gone.',
+      'The parser no longer issues 2 warnings for one line.',
       'Line 42 of long files is read in C#12 projects.',
       'The colour `#aabbcc80` and the colour #abcdef1 are kept.',
       'An identifier like 123e4567-e89b-12d3-a456-426614174000 is kept.',
@@ -2975,7 +3021,7 @@ describe('release notes rules of a repository', () => {
         )
         // A major version needs to say what it breaks, and is shown how.
         expect(() => releaseIn(repository, 'major', { isDryRun })).toThrow(
-          '      2.0.0 is a new major version: its notes need a "### BREAKING CHANGES" section saying what breaks.\n\n   Notes in the expected form:\n\n      ### BREAKING CHANGES\n'
+          '      2.0.0 is a new major version: its notes need a "### BREAKING CHANGES" section saying what breaks. If nothing breaks, it is not a major version: release a minor or a patch one.\n\n   Notes in the expected form:\n\n      ### BREAKING CHANGES\n'
         )
         // So does a version given in full that changes the major number with others.
         expect(() => releaseIn(repository, '2.1.0', { isDryRun })).toThrow(
@@ -2998,11 +3044,9 @@ describe('release notes rules of a repository', () => {
           [
             '🚨 the release notes have a line in the form of a changelog entry heading (line 1: ## [1.2.4](https://example.com) (2026-03-04)): remove it, the release writes the heading of the entry itself',
             '',
-            '🚨 the release notes do not follow the rules of release.config.json (2 places to correct):',
+            '🚨 the release notes do not follow the rules of release.config.json (1 place to correct):',
             '',
-            '   1. line 1: ## [1.2.4](https://example.com) (2026-03-04)',
-            `      ${WRONG_HEADING}`,
-            '   2. line 3: * One.',
+            '   1. line 3: * One.',
             `      ${OTHER_MARKER}`,
           ].join('\n')
         )

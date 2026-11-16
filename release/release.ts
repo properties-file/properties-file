@@ -369,7 +369,14 @@ export const release = (options: ReleaseOptions): string => {
   const notesRules = readNotesRules(directoryPath)
   if (notesRules !== undefined) {
     const notesContext = { version, level: getReleaseLevel(currentVersion, version) }
-    const notesProblems = findNotesProblems(cleanNotes, notesRules, notesContext)
+    // A line that has to go for what it would do to the changelog is not also reported for
+    // its form.
+    const notesProblems = findNotesProblems(cleanNotes, notesRules, notesContext).filter(
+      (problem) =>
+        notesHazards.content?.includes(
+          `line ${String(problem.lineNumber ?? 0)}: ${problem.line}`
+        ) !== true
+    )
     if (notesProblems.length > 0) {
       // With what the notes would do to the changelog, so that one run says everything there
       // is to correct.
@@ -419,17 +426,56 @@ export const release = (options: ReleaseOptions): string => {
   // is committed; here it tells a dry run, and a release before its build, what that would
   // refuse.
   assertOlderEntriesKept(previousChangelog, changelog)
-  const formatted = runCommand(
-    workspace,
-    'npx',
-    ['--no-install', 'prettier', '--stdin-filepath', 'CHANGELOG.md'],
-    false,
-    changelog
-  )
-  if (!formatted.isSuccess) {
-    throw new Error(`🚨 ${formatted.failure}`)
+  /**
+   * Format a changelog as prettier would, without writing it.
+   *
+   * @param content - What `CHANGELOG.md` would hold.
+   *
+   * @returns The content, formatted.
+   *
+   * @throws If prettier cannot be run.
+   */
+  const formatChangelog = (content: string): string => {
+    const formatted = runCommand(
+      workspace,
+      'npx',
+      ['--no-install', 'prettier', '--stdin-filepath', 'CHANGELOG.md'],
+      false,
+      content
+    )
+    if (!formatted.isSuccess) {
+      throw new Error(
+        `🚨 ${formatted.failure}\n   The release formats CHANGELOG.md with the prettier of the ` +
+          'repository: install its dependencies (`npm ci`), then run this again.'
+      )
+    }
+    return formatted.output
   }
-  assertChangelogEntryAdded(previousChangelog, formatted.output, version)
+  const formattedCheck = noThrow(() => {
+    assertChangelogEntryAdded(previousChangelog, formatChangelog(changelog), version)
+  })
+  if (isNormalizedError(formattedCheck)) {
+    // The notes were fine as they are written: either the file was not formatted, and
+    // formatting it changes the older entries whatever the notes are, or prettier reads
+    // something in the notes in its own way.
+    if (
+      formatChangelog(previousChangelog).trimEnd() !==
+      previousChangelog.replaceAll('\r\n', '\n').trimEnd()
+    ) {
+      throw new Error(
+        '🚨 CHANGELOG.md is not formatted with prettier, so the release cannot tell what its ' +
+          'notes would change in it. Run `npx prettier --write CHANGELOG.md`, commit the ' +
+          'result, then release.'
+      )
+    }
+    throw new Error(
+      '🚨 once CHANGELOG.md is formatted with prettier, the release notes would change its ' +
+        'older entries, or would not be read as one entry: prettier reads something in them ' +
+        'in its own way (a line of "$$" opens a block of mathematics, a code block can end ' +
+        'on another line than it seems to). Write that part of the notes more plainly.\n' +
+        `   What the check said: ${formattedCheck.message}`
+    )
+  }
 
   // The full gate (lint, compile, tests, package checks), before anything is committed.
   execute('npm', ['run', 'build'])

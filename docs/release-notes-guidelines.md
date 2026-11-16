@@ -126,7 +126,8 @@ they are not models. For the form only, here is an entry adapted from an earlier
    that its shasum is the one the workflow run gives. `docs/CONTRIBUTING.md` ("Approving a
    version") says how, and what to do when something fails.
 
-The command, with the notes between the two `NOTES` lines. The second one must start its line,
+The command, with the notes between the two `NOTES` lines (the `- …` below stands for them: the
+command refuses it as it is). The second one must start its line,
 and no line of the notes can be exactly `NOTES` (use another word if one is):
 
 ```bash

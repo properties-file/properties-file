@@ -32,13 +32,17 @@ const REGEX_CODE_FENCE = /^[\t ]*(?<marker>`{3,}|~{3,})/
  * always tell: a processing instruction (`<?`), a declaration (`<!x`), a comment or a
  * `CDATA` section.
  */
-const REGEX_HTML_START = /<(?:\?|![A-Z[-])/i
+const REGEX_HTML_START = /(?<!\\)<(?:\?|![A-Z[-])/i
 
 /**
  * Matches a line that defines a link (or a footnote) for the whole document, at the beginning
  * of a line or of what a quote or a list item holds: `[label]: url`.
  */
-const REGEX_LINK_DEFINITION = /^[\t >]*(?:(?:[*+-]|\d+[.)])[\t ]+)*\[[^\]]+\]:/
+const REGEX_LINK_DEFINITION =
+  /^[\t >]*(?:(?:[*+-]|\d+[.)])[\t ]+)*(?:\[\^[^\]]+\]:|\[[^\]]+\]:[\t ]*(?:(?:<[^>]*>|\S+)(?:[\t ]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[\t ]*)?$)/
+
+/** Matches a line that ends with what opens a fenced code block: backticks and a language. */
+const REGEX_TRAILING_CODE_FENCE = /`{3,}[\w+-]*[\t ]*$/
 
 /** Matches a line that starts a list item and opens a fenced code block on the same line. */
 const REGEX_ITEM_CODE_FENCE = /^[\t ]*(?:[*+-]|\d+[.)])[\t ]+(?:`{3,}|~{3,})/
@@ -253,6 +257,16 @@ const readMarkdown = (text: string): unknown => {
 }
 
 /**
+ * Read the labels of the links a Markdown text defines for its whole document
+ * (`[label]: url`), as the parser finds them: on one line or several, in any container.
+ *
+ * @param text - The Markdown text.
+ *
+ * @returns The labels, as they are written.
+ */
+const readLinkLabels = (text: string): string[] => Object.keys(new Lexer().lex(text).links)
+
+/**
  * Find everything of a kind in what the parser found, however deep it is.
  *
  * @param value - What {@link readMarkdown} returned, or a part of it.
@@ -366,12 +380,17 @@ export const cleanReleaseNotes = (notes: string): string =>
 const findCodeBlockHazard = (lines: string[]): string | undefined => {
   const itemFenceIndex = lines.findIndex((line) => {
     const fence = REGEX_ITEM_CODE_FENCE.exec(line)?.[0]
-    // With a backtick after the fence, the line has inline code, not the start of a block.
-    return fence !== undefined && !line.slice(fence.length).includes('`')
+    return fence === undefined
+      ? // After the text of the line: backticks that open something and close nothing.
+        !REGEX_CODE_FENCE.test(line) &&
+          REGEX_TRAILING_CODE_FENCE.test(line) &&
+          line.split('```').length % 2 === 0
+      : // With a backtick after the fence, the line has inline code, not the start of a block.
+        !line.slice(fence.length).includes('`')
   })
   if (itemFenceIndex !== -1) {
     return (
-      `🚨 the release notes open a code block on the line of a list item (line ${String(itemFenceIndex + 1)}: ` +
+      `🚨 the release notes open a code block on a line that has something else, the start of a list item or its text (line ${String(itemFenceIndex + 1)}: ` +
       `${lines[itemFenceIndex]}). Put the line that opens the block on a line of its own, ` +
       'indented under the item, like the rest of the block.'
     )
@@ -427,12 +446,12 @@ const findCodeBlockHazard = (lines: string[]): string | undefined => {
 /**
  * Say why release notes cannot have HTML, and what to write instead.
  *
- * @param place - Where the HTML is in the notes.
+ * @param places - Where the HTML is in the notes: each place once.
  *
  * @returns What is wrong and what to do about it.
  */
-const describeHtmlHazard = (place: string): string =>
-  `🚨 the release notes have HTML (${place}): Markdown copies it as it is, and a tag or a ` +
+const describeHtmlHazard = (places: string[]): string =>
+  `🚨 the release notes have HTML (${places.join('; ')}): Markdown copies it as it is, and a tag or a ` +
   'comment that is left open would take in the rest of the changelog. Put it in backticks if ' +
   'it is code (a type like `Promise<string>` is read as a tag), write it in Markdown, or ' +
   'remove it.'
@@ -462,10 +481,9 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
   const textLines = lines.map((line, index) =>
     codeBlockLines[index] === 'outside' ? line.replaceAll(REGEX_INLINE_CODE, '') : ''
   )
-  const htmlIndex = textLines.findIndex((line) => REGEX_HTML_START.test(line))
-  if (htmlIndex !== -1) {
-    return describeHtmlHazard(`line ${String(htmlIndex + 1)}: ${lines[htmlIndex]}`)
-  }
+  const htmlPlaces = lines.flatMap((line, index) =>
+    REGEX_HTML_START.test(textLines[index]) ? `line ${String(index + 1)}: ${line}` : []
+  )
   const definitionIndex = textLines.findIndex((line) => REGEX_LINK_DEFINITION.test(line))
   if (definitionIndex !== -1) {
     return (
@@ -478,11 +496,28 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
   // (indented, underlined), which formatting would make one of them, and HTML, which Markdown
   // copies as it is and which can take in everything after it.
   const tokens = noThrow(() => {
-    const allTokens = readMarkdown(normalizedNotes)
-    return { headings: findTokens(allTokens, 'heading'), html: findTokens(allTokens, 'html') }
+    // With the end of the last line: the notes are followed by other lines in the changelog,
+    // and a tag that ends them is only read as one when something follows it.
+    const allTokens = readMarkdown(`${normalizedNotes}\n`)
+    return {
+      headings: findTokens(allTokens, 'heading'),
+      html: findTokens(allTokens, 'html'),
+      linkLabels: readLinkLabels(normalizedNotes),
+    }
   })
   if (isNormalizedError(tokens)) {
     return `🚨 the release notes could not be read as Markdown (${tokens.message}): they nest quotes or lists too deep. Write them more simply.`
+  }
+  // A definition the look at the lines did not find: its label is on more than one line.
+  const linkLabel = tokens.linkLabels.at(0)
+  if (linkLabel !== undefined) {
+    const labelIndex = lines.findIndex((line) => line.includes(']:'))
+    return (
+      '🚨 the release notes define a link for the whole changelog ' +
+      `(${labelIndex === -1 ? `the label "${linkLabel.trim()}"` : `line ${String(labelIndex + 1)}: ${lines[labelIndex]}`}): ` +
+      'a definition "[label]: url" changes every "[label]" of the older entries. Write the ' +
+      'link where it is used: [text](url).'
+    )
   }
   const heading = tokens.headings.find(
     (token) => token.depth <= 2 && REGEX_VERSION_TITLE.test(token.text)
@@ -494,8 +529,15 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
       'the entry itself'
     )
   }
-  const html = tokens.html.at(0)
-  return html === undefined ? undefined : describeHtmlHazard(describePlace(lines, html.raw))
+  // Every place, so that one run says all there is to take out.
+  const allHtmlPlaces = [
+    ...new Set([...htmlPlaces, ...tokens.html.map((token) => describePlace(lines, token.raw))]),
+  ].toSorted(
+    (first, second) =>
+      Number(/^line (?<number>\d+)/.exec(first)?.groups?.number ?? 0) -
+      Number(/^line (?<number>\d+)/.exec(second)?.groups?.number ?? 0)
+  )
+  return allHtmlPlaces.length === 0 ? undefined : describeHtmlHazard(allHtmlPlaces)
 }
 
 /**

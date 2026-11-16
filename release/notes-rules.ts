@@ -177,6 +177,8 @@ export const findNotesProblems = (
   context: NotesContext
 ): NotesProblem[] => {
   const problems: NotesProblem[] = []
+  const lines = notes.split('\n')
+  const codeBlockLines = readCodeBlockLines(lines)
   const headingList = rules.sections.map((section) => `"### ${section}"`).join(', ')
   const forbiddenPatterns = rules.forbidden.map((forbidden) => ({
     expression: compileForbiddenPattern(forbidden),
@@ -377,6 +379,28 @@ export const findNotesProblems = (
   }
 
   /**
+   * Say how many lines of text come before the first heading, after the first of them.
+   *
+   * @param lineNumber - Where the first of these lines is in the notes (1 for the first line).
+   *
+   * @returns The rest of the subject of the sentence that says they are not in a section, and
+   *   its verb.
+   */
+  const describeLinesBeforeSections = (lineNumber: number): string => {
+    const followingLines = lines.slice(lineNumber)
+    const headingIndex = followingLines.findIndex(
+      (line) => REGEX_HEADING.test(line) || REGEX_HEADING_WITHOUT_SPACE.test(line)
+    )
+    const count = followingLines
+      .slice(0, headingIndex === -1 ? undefined : headingIndex)
+      .filter((line) => !/^[\t ]*$/.test(line)).length
+    if (count === 0) {
+      return ' is'
+    }
+    return `, and the ${count === 1 ? 'line' : `${String(count)} lines`} of text after it, are`
+  }
+
+  /**
    * Check a line that is neither blank, a heading, nor in a code block: that it is, or
    * continues, a list item of a section.
    *
@@ -391,7 +415,7 @@ export const findNotesProblems = (
         addFormProblem(
           lineNumber,
           line,
-          `The notes start with one of the headings ${headingList}. This line, and any other before the first heading, is not in a section: put what it says under one, as a list item ("- …").`
+          `The notes start with one of the headings ${headingList}. This line${describeLinesBeforeSections(lineNumber)} not in a section: put what is there under one, as list items ("- …").`
         )
       }
     } else if (REGEX_UNDERLINE.test(line)) {
@@ -408,13 +432,15 @@ export const findNotesProblems = (
         addFormProblem(
           lineNumber,
           line,
-          'This item is empty. Write what changed for the user, or remove it.'
+          'This item is empty. Write what changed for the user, or remove it (with its ' +
+            'heading, if the section has nothing else).'
         )
       } else if (REGEX_PLACEHOLDER.test(item.replaceAll(REGEX_EMPHASIS, '').trim())) {
         addFormProblem(
           lineNumber,
           line,
-          'This item is a placeholder. Write what changed for the user, or remove it.'
+          'This item is a placeholder. Write what changed for the user, or remove it (with ' +
+            'its heading, if the section has nothing else).'
         )
       } else if (
         exampleItems.some(
@@ -455,8 +481,6 @@ export const findNotesProblems = (
     }
   }
 
-  const lines = notes.split('\n')
-  const codeBlockLines = readCodeBlockLines(lines)
   for (const [index, line] of lines.entries()) {
     if (index === seen.underlineIndex) {
       continue
@@ -540,7 +564,7 @@ export const findNotesProblems = (
     problems.push({
       lineNumber: undefined,
       line: '',
-      message: `${context.version} is a new major version: its notes need a "### ${rules.breakingSection}" section saying what breaks.`,
+      message: `${context.version} is a new major version: its notes need a "### ${rules.breakingSection}" section saying what breaks. If nothing breaks, it is not a major version: release a minor or a patch one.`,
     })
   }
   // In the order of the lines (a section without an item is only known when it ends), with

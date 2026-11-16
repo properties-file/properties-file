@@ -15,13 +15,13 @@
         "reason": "This looks like a commit hash. Users do not need it: say what changed for them instead."
       },
       {
-        "pattern": "(?<![&\\w])#\\d{2,}\\b|\\(#\\d+\\)|\\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?|see) #\\d+\\b|\\b[\\w.-]+/[\\w.-]+#\\d+\\b|\\bGH[- ]\\d+\\b|\\b(?:PR|pull request|issue)s? #?\\d+\\b",
+        "pattern": "(?<![&\\w])#\\d{2,}\\b|\\(#\\d+\\)|\\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?|see) #\\d+\\b|\\b[\\w.-]+/[\\w.-]+#\\d+\\b|\\bGH[- ]\\d+\\b|\\b(?:PR|pull request|issue) #?\\d+\\b",
         "flags": "i",
         "reason": "This looks like a pull request or issue number. Users do not need it: say what changed for them instead."
       },
       {
         "pattern": "github\\.com/[^\\s/]+/[^\\s/]+/(?:pull|issues|commit|compare)/",
-        "reason": "This links to the history of the repository (a pull request, an issue, a commit, a comparison). Users do not need it: say what changed for them instead."
+        "reason": "This links to a pull request, an issue, a commit or a comparison on GitHub. Users do not need it: say what changed for them instead."
       },
       {
         "pattern": "(?<![\\w/.])@[a-z\\d](?:[a-z\\d-]*[a-z\\d])?(?![\\w/-])",

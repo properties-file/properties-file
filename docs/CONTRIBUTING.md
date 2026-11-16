@@ -217,7 +217,8 @@ Three things about the command are there to prevent mistakes:
   - and with the entry added, the older entries of `CHANGELOG.md` have to be read by the
     parser exactly as they were, in the file as it is and as prettier formats it. A dry run
     formats it in memory to check this; a release checks it before its build, and again on
-    the file it commits.
+    the file it commits. This needs a `CHANGELOG.md` that prettier leaves as it is: the
+    command says so when it is not, and what to run.
 
   These checks err on the side of refusing: the parser is not the one GitHub uses, and what
   the two could read differently (HTML in its rarer forms, link definitions) is refused
