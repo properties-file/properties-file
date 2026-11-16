@@ -2163,6 +2163,13 @@ describe('what release notes can do to the changelog', () => {
     expect(() => normalizeReleaseNotes('- A fix:\n\n  ```\n  code\ntext')).toThrow(
       'a code block that is never closed (line 3:   ```)'
     )
+    // A line that has the marks and something after them, which shows, is named as that.
+    for (const closing of ['~~~ ~~', '~~~ end']) {
+      expect(() => normalizeReleaseNotes(`- A fix:\n\n  ~~~\n  code\n  ${closing}`)).toThrow(
+        `🚨 the release notes have a code block that is never closed (line 3:   ~~~): a line has the marks that would close it, and something after them (line 5:   ${closing}), so Markdown reads it as code, and the rest of the changelog would become part of the block. End the block with a line that has nothing but the marks that open it (` +
+          '``` or ~~~), indented like it.'
+      )
+    }
     // A block opened with tildes, on a line formatting would not keep as one that opens it.
     expect(() => normalizeReleaseNotes('- A fix:\n\n  ~~~ts `x`\n  code\n  ~~~')).toThrow(
       '🚨 the release notes open a code block with "~~~" on a line that has a backtick (line 3:   ~~~ts `x`): once formatted, the block is opened with backticks, and that line would open nothing. Take the backtick out of the line.'
@@ -2292,6 +2299,22 @@ describe('what release notes can do to the changelog', () => {
       )
     }
 
+    // Code that is only indented is told to go in a block with marks, where it is accepted.
+    for (const code of [
+      '- An example:\n\n      const options = {\n        [key]: value,\n      }',
+      '    const options = {\n      [key]: value,\n    }',
+    ]) {
+      expect(() => normalizeReleaseNotes(code)).toThrow(
+        String.raw`or "\[" for the bracket. A line of code goes in a code block with marks (` +
+          '``` on a line of its own before and after the code): code that is only indented is not read as code here.'
+      )
+    }
+    expect(
+      normalizeReleaseNotes(
+        '- An example:\n\n  ```js\n  const options = {\n    [key]: value,\n  }\n  ```'
+      )
+    ).toContain('[key]: value,')
+
     // A footnote, which GitHub numbers with those of the older entries: its definition is
     // found as one, and its reference too.
     for (const footnote of [
@@ -2322,7 +2345,7 @@ describe('what release notes can do to the changelog', () => {
     expect(() =>
       normalizeReleaseNotes('- One:\n\n  ```js\n  const r = /[^a]:/ || /[^b]/\n  ```')
     ).toThrow(
-      '🚨 the release notes have code that reads like the text of a footnote (line 4:   const r = /[^a]:/ || /[^b]/, at "[^a]:"): a line that has "[^" and, further on, "]:" is refused in code too, whatever is between them, since GitHub decides what is code and numbers the footnotes of the whole changelog together. Put the two on different lines, or show that example in another way.'
+      '🚨 the release notes have code that reads like the text of a footnote (line 4:   const r = /[^a]:/ || /[^b]/, at "[^a]:"): a line that has "[^" and, further on, "]:" is refused in code too, whatever is between them, since GitHub decides what is code and numbers the footnotes of the whole changelog together. Show that example in another way, or put the two on different lines where the code allows it.'
     )
     // Whatever its label is made of, and whatever would hide it from a reader of code: a
     // space that is not one for GitHub, inline code that starts in the label, a fence that
@@ -2369,11 +2392,17 @@ describe('what release notes can do to the changelog', () => {
     expect(() => normalizeReleaseNotes('- A fix.[^1]\n\n  [^1]: On every engine.')).toThrow(
       '🚨 the release notes have a footnote (line 1: - A fix.[^1]; line 3:   [^1]: On every engine.): '
     )
-    // A definition is named with the links that use it.
-    expect(() =>
-      normalizeReleaseNotes('- See [the docs][docs].\n\n[docs]: https://example.com')
-    ).toThrow(
-      '🚨 the release notes define a link for the whole changelog (line 3: [docs]: https://example.com): a line "[label]: url" changes every "[label]" of the older entries. Write the link where it is used: [text](url). A line that starts with words in brackets and is not meant as a link is to start in another way: the words in backticks, or "\\[" for the bracket. Where it is used: line 1: - See [the docs][docs].'
+    // A definition and the links by reference are each named for what they are, in one run,
+    // whether one uses the other or not.
+    for (const reference of ['- See [the docs][docs].', '- It read rows[0][1] as undefined.']) {
+      expect(() => normalizeReleaseNotes(`${reference}\n\n[docs]: https://example.com`)).toThrow(
+        '🚨 the release notes define a link for the whole changelog (line 3: [docs]: https://example.com): a line "[label]: url" changes every "[label]" of the older entries. Write the link where it is used: [text](url). A line that starts with words in brackets and is not meant as a link is to start in another way: the words in backticks, or "\\[" for the bracket.\n\n' +
+          `🚨 the release notes have a link by reference (line 1: ${reference}): its address would be on a line of its own, "[label]: url", which the notes cannot have. Write the address in the link, [text](url), or put it in backticks if it is code (two pairs of brackets in a row).`
+      )
+    }
+    // Every line that has a link by reference is named.
+    expect(() => normalizeReleaseNotes('- See [the docs][docs].\n- And [more][].')).toThrow(
+      '🚨 the release notes have a link by reference (line 1: - See [the docs][docs].; line 2: - And [more][].): '
     )
     // Each line is named for what it is: the text of a footnote is not also a definition.
     expect(() =>
@@ -2595,6 +2624,9 @@ describe('what release notes can do to the changelog', () => {
       ' ## [9.9.9](https://x/compare/a...b)',
       '##\t[9.9.9](https://x/compare/a...b)',
       '[9.9.9](https://x/compare/a...b)\n---',
+      // Underlined and indented: formatting takes the indentation out.
+      '  [9.9.9](https://x/compare/a...b) (2026-03-04)\n  ---',
+      ' [9.9.9](https://x/compare/a...b)\n===',
     ]) {
       expect(() => normalizeReleaseNotes(`- An item.\n\n${heading}\n\n- Another.`)).toThrow(
         `🚨 the release notes have a heading in the form of a changelog entry heading (line 3: ${heading.split('\n', 1)[0]})`
@@ -2827,6 +2859,27 @@ describe('release notes rules', () => {
 
   it('refuse sections that are out of order or repeated', () => {
     const message = `The sections go in this order: ${HEADING_LIST}.`
+
+    // A heading to correct is told at once what its section would be told once corrected:
+    // that the notes already have it, or that it is not in its place.
+    expect(problemsOf('### Bug Fixes\n\n- One.\n\n### Bug fixes\n\n- Two.')).toStrictEqual([
+      `5: ${WRONG_HEADING_START} It reads as "### Bug Fixes", which the notes already have on line 1: put its items under that heading and remove this one.`,
+    ])
+    expect(problemsOf('### Fixed\n\n- One.\n\n### Bug Fixes\n\n- Two.')).toStrictEqual([
+      `1: ${WRONG_HEADING_START}${HEADING_HINT}`,
+      '5: The notes already have this section, on line 1: put all its items under one heading.',
+    ])
+    expect(
+      problemsOf('### Fixed\n\n- One.\n\n### Features\n\n- Two.', MINOR_RELEASE)
+    ).toStrictEqual([`1: ${WRONG_HEADING_START}${HEADING_HINT}`, `5: ${message}`])
+    expect(
+      problemsOf('### Bug Fixes\n\n- One.\n\n### Added\n\n- Two.', MINOR_RELEASE, {
+        ...RULES,
+        sectionAliases: { Added: 'Features' },
+      })
+    ).toStrictEqual([
+      `5: ${WRONG_HEADING_START} Write it "### Features", and move it with its items: the sections go in this order: ${HEADING_LIST}.`,
+    ])
 
     expect(
       findNotesProblems('### Bug Fixes\n\n- One.\n\n### Features\n\n- Two.', RULES, MINOR_RELEASE)

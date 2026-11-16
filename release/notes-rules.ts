@@ -331,10 +331,14 @@ export const findNotesProblems = (
    *
    * @param closestSection - The section the heading was most likely meant for, when there is
    *   one.
+   * @param lineNumber - Where the heading is in the notes (1 for the first line).
    *
    * @returns What to write instead, or why that section does not go with the release either.
    */
-  const describeClosestSection = (closestSection: string | undefined): string => {
+  const describeClosestSection = (
+    closestSection: string | undefined,
+    lineNumber: number
+  ): string => {
     if (closestSection === undefined) {
       return ' Replace this one with the one its items belong under, or remove it if they already are under one.'
     }
@@ -345,8 +349,21 @@ export const findNotesProblems = (
         return ` It reads as "### ${closestSection}", which the notes of ${context.version} cannot have: a change that breaks existing code needs a major version.`
       }
     }
-    return closestSection === rules.featureSection && context.level === 'patch'
-      ? ` It reads as "### ${closestSection}", which the notes of ${context.version} cannot have: something new for users needs a minor version.`
+    if (closestSection === rules.featureSection && context.level === 'patch') {
+      return ` It reads as "### ${closestSection}", which the notes of ${context.version} cannot have: something new for users needs a minor version.`
+    }
+    // Corrected, the heading is the one of its section: it is said now what would be said of
+    // it then, and the headings after it are compared with it.
+    const sectionIndex = rules.sections.indexOf(closestSection)
+    const firstLineNumber = seen.sectionLineNumbers.get(sectionIndex)
+    if (firstLineNumber !== undefined) {
+      return ` It reads as "### ${closestSection}", which the notes already have on line ${String(firstLineNumber)}: put its items under that heading and remove this one.`
+    }
+    const isOutOfOrder = sectionIndex < seen.lastSectionIndex
+    seen.sectionLineNumbers.set(sectionIndex, lineNumber)
+    seen.lastSectionIndex = Math.max(seen.lastSectionIndex, sectionIndex)
+    return isOutOfOrder
+      ? ` Write it "### ${closestSection}", and move it with its items: the sections go in this order: ${headingList}.`
       : ` Write it "### ${closestSection}".`
   }
 
@@ -381,10 +398,6 @@ export const findNotesProblems = (
       Object.entries(rules.sectionAliases ?? {}).find(
         ([alias]) => alias.toLowerCase() === writtenTitle
       )?.[1]
-    // A version as a heading is the heading of the entry, which the release writes.
-    const advice = REGEX_VERSION_TITLE.test(writtenTitle)
-      ? ' Remove it: the release writes the heading of the entry, with its version, itself.'
-      : describeClosestSection(closestSection)
     closeSection()
     // What follows a heading that is not allowed is still checked as the content of a
     // section, so that one heading to correct is not reported again for each line under it.
@@ -400,6 +413,10 @@ export const findNotesProblems = (
       checkSectionHeading(lineNumber, line, sectionIndex)
       return
     }
+    // A version as a heading is the heading of the entry, which the release writes.
+    const advice = REGEX_VERSION_TITLE.test(writtenTitle)
+      ? ' Remove it: the release writes the heading of the entry, with its version, itself.'
+      : describeClosestSection(closestSection, lineNumber)
     if (isUnderlined) {
       problems.push({
         lineNumber,

@@ -583,7 +583,7 @@ const findCodeBlockHazard = (lines: string[]): string | undefined => {
         codeBlockLines[index] === 'content' &&
         visibleMarks.startsWith(marker) &&
         visibleMarks.replaceAll(marker.charAt(0), '') === '' &&
-        !/^[\t ]*[`~]+[\t ]*$/.test(line)
+        /[^\t\u{20}-\u{7E}]/u.test(line)
       )
     })
     if (hiddenClosingIndex !== -1) {
@@ -591,6 +591,23 @@ const findCodeBlockHazard = (lines: string[]): string | undefined => {
         `🚨 the release notes have a character that does not show before or after the marks of a code block (${describeLines([hiddenClosingIndex])}): a space that is not an ordinary one, most often, which comes with text copied from a page. ` +
           'Markdown does not read that line as one that opens or closes a block. Delete ' +
           'what is around the marks, and type the spaces again.'
+      )
+      continue
+    }
+    // A line that would close the block, had it nothing after its marks.
+    const followedClosingIndex = lines.findIndex(
+      (line, index) =>
+        index > openingIndex &&
+        codeBlockLines[index] === 'content' &&
+        line.replace(/^[\t ]+/, '').startsWith(marker)
+    )
+    if (followedClosingIndex !== -1) {
+      hazards.push(
+        `🚨 the release notes have a code block that is never closed (${describeLines([openingIndex])}): ` +
+          `a line has the marks that would close it, and something after them (${describeLines([followedClosingIndex])}), ` +
+          'so Markdown reads it as code, and the rest of the changelog would become part of ' +
+          'the block. End the block with a line that has nothing but the marks that open it ' +
+          '(``` or ~~~), indented like it.'
       )
       continue
     }
@@ -721,38 +738,43 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
       `🚨 the release notes have code that reads like the text of a footnote (${codeFootnotePlaces.join('; ')}): ` +
         'a line that has "[^" and, further on, "]:" is refused in code too, whatever is ' +
         'between them, since GitHub decides what is code and numbers the footnotes of the ' +
-        'whole changelog together. Put the two on different lines, or show that example in ' +
-        'another way.'
+        'whole changelog together. Show that example in another way, or put the two on ' +
+        'different lines where the code allows it.'
     )
   }
   // Every line that defines a link; the text of a footnote, which looks like one, was named
   // as what it is.
-  const definitionPlaces = lines.flatMap((line, index) =>
-    isLinkDefinitionLine(textLines[index]) && !hasFootnoteText(line)
-      ? `line ${String(index + 1)}: ${line}`
-      : []
+  const definitionIndexes = lines.flatMap((line, index) =>
+    isLinkDefinitionLine(textLines[index]) && !hasFootnoteText(line) ? index : []
+  )
+  const definitionPlaces = definitionIndexes.map(
+    (index) => `line ${String(index + 1)}: ${lines[index]}`
   )
   if (definitionPlaces.length > 0) {
-    // With the links that use it, which are to write in another way too: one run says both.
-    const referencePlaces = lines.flatMap((line, index) =>
-      REGEX_LINK_REFERENCE.test(textLines[index]) ? `line ${String(index + 1)}: ${line}` : []
-    )
+    // Code that is only indented: backticks and backslashes would show in it.
+    const hasIndentedCode = definitionIndexes.some((index) => getIndentation(lines[index]) >= 4)
     hazards.push(
       `🚨 the release notes define a link for the whole changelog (${definitionPlaces.join('; ')}): ` +
         'a line "[label]: url" changes every "[label]" of the older ' +
         'entries. Write the link where it is used: [text](url). A line that starts with ' +
         'words in brackets and is not meant as a link is to start in another way: the words ' +
         String.raw`in backticks, or "\[" for the bracket.` +
-        (referencePlaces.length === 0 ? '' : ` Where it is used: ${referencePlaces.join('; ')}`)
+        (hasIndentedCode
+          ? ' A line of code goes in a code block with marks (``` on a line of its own before ' +
+            'and after the code): code that is only indented is not read as code here.'
+          : '')
     )
   }
   // A link by reference, whose definition the notes cannot have: it would use one of the
-  // older entries in the changelog, and none in the release.
-  const referenceIndex = textLines.findIndex((line) => REGEX_LINK_REFERENCE.test(line))
-  if (referenceIndex !== -1 && definitionPlaces.length === 0) {
+  // older entries in the changelog, and none in the release. Every line that has one is
+  // named, whether the notes define links or not: each line is told what it is.
+  const referencePlaces = lines.flatMap((line, index) =>
+    REGEX_LINK_REFERENCE.test(textLines[index]) ? `line ${String(index + 1)}: ${line}` : []
+  )
+  if (referencePlaces.length > 0) {
     hazards.push(
-      `🚨 the release notes have a link by reference (line ${String(referenceIndex + 1)}: ` +
-        `${lines[referenceIndex]}): its address would be on a line of its own, "[label]: url", ` +
+      `🚨 the release notes have a link by reference (${referencePlaces.join('; ')}): its ` +
+        'address would be on a line of its own, "[label]: url", ' +
         'which the notes cannot have. Write the address in the link, [text](url), or put it in ' +
         'backticks if it is code (two pairs of brackets in a row).'
     )
@@ -793,7 +815,8 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
     )
   }
   const heading = tokens.headings.find(
-    (token) => token.depth <= 2 && REGEX_VERSION_TITLE.test(token.text)
+    // An underlined heading keeps the spaces it is indented with.
+    (token) => token.depth <= 2 && REGEX_VERSION_TITLE.test(token.text.trim())
   )
   if (heading !== undefined && headingIndex === -1) {
     hazards.push(

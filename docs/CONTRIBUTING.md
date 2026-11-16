@@ -180,7 +180,7 @@ Three things about the command are there to prevent mistakes:
     once and with at least one item. A heading that is close to one of them, or has one of
     the names in `sectionAliases` (`Fixed`, `Added`…), is told which one to write;
   - everything else is a list item that starts with `- `, or the indented rest of one, a code
-    block included; an item is not empty, a placeholder (`…`, `TODO`, `None`, `N/A`) or an item of the
+    block included; an item is not empty, a placeholder (such as `…`, `TODO`, `TBD`, `None`, `N/A`) or an item of the
     examples of the file;
   - the `breakingSection` goes with a major version, and only with one, and the
     `featureSection` does not go with a patch version. What a version is comes from the

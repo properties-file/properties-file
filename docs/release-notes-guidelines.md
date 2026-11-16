@@ -75,7 +75,7 @@ Format:
   with every one of its lines indented at least as much as the line that opens it; the lines
   that open and close it have nothing else on them, and it is not in a quote. No rule
   (`---`).
-- No item left empty, as a placeholder (`- …`, `- TODO`, `- None`, `- N/A`) or copied from
+- No item left empty, as a placeholder (such as `- …`, `- TODO`, `- TBD`, `- None`, `- N/A`) or copied from
   the example the command shows: a section with nothing to say is left out.
 - No HTML: write Markdown, and put code in backticks, a type such as `Promise<string>`
   included (outside backticks, Markdown reads it as a tag and it disappears).
