@@ -2,7 +2,8 @@ name: Release
 
 # The second half of the release flow. The first half, `npm run release` (see release/), pushes
 # a release commit to `main` together with its `v<version>` tag; that tag starts this workflow,
-# which tests the tagged commit, publishes it to npm and creates the GitHub release.
+# which tests the tagged commit, stages it on npm and creates the GitHub release. The version
+# becomes public when a maintainer approves the staged version on npm.
 on:
   push:
     tags: ['v[0-9]+.[0-9]+.[0-9]+']
@@ -123,9 +124,9 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
-  # Publishes what the build job packed, once the tests pass. This is the only job with the
-  # permissions to publish, and nothing from the repository or its dependencies runs in it:
-  # it checks out nothing and installs nothing.
+  # Stages on npm what the build job packed, once the tests pass, and creates the GitHub
+  # release. This is the only job with the permissions to do so, and nothing from the
+  # repository or its dependencies runs in it: it checks out nothing and installs nothing.
   publish:
     name: Publish
     needs: [test, build]
@@ -138,9 +139,9 @@ jobs:
       # Create the GitHub release.
       contents: write
       # npm trusted publishing: the job proves to npm which repository, workflow file and
-      # environment it runs in with a short-lived OIDC token, so no npm token is stored and no
-      # one-time password is asked. This only works once the package lists them as a trusted
-      # publisher on npmjs.com (see "Releasing" in docs/CONTRIBUTING.md).
+      # environment it runs in with a short-lived OIDC token, so no npm token is stored. This
+      # only works once the package lists them as a trusted publisher on npmjs.com (see
+      # "Releasing" in docs/CONTRIBUTING.md).
       id-token: write
     env:
       NAME: ${{ needs.build.outputs.name }}
@@ -153,8 +154,9 @@ jobs:
           name: release
           path: release
 
-      # Trusted publishing needs Node.js >= 22.14.0 and npm >= 11.5.1. Node.js 24 comes with
-      # such an npm since 24.5.0 (the `.nvmrc` version, Node.js 22, comes with npm 10).
+      # Trusted publishing needs Node.js >= 22.14.0 and npm >= 11.5.1, staging npm >= 11.15.0.
+      # Current Node.js 24 releases come with such an npm (the `.nvmrc` version, Node.js 22,
+      # comes with npm 10, which has no `npm stage`).
       - name: Setup node
         uses: actions/setup-node@v7
         with:
@@ -162,16 +164,32 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
-      # Skipped when the version is already on npm, so that a run can be re-run after a later
-      # step failed. Provenance is attached automatically by trusted publishing. Verbose,
-      # because npm only says at that level why trusted publishing did not work.
-      - name: Publish to npm
+      # Staged, not published: the version only becomes public once a maintainer approves it
+      # with two-factor authentication, which the summary of the run explains. Skipped when the
+      # version is already on npm. Provenance is attached automatically by trusted publishing.
+      # Verbose, because npm only says at that level why trusted publishing did not work.
+      - name: Stage the version on npm
         run: |
+          set -o pipefail
           if [ "$(npm view "$NAME@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
-            echo "::notice::$NAME@$VERSION is already on npm, not publishing again."
-          else
-            npm publish "release/$NAME-$VERSION.tgz" --ignore-scripts --loglevel verbose
+            echo "::notice::$NAME@$VERSION is already on npm, not staging it again."
+            exit 0
           fi
+          if ! npm stage publish "release/$NAME-$VERSION.tgz" --ignore-scripts --loglevel verbose 2>&1 | tee stage.log; then
+            echo "::error::npm did not stage $NAME@$VERSION. A version can only be staged once: if an earlier attempt of this job staged it, it is waiting for approval on npmjs.com."
+            exit 1
+          fi
+          stage_id="$(sed -n 's/.*(staged with id \([0-9a-f-]*\)).*/\1/p' stage.log | tail -n 1)"
+          {
+            echo "### $NAME@$VERSION is staged on npm: it is not public yet"
+            echo
+            echo "A maintainer of the package has to approve it with two-factor authentication, either:"
+            echo
+            echo "- on npmjs.com, in the **Staged Packages** tab (the staged files can be inspected there), or"
+            echo "- with \`npm stage approve ${stage_id:-<stage-id>}\` (\`npm stage list $NAME\` lists what is staged)."
+            echo
+            echo "\`npm view $NAME@$VERSION version\` prints the version once it is public."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Skipped when the release already exists, for the same reason.
       - name: Create the GitHub release

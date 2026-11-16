@@ -1,42 +1,11 @@
 /**
- * The pure parts of the release flow: version arithmetic, Conventional Commits parsing, and
- * reading and writing `CHANGELOG.md` entries. Nothing here touches the file system, git or the
- * network (see ./release.ts for the steps that do), so all of it is unit-tested directly.
+ * The pure parts of the release flow: version arithmetic, and reading and writing
+ * `CHANGELOG.md` entries. Nothing here touches the file system, git or the network (see
+ * ./release.ts for the steps that do), so all of it is unit-tested directly.
  */
 
 /** Matches a release version: `major.minor.patch`, digits only, without leading zeros. */
 const REGEX_RELEASE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
-
-/** Matches a Conventional Commits subject: `type(scope)!: description`. */
-const REGEX_COMMIT_SUBJECT =
-  /^(?<type>[a-z]+)(?:\((?<scope>[^()]+)\))?(?<breakingMark>!)?: (?<description>.+)$/
-
-/**
- * Matches a line of a commit body that starts a breaking change note, capturing the note up to
- * the next line that is empty or only has whitespace.
- */
-const REGEX_BREAKING_CHANGE_NOTE = /^BREAKING[ -]CHANGE: (?<note>.+(?:\n[^\S\n]*\S.*)*)/m
-
-/**
- * Matches the subject git gives a commit that undoes another one, capturing which of the two
- * forms it has (`Revert "…"`, or `Reapply "…"` for the revert of a revert) and the subject of
- * the commit it undoes.
- */
-const REGEX_UNDO_SUBJECT = /^(?<action>Revert|Reapply) "(?<subject>.+)"$/
-
-/** Matches the body line git gives such a commit, capturing the hash of the commit it undoes. */
-const REGEX_UNDONE_HASH = /^This reverts commit (?<hash>[\da-f]{7,40})\b/m
-
-/**
- * Matches what {@link escapeEmphasis} has to look at in a commit's text. The `kept` group is
- * what must stay as it is: a code span (between two runs of as many backticks), a URL
- * (`http://`, `https://` or `www.`, then a letter or a digit, up to whitespace, a backtick,
- * an angle bracket or a `*`), an email address (from the start of a word), or a character
- * that is already escaped.
- * Otherwise the match is a `*` or a `_` to escape. Letters match in either case.
- */
-const REGEX_EMPHASIS =
-  /(?<kept>(?<!`)(?<backticks>`+)(?!`).+?(?<!`)\k<backticks>(?!`)|(?:https?:\/\/|www\.)[a-z\d][^\s*<>`]*|(?<![\w.+-])[a-z\d][\w.+-]*@[a-z\d][\w.-]*|\\.)|[*_]/gi
 
 /**
  * Matches the heading of any version entry in `CHANGELOG.md`: a level 1 or 2 heading that
@@ -48,44 +17,6 @@ const REGEX_VERSION_HEADING = /^#{1,2} \[\d+\.\d+\.\d[^\]]*\]\(/
 /** Matches the compare link of a version entry heading, capturing its URL and its tag range. */
 const REGEX_COMPARE_LINK = /\]\((?<url>[^()\s]+\/compare\/(?<range>[^()\s/]+))\)/
 
-/** The type given to revert commits, whichever of their two subject forms they use. */
-const REVERT_TYPE = 'revert'
-
-/** The changelog sections built from commit types, in the order they are written. */
-const COMMIT_SECTIONS = [
-  { type: 'fix', title: 'Bug Fixes' },
-  { type: 'feat', title: 'Features' },
-  { type: 'perf', title: 'Performance Improvements' },
-  { type: REVERT_TYPE, title: 'Reverts' },
-]
-
-/** The title of the changelog section listing breaking changes, written last. */
-const BREAKING_CHANGES_TITLE = 'BREAKING CHANGES'
-
-/** A commit as read from `git log`. */
-export type GitCommit = {
-  /** The full commit hash. */
-  hash: string
-  /** The first line of the commit message. */
-  subject: string
-  /** The commit message without its first line. */
-  body: string
-}
-
-/** A commit the changelog can list. */
-type ListedCommit = {
-  /** The full commit hash. */
-  hash: string
-  /** The commit type (`feat`, `fix`, …). */
-  type: string
-  /** The scope between parentheses, when there is one. */
-  scope: string | undefined
-  /** The description after the colon (for a `Revert "…"` commit, the reverted subject). */
-  description: string
-  /** What the commit breaks, when it is marked as a breaking change. */
-  breakingNote: string | undefined
-}
-
 /** What a changelog entry is rendered from. */
 export type ChangelogEntryInput = {
   /** The version being released. */
@@ -96,8 +27,8 @@ export type ChangelogEntryInput = {
   date: string
   /** The repository's web URL (see {@link getRepositoryUrl}). */
   repositoryUrl: string
-  /** The commits made since the previous version, newest first (the order of `git log`). */
-  commits: GitCommit[]
+  /** The release notes (see {@link normalizeReleaseNotes}). */
+  notes: string
 }
 
 /**
@@ -175,8 +106,8 @@ export const resolveNextVersion = (currentVersion: string, request: string): str
  *
  * @returns The URL without its `git+` prefix and `.git` suffix.
  *
- * @throws If the URL is not an `https://github.com/` repository URL, which the compare and
- *   commit links of the changelog are built on.
+ * @throws If the URL is not an `https://github.com/` repository URL, which the compare link of
+ *   a changelog entry is built on.
  */
 export const getRepositoryUrl = (packageRepositoryUrl: string): string => {
   const repositoryUrl = packageRepositoryUrl.replace(/^git\+/, '').replace(/\.git$/, '')
@@ -190,175 +121,51 @@ export const getRepositoryUrl = (packageRepositoryUrl: string): string => {
 }
 
 /**
- * Parse a commit the changelog can list: one whose subject follows Conventional Commits, or a
- * revert commit with the subject git gives it (`Revert "…"`).
+ * Check the release notes a release was given, and put them in the form they are written in:
+ * Unix line endings, no trailing whitespace, no blank line before or after.
  *
- * @param commit - The commit to parse.
+ * What the notes say and how they are laid out is for `docs/release-notes-guidelines.md`: they
+ * are written as they are. Only what would break the changelog is refused.
  *
- * @returns The parsed commit, or `undefined` when its subject has another form (a merge commit,
- *   the release commit, …).
+ * @param notes - The release notes, in Markdown.
+ *
+ * @returns The notes to write under the heading of the changelog entry.
+ *
+ * @throws If the notes are empty, or if one of their lines has the form of an entry heading:
+ *   the changelog would then be read as having one more entry.
  */
-const parseCommit = (commit: GitCommit): ListedCommit | undefined => {
-  const undo = REGEX_UNDO_SUBJECT.exec(commit.subject)?.groups
-  if (undo?.action === 'Revert') {
-    return {
-      hash: commit.hash,
-      type: REVERT_TYPE,
-      scope: undefined,
-      description: undo.subject,
-      breakingNote: undefined,
-    }
+export const normalizeReleaseNotes = (notes: string): string => {
+  const lines = notes
+    .replaceAll('\r\n', '\n')
+    .split('\n')
+    .map((line) => line.trimEnd())
+  const normalizedNotes = lines.join('\n').replace(/^\n+/, '').trimEnd()
+  if (normalizedNotes === '') {
+    throw new Error('🚨 the release notes are empty')
   }
-  // A reapplied commit is listed as the commit it brings back.
-  const groups = REGEX_COMMIT_SUBJECT.exec(undo?.subject ?? commit.subject)?.groups
-  if (groups === undefined) {
-    return undefined
+  const headingLine = lines.find((line) => REGEX_VERSION_HEADING.test(line))
+  if (headingLine !== undefined) {
+    throw new Error(
+      `🚨 the release notes have a line in the form of a changelog entry heading: ${headingLine}`
+    )
   }
-  const description = groups.description.trim()
-  // The note says what breaks; a `!` alone leaves the description as the only explanation.
-  const note = REGEX_BREAKING_CHANGE_NOTE.exec(commit.body.replaceAll('\r\n', '\n'))?.groups?.note
-  const markNote = groups.breakingMark === '!' ? description : undefined
-  return {
-    hash: commit.hash,
-    type: groups.type,
-    scope: groups.scope,
-    description,
-    breakingNote: note?.replaceAll(/\s*\n\s*/g, ' ').trim() ?? markNote,
-  }
+  return normalizedNotes
 }
-
-/**
- * Check whether a commit undoes another one: its subject is the one git gives a revert
- * (`Revert "…"`, `Reapply "…"`) or has the Conventional Commits type `revert`.
- *
- * @param commit - The commit to check.
- *
- * @returns `true` if the commit is a revert.
- */
-const isUndoCommit = (commit: GitCommit): boolean =>
-  REGEX_UNDO_SUBJECT.test(commit.subject) ||
-  REGEX_COMMIT_SUBJECT.exec(commit.subject)?.groups?.type === REVERT_TYPE
-
-/**
- * Parse the commits the changelog can list, leaving out what was undone before the release: a
- * revert and the commit it names (`This reverts commit <hash>`) are both dropped when both are
- * in the list. A revert of a commit that is not in the list is kept: the commit was released
- * before, or it is a merge commit, which the list never has (the commits of a reverted merge
- * stay listed, next to the revert).
- *
- * @param commits - The commits made since the previous version, newest first.
- *
- * @returns The commits to list.
- */
-const parseCommits = (commits: GitCommit[]): ListedCommit[] => {
-  const droppedHashes = new Set<string>()
-  // Newest first, so that a revert which was itself reverted is dropped before it can drop
-  // the commit it reverted.
-  for (const commit of commits) {
-    const undoneHash = REGEX_UNDONE_HASH.exec(commit.body)?.groups?.hash
-    if (undoneHash === undefined || !isUndoCommit(commit) || droppedHashes.has(commit.hash)) {
-      continue
-    }
-    const undoneCommit = commits.find((candidate) => candidate.hash.startsWith(undoneHash))
-    if (undoneCommit !== undefined) {
-      droppedHashes.add(commit.hash).add(undoneCommit.hash)
-    }
-  }
-  return commits
-    .filter((commit) => !droppedHashes.has(commit.hash))
-    .map((commit) => parseCommit(commit))
-    .filter((commit) => commit !== undefined)
-}
-
-/**
- * Escape the characters of a commit's text that Markdown reads as emphasis (`*` and `_`), so
- * that `__proto__` is not rendered as a bold "proto". Code spans, URLs and characters that are
- * already escaped are left as they are; nothing else of Markdown is escaped.
- *
- * @param text - The text to escape.
- *
- * @returns The text, with its `*` and `_` written as literal characters.
- */
-const escapeEmphasis = (text: string): string =>
-  text.replaceAll(REGEX_EMPHASIS, (match, kept?: string) =>
-    kept === undefined ? `\\${match}` : match
-  )
-
-/**
- * Render one changelog list item for a commit.
- *
- * @param commit - The commit the item is about.
- * @param text - What the item says (the commit's description or its breaking change note).
- * @param repositoryUrl - The repository's web URL.
- *
- * @returns The list item: optional bold scope, the text, and a link to the commit.
- */
-const renderCommitItem = (commit: ListedCommit, text: string, repositoryUrl: string): string =>
-  `- ${commit.scope === undefined ? '' : `**${escapeEmphasis(commit.scope)}:** `}` +
-  `${escapeEmphasis(text)} ` +
-  `([${commit.hash.slice(0, 7)}](${repositoryUrl}/commit/${commit.hash}))`
-
-/**
- * Order two commits of a changelog section: by scope (commits without a scope first), then by
- * description.
- *
- * @param first - The first commit.
- * @param second - The second commit.
- *
- * @returns A negative number, `0` or a positive number, as `Array.prototype.sort` expects.
- */
-const compareCommits = (first: ListedCommit, second: ListedCommit): number => {
-  const scopeOrder = (first.scope ?? '').localeCompare(second.scope ?? '')
-  return scopeOrder === 0 ? first.description.localeCompare(second.description) : scopeOrder
-}
-
-/**
- * Count the commits marked as breaking changes (a `!` after the type or scope, or a
- * `BREAKING CHANGE:` note in the body), not counting those reverted since.
- *
- * @param commits - The commits made since the previous version, newest first.
- *
- * @returns The number of breaking commits.
- */
-export const countBreakingCommits = (commits: GitCommit[]): number =>
-  parseCommits(commits).filter((commit) => commit.breakingNote !== undefined).length
 
 /**
  * Render the `CHANGELOG.md` entry of a release: a heading with the compare link and the date,
- * then one section per commit type that has commits (`fix`, `feat`, `perf` and reverts; other
- * types and commits that do not follow Conventional Commits are left out, and so are commits
- * reverted since), then the breaking changes.
+ * then the release notes.
  *
  * @param input - The release the entry describes.
  *
- * @returns The entry, ending with a line break. A release without listed commits is the
- *   heading alone.
+ * @returns The entry, ending with a line break.
+ *
+ * @throws If the notes cannot be used (see {@link normalizeReleaseNotes}).
  */
 export const renderChangelogEntry = (input: ChangelogEntryInput): string => {
   const { version, previousVersion, date, repositoryUrl } = input
-  const commits = parseCommits(input.commits).toSorted(compareCommits)
-
-  const blocks = [
-    `## [${version}](${repositoryUrl}/compare/v${previousVersion}...v${version}) (${date})`,
-  ]
-  for (const section of COMMIT_SECTIONS) {
-    const items = commits
-      .filter((commit) => commit.type === section.type)
-      .map((commit) => renderCommitItem(commit, commit.description, repositoryUrl))
-    if (items.length > 0) {
-      blocks.push(`### ${section.title}`, items.join('\n'))
-    }
-  }
-  const breakingItems: string[] = []
-  for (const commit of commits) {
-    if (commit.breakingNote !== undefined) {
-      breakingItems.push(renderCommitItem(commit, commit.breakingNote, repositoryUrl))
-    }
-  }
-  if (breakingItems.length > 0) {
-    blocks.push(`### ${BREAKING_CHANGES_TITLE}`, breakingItems.join('\n'))
-  }
-  return `${blocks.join('\n\n')}\n`
+  const compareUrl = `${repositoryUrl}/compare/v${previousVersion}...v${version}`
+  return `## [${version}](${compareUrl}) (${date})\n\n${normalizeReleaseNotes(input.notes)}\n`
 }
 
 /**
