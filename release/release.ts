@@ -23,7 +23,12 @@ import {
   renderChangelogEntry,
   resolveNextVersion,
 } from './changelog'
-import { describeNotesProblems, findNotesProblems, readNotesRules } from './notes-rules'
+import {
+  describeNotesProblems,
+  findNotesProblems,
+  getReleaseLevel,
+  readNotesRules,
+} from './notes-rules'
 import { compareWithPublishedPackage, isSamePackage } from './package-diff'
 import {
   createWorkspace,
@@ -354,13 +359,15 @@ export const release = (options: ReleaseOptions): string => {
   // The form of the notes, by the rules of the repository when it has some.
   const notesRules = readNotesRules(directoryPath)
   if (notesRules !== undefined) {
-    const notesProblems = findNotesProblems(normalizeReleaseNotes(options.notes), notesRules, {
-      version,
-      isMajor: version.endsWith('.0.0'),
-    })
+    const notesContext = { version, level: getReleaseLevel(currentVersion, version) }
+    const notesProblems = findNotesProblems(
+      normalizeReleaseNotes(options.notes),
+      notesRules,
+      notesContext
+    )
     if (notesProblems.length > 0) {
       throw new Error(
-        `${describeNotesProblems(notesProblems, notesRules)}\n\n` +
+        `${describeNotesProblems(notesProblems, notesRules, notesContext)}\n\n` +
           `   What the notes should say is in ${GUIDELINES_PATH}.`
       )
     }

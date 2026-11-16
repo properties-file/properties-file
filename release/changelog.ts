@@ -15,7 +15,16 @@ const REGEX_RELEASE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
 const REGEX_VERSION_HEADING = /^#{1,2} \[\d+\.\d+\.\d[^\]]*\]\(/
 
 /** The character some editors put at the start of a file, which is not part of its text. */
-const BYTE_ORDER_MARK = String.fromCodePoint(0xfe_ff)
+export const BYTE_ORDER_MARK = String.fromCodePoint(0xfe_ff)
+
+/**
+ * Matches the start of a line that can open or close a fenced code block, capturing its marker
+ * (three or more backticks or tildes).
+ */
+const REGEX_CODE_FENCE = /^\s*(?<marker>`{3,}|~{3,})/
+
+/** What a line of Markdown is to its fenced code blocks. */
+export type CodeBlockLine = 'opening' | 'content' | 'closing' | 'outside'
 
 /** Matches the compare link of a version entry heading, capturing its URL and its tag range. */
 const REGEX_COMPARE_LINK = /\]\((?<url>[^()\s]+\/compare\/(?<range>[^()\s/]+))\)/
@@ -124,6 +133,41 @@ export const getRepositoryUrl = (packageRepositoryUrl: string): string => {
 }
 
 /**
+ * Tell which lines of a Markdown text open, are in, or close a fenced code block. As in
+ * Markdown, a block is only closed by a fence of the character that opened it, at least as
+ * long and with nothing after it; without one it goes on to the end of the text.
+ *
+ * @param lines - The lines of the text.
+ *
+ * @returns What each line is, in the same order.
+ */
+export const readCodeBlockLines = (lines: string[]): CodeBlockLine[] => {
+  const codeBlockLines: CodeBlockLine[] = []
+  let openMarker: string | undefined
+  for (const line of lines) {
+    const marker = REGEX_CODE_FENCE.exec(line)?.groups?.marker
+    // What the line has after the marker: the language of a block that opens, and nothing
+    // for one that closes.
+    const rest = marker === undefined ? '' : line.trimStart().slice(marker.length)
+    if (openMarker === undefined) {
+      // A backtick fence followed by another backtick is inline code, not a block.
+      if (marker === undefined || (marker.startsWith('`') && rest.includes('`'))) {
+        codeBlockLines.push('outside')
+      } else {
+        openMarker = marker
+        codeBlockLines.push('opening')
+      }
+    } else if (marker !== undefined && marker.startsWith(openMarker) && rest.trim() === '') {
+      openMarker = undefined
+      codeBlockLines.push('closing')
+    } else {
+      codeBlockLines.push('content')
+    }
+  }
+  return codeBlockLines
+}
+
+/**
  * Check the release notes a release was given, and put them in the form they are written in:
  * Unix line endings, no blank line before or after.
  *
@@ -135,8 +179,9 @@ export const getRepositoryUrl = (packageRepositoryUrl: string): string => {
  *
  * @returns The notes to write under the heading of the changelog entry.
  *
- * @throws If the notes are empty, or if one of their lines has the form of an entry heading:
- *   the changelog would then be read as having one more entry.
+ * @throws If the notes are empty, if one of their lines has the form of an entry heading (the
+ *   changelog would then be read as having one more entry), or if they leave a code block
+ *   open (every older entry would become part of it).
  */
 export const normalizeReleaseNotes = (notes: string): string => {
   const normalizedNotes = (notes.startsWith(BYTE_ORDER_MARK) ? notes.slice(1) : notes)
@@ -153,6 +198,15 @@ export const normalizeReleaseNotes = (notes: string): string => {
   if (headingLine !== undefined) {
     throw new Error(
       `🚨 the release notes have a line in the form of a changelog entry heading: ${headingLine}`
+    )
+  }
+  const codeBlockLines = readCodeBlockLines(lines)
+  if (codeBlockLines.at(-1) === 'opening' || codeBlockLines.at(-1) === 'content') {
+    const openingIndex = codeBlockLines.lastIndexOf('opening')
+    throw new Error(
+      `🚨 the release notes have a code block that is never closed (line ${String(openingIndex + 1)}: ` +
+        `${lines[openingIndex]}): the rest of the changelog would become part of it. End the block ` +
+        'with a line like the one that opens it.'
     )
   }
   return normalizedNotes

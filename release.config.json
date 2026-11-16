@@ -2,21 +2,28 @@
   "notes": {
     "sections": ["BREAKING CHANGES", "Features", "Bug Fixes", "Performance"],
     "breakingSection": "BREAKING CHANGES",
+    "featureSection": "Features",
     "forbidden": [
       {
         "pattern": "full changelog",
         "flags": "i",
-        "reason": "Leave the \"Full changelog\" link out: the GitHub release gets one by itself."
+        "reason": "Leave out any pointer to the full changelog: the GitHub release links to it by itself."
       },
       {
-        "pattern": "\\b(?=[0-9a-f]*\\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\\b",
+        "pattern": "(?<![\\w#-])(?=[0-9a-f]*\\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}(?![\\w-])",
+        "inCode": true,
         "reason": "This looks like a commit hash. Users do not need it: say what changed for them instead."
       },
       {
-        "pattern": "(?<![\\w&])#\\d+\\b",
+        "pattern": "(?<!&)#\\d{2,}\\b|\\bGH-\\d+\\b",
         "reason": "This looks like a pull request or issue number. Users do not need it: say what changed for them instead."
+      },
+      {
+        "pattern": "github\\.com/[^\\s/]+/[^\\s/]+/(?:pull|issues|commit|compare)/",
+        "reason": "This links to the history of the repository (a pull request, an issue, a commit, a comparison). Users do not need it: say what changed for them instead."
       }
     ],
-    "example": "### Bug Fixes\n\n- **Short name of the fix.** What was wrong, with the input that failed, and what\n  happens now.\n\n### Performance\n\n- `someFunction` is smaller: 970 B → 954 B (min+gzip).\n"
+    "example": "### Bug Fixes\n\n- **Short name of the fix.** What was wrong, with the input that failed, and what\n  happens now.\n\n### Performance\n\n- `someFunction` is smaller: 1.2 kB → 1.1 kB (min+gzip).\n",
+    "majorExample": "### BREAKING CHANGES\n\n- **What no longer works.** Which code is affected, and what to change in it.\n\n### Features\n\n- **Short name of the feature.** What it does, and how to use it.\n"
   }
 }

@@ -174,14 +174,28 @@ Three things about the command are there to prevent mistakes:
   argument would be run as commands, and no file is left behind to be committed by mistake.
   A line of the notes that is exactly `NOTES` would end them early: use another word then.
 - **The form of the notes is checked**, in a dry run too, against the rules in
-  [`release.config.json`](../release.config.json): the headings the notes can have and their
-  order, that everything under a heading is a list item, that a `### BREAKING CHANGES` section
-  goes with a major version and only with one, and what does not belong in notes (commit
-  hashes, pull request numbers, a "Full changelog" link). Notes that do not follow the rules
-  stop the command with the lines at fault, the reason for each, and notes in the expected
-  form. The rules belong to the repository, not to the script: change that file to change
-  them, and keep the guidelines in line with it (a test checks that both name the same
-  headings). Only the form can be checked; what the notes say is for whoever writes them.
+  [`release.config.json`](../release.config.json):
+  - the only headings are those of its `sections`, at level 3, in that order, each at most
+    once and with at least one item;
+  - everything else is a list item that starts with `- `, or the indented rest of one, a code
+    block included; an item is not empty or a placeholder (`…`, `TODO`);
+  - the `breakingSection` goes with a major version, and only with one, and the
+    `featureSection` does not go with a patch version;
+  - nothing matches a `forbidden` pattern (here: a commit hash, a pull request or issue
+    number, a link to one, a pointer to the full changelog). Inline code is left out of this
+    check, except for the patterns that say `"inCode": true`, and so are code blocks.
+
+  Notes that do not follow the rules stop the command with each line at fault, what is wrong
+  with it, and notes in the expected form (the `example` of the file, or its `majorExample`
+  for a major version). The rules belong to the repository, not to the script: change that
+  file to change them, and keep the guidelines in line with it. The file itself is checked
+  when it is read: a key that is not known, a pattern that is not a regular expression or an
+  example that does not follow the rules stops the command, and a test checks that the
+  guidelines name the same headings in the same order. Only the form can be checked; what
+  the notes say is for whoever writes them.
+
+  Whatever the rules, notes that leave a code block open are refused: the older entries of
+  the changelog would become part of it.
 
 ### The brief
 
