@@ -61,7 +61,7 @@ const REGEX_HEADING_UNDERLINE = /^(?:=+|-{2,})\s*$/
 const REGEX_HEADING_ENDING = /[\s:.]+$/
 
 /** Matches the title of a heading that is a version, as the heading of an entry is. */
-const REGEX_VERSION_TITLE = /^\[?v?\d+\.\d+\.\d+/
+const REGEX_VERSION_TITLE = /^(?:(?:release|version)\s+)?\[?v?\d+\.\d+\.\d+/
 
 /** Matches a line that starts a list item with another marker than `- `. */
 const REGEX_OTHER_LIST_MARKER = /^(?:[*+]|\d+[.)])\s/
@@ -265,7 +265,7 @@ export const findNotesProblems = (
       message:
         section.levelProblems.length > 0
           ? `This section has no item, and the notes of ${context.version} could not have it: leave the section out.`
-          : 'This section has no item. Give it at least one ("- …"), or leave the section out.',
+          : 'This section has no item. Give it at least one, or leave the section out.',
     })
   }
 

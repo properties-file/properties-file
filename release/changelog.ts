@@ -44,6 +44,15 @@ const REGEX_LINK_DEFINITION =
 /** Matches a footnote, which GitHub adds to Markdown: its reference or its definition. */
 const REGEX_FOOTNOTE = /(?<!\\)\[\^[^\]\s][^\]]*\]/
 
+/** Matches the definition of a footnote, at the beginning of a line of a file. */
+const REGEX_FOOTNOTE_DEFINITION = /^(?:[\t >]|[*+-][\t ]|\d+[.)][\t ])*\[\^[^\]]+\]:/m
+
+/** Matches a caret, as it is or as one of the entities Markdown reads as one. */
+const REGEX_CARET = /\^|&#0*94;|&#x0*5e;|&Hat;/i
+
+/** Matches a link whose address is given elsewhere, by a label: `[text][label]`. */
+const REGEX_LINK_REFERENCE = /(?<!\\)\[[^\]]+\]\[[^\]]*\]/
+
 /** Matches a line that ends with what opens a fenced code block: backticks and a language. */
 const REGEX_TRAILING_CODE_FENCE = /`{3,}[\w+-]*[\t ]*$/
 
@@ -329,13 +338,50 @@ const areOlderEntriesKept = (previousChangelog: string, changelog: string): bool
   if (firstHeadingIndex === undefined) {
     return true
   }
+  // How many things the older entries are, then those things as they are read in each
+  // changelog as a whole: what comes before them can define the links they use.
   const olderEntries = readMarkdown(previousLines.slice(firstHeadingIndex).join('\n').trimEnd())
-  const entries = readMarkdown(changelog.trimEnd())
+  const previousEntries = readMarkdown(previousChangelog.replaceAll('\r\n', '\n').trimEnd())
+  const entries = readMarkdown(changelog.replaceAll('\r\n', '\n').trimEnd())
   return (
     Array.isArray(olderEntries) &&
+    Array.isArray(previousEntries) &&
     Array.isArray(entries) &&
-    JSON.stringify(entries.slice(-olderEntries.length)) === JSON.stringify(olderEntries)
+    JSON.stringify(entries.slice(-olderEntries.length)) ===
+      JSON.stringify(previousEntries.slice(-olderEntries.length))
   )
+}
+
+/**
+ * Find what release notes would do to the footnotes of a changelog that has some. GitHub
+ * numbers the footnotes of a whole file together, and takes for a reference to one more
+ * spellings than a look at the text can tell (a caret that is escaped or written as an
+ * entity, in what only looks like code): where there are footnotes to refer to, notes do not
+ * get a caret at all.
+ *
+ * @param normalizedNotes - The notes (see {@link cleanReleaseNotes}).
+ * @param previousChangelog - The content of `CHANGELOG.md` before the release.
+ *
+ * @returns What is wrong and what to do about it, or `undefined` when the changelog has no
+ *   footnote or the notes no caret.
+ */
+export const findFootnoteHazard = (
+  normalizedNotes: string,
+  previousChangelog: string
+): string | undefined => {
+  if (!REGEX_FOOTNOTE_DEFINITION.test(previousChangelog)) {
+    return undefined
+  }
+  const lines = normalizedNotes.split('\n')
+  const caretIndex = lines.findIndex((line) => REGEX_CARET.test(line))
+  return caretIndex === -1
+    ? undefined
+    : `🚨 CHANGELOG.md has footnotes ("[^label]: ${String.fromCodePoint(0x2026)}"), and the release notes have a caret (line ${String(caretIndex + 1)}: ` +
+        `${lines[caretIndex]}). GitHub numbers the footnotes of the whole file together and reads ` +
+        'a "[^label]" in more spellings than can be told from the text, so a caret in the notes ' +
+        'could change the footnotes of the older entries. Write that part of the notes without ' +
+        'a "^" (in words, or with another example), or take the footnotes out of CHANGELOG.md ' +
+        'in a commit of its own first.'
 }
 
 /**
@@ -491,6 +537,21 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
   const htmlPlaces = lines.flatMap((line, index) =>
     REGEX_HTML_START.test(textLines[index]) ? `line ${String(index + 1)}: ${line}` : []
   )
+  // A footnote: no parser used here knows them, and GitHub numbers those of the whole
+  // changelog together, whatever entry they are in. Every line that has one is named: a
+  // reference and its definition go together.
+  const footnotePlaces = lines.flatMap((line, index) =>
+    REGEX_FOOTNOTE.test(textLines[index]) ? `line ${String(index + 1)}: ${line}` : []
+  )
+  if (footnotePlaces.length > 0) {
+    return (
+      `🚨 the release notes have a footnote (${footnotePlaces.join('; ')}): GitHub numbers the ` +
+      'footnotes of the whole changelog together, so one in the notes changes those of the ' +
+      'older entries, and it is not rendered in the release. Write what it says in the item ' +
+      'itself and take out both its mark and its text, or put it in backticks if it is code ' +
+      '(part of a regular expression, for instance).'
+    )
+  }
   const definitionIndex = textLines.findIndex((line) => REGEX_LINK_DEFINITION.test(line))
   if (definitionIndex !== -1) {
     return (
@@ -499,16 +560,15 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
       'entries. Write the link where it is used: [text](url).'
     )
   }
-  // A footnote: no parser used here knows them, and GitHub numbers those of the whole
-  // changelog together, whatever entry they are in.
-  const footnoteIndex = textLines.findIndex((line) => REGEX_FOOTNOTE.test(line))
-  if (footnoteIndex !== -1) {
+  // A link by reference, whose definition the notes cannot have: it would use one of the
+  // older entries in the changelog, and none in the release.
+  const referenceIndex = textLines.findIndex((line) => REGEX_LINK_REFERENCE.test(line))
+  if (referenceIndex !== -1) {
     return (
-      `🚨 the release notes have a footnote (line ${String(footnoteIndex + 1)}: ${lines[footnoteIndex]}): ` +
-      'GitHub numbers the footnotes of the whole changelog together, so one in the notes ' +
-      'changes those of the older entries, and it is not rendered in the release. Write what ' +
-      'it says in the item itself, or put it in backticks if it is code (part of a regular ' +
-      'expression, for instance).'
+      `🚨 the release notes have a link by reference (line ${String(referenceIndex + 1)}: ` +
+      `${lines[referenceIndex]}): its address would be on a line of its own, "[label]: url", ` +
+      'which the notes cannot have. Write the address in the link, [text](url), or put it in ' +
+      'backticks if it is code (two pairs of brackets in a row).'
     )
   }
   // What only a parser can tell: an entry heading that is not written like the others

@@ -14,14 +14,18 @@ import { runCommand } from './workspace'
 import type { Workspace } from './workspace'
 
 /**
- * Renders the Markdown texts it is given as a JSON array on its standard input, each twice:
- * with its HTML copied as it is, as GitHub renders it, and with its HTML shown as text.
+ * Renders the Markdown texts it is given as a JSON array on its standard input, with their
+ * HTML copied as it is, as GitHub renders it; the first one also with its HTML shown as text.
  */
 const RENDER_SCRIPT = [
   "import { micromark } from 'micromark'",
   "let input = ''",
   'for await (const chunk of process.stdin) input += chunk',
-  'const render = (text) => [micromark(text, { allowDangerousHtml: true }), micromark(text)]',
+  // Only the first text, the notes, is rendered both ways: the others can be large.
+  'const render = (text, index) => [',
+  '  micromark(text, { allowDangerousHtml: true }),',
+  "  index === 0 ? micromark(text) : '',",
+  ']',
   'process.stdout.write(JSON.stringify(JSON.parse(input).map(render)))',
 ].join('\n')
 
@@ -29,7 +33,7 @@ const RENDER_SCRIPT = [
 type Rendering = {
   /** The HTML of the text, with the HTML it holds copied as it is. */
   html: string
-  /** The HTML of the text, with the HTML it holds shown as text. */
+  /** The HTML of the text, with the HTML it holds shown as text: only for the first text. */
   safeHtml: string
 }
 

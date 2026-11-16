@@ -19,6 +19,7 @@ import {
   assertChangelogEntryAdded,
   assertOlderEntriesKept,
   cleanReleaseNotes,
+  findFootnoteHazard,
   findNotesHazards,
   getRepositoryUrl,
   insertChangelogEntry,
@@ -420,6 +421,10 @@ export const release = (options: ReleaseOptions): string => {
   })
   const changelogPath = path.join(directoryPath, 'CHANGELOG.md')
   const previousChangelog = readFileSync(changelogPath, 'utf8')
+  const footnoteHazard = findFootnoteHazard(cleanNotes, previousChangelog)
+  if (footnoteHazard !== undefined) {
+    throw new Error(footnoteHazard)
+  }
   // Computed before anything is changed: this fails if the version already has an entry.
   const changelog = insertChangelogEntry(previousChangelog, version, entry)
   // In a dry run too: what the notes would do to the entries that are there, as they are

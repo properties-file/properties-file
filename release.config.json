@@ -39,7 +39,8 @@
       "Bugfix": "Bug Fixes",
       "Bugfixes": "Bug Fixes",
       "Bug Fix": "Bug Fixes",
-      "Performance Improvements": "Performance"
+      "Performance Improvements": "Performance",
+      "Perf": "Performance"
     }
   }
 }

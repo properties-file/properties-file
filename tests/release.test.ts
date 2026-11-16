@@ -33,6 +33,7 @@ import {
   assertOlderEntriesKept,
   compareVersions,
   extractReleaseNotes,
+  findFootnoteHazard,
   getRepositoryUrl,
   insertChangelogEntry,
   isReleaseVersion,
@@ -2060,7 +2061,7 @@ const CODE_ESCAPED =
   'This line is in a code block, but indented less than the line that opens the block: Markdown ends the block here. Indent every line of the block at least as much as that line.'
 
 /** What the validator says of a section without an item. */
-const NO_ITEM = 'This section has no item. Give it at least one ("- …"), or leave the section out.'
+const NO_ITEM = 'This section has no item. Give it at least one, or leave the section out.'
 
 /**
  * Find the rules some notes do not follow, in a form that is short to compare.
@@ -2236,14 +2237,7 @@ describe('what release notes can do to the changelog', () => {
   })
 
   it('refuses notes that define a link, which would change the older entries', () => {
-    for (const definition of [
-      '[thing]: https://example.com',
-      '  [^1]: A footnote.',
-      '> [a b]: <x>',
-      // In a quote of a list item, and with a bracket that is escaped in its label.
-      '- > [^1]: Two words.',
-      String.raw`[^a\]b]: Two words.`,
-    ]) {
+    for (const definition of ['[thing]: https://example.com', '> [a b]: <x>']) {
       expect(() => normalizeReleaseNotes(`- A fix.\n\n${definition}`)).toThrow(
         `🚨 the release notes define a link for the whole changelog (line 3: ${definition}): a line "[label]: url" changes every "[label]" of the older entries. Write the link where it is used: [text](url).`
       )
@@ -2251,9 +2245,27 @@ describe('what release notes can do to the changelog', () => {
 
     // A footnote, which GitHub numbers with those of the older entries: its definition is
     // found as one, and its reference too.
-    for (const footnote of ['- A fix[^1].', '- A fix [^note] and more.', '[^1] : spaced']) {
+    for (const footnote of [
+      '- A fix[^1].',
+      '- A fix [^note] and more.',
+      '[^1] : spaced',
+      // Its definition, in a quote of a list item, or with a bracket that is escaped.
+      '  [^1]: A footnote.',
+      '- > [^1]: Two words.',
+      String.raw`[^a\]b]: Two words.`,
+    ]) {
       expect(() => normalizeReleaseNotes(`- One.\n\n${footnote}`)).toThrow(
-        `🚨 the release notes have a footnote (line 3: ${footnote}): GitHub numbers the footnotes of the whole changelog together, so one in the notes changes those of the older entries, and it is not rendered in the release. Write what it says in the item itself, or put it in backticks if it is code (part of a regular expression, for instance).`
+        `🚨 the release notes have a footnote (line 3: ${footnote}): GitHub numbers the footnotes of the whole changelog together, so one in the notes changes those of the older entries, and it is not rendered in the release. Write what it says in the item itself and take out both its mark and its text, or put it in backticks if it is code (part of a regular expression, for instance).`
+      )
+    }
+    // The mark and the text of a footnote are named together.
+    expect(() => normalizeReleaseNotes('- A fix.[^1]\n\n  [^1]: On every engine.')).toThrow(
+      '🚨 the release notes have a footnote (line 1: - A fix.[^1]; line 3:   [^1]: On every engine.): '
+    )
+    // A link by reference could only be defined on a line the notes cannot have.
+    for (const reference of ['- See [the docs][docs].', '- See [the docs][].']) {
+      expect(() => normalizeReleaseNotes(reference)).toThrow(
+        `🚨 the release notes have a link by reference (line 1: ${reference}): its address would be on a line of its own, "[label]: url", which the notes cannot have. Write the address in the link, [text](url), or put it in backticks if it is code (two pairs of brackets in a row).`
       )
     }
 
@@ -2269,7 +2281,7 @@ describe('what release notes can do to the changelog', () => {
 
     // Brackets and a colon followed by a sentence are text.
     const notes =
-      '- A [link](https://example.com), a [word]: and `[x]: y` in code.\n- [options]: the object passed to `getProperties`, and `[^a-z]` in code.'
+      '- A [link](https://example.com), a [word]: and `[x]: y` in code.\n- [options]: the object passed to `getProperties`, and `[^a-z]` and `matrix[0][1]` in code.'
 
     expect(normalizeReleaseNotes(notes)).toBe(notes)
   })
@@ -2427,6 +2439,39 @@ describe('what release notes can do to the changelog', () => {
     COMMAND_TIMEOUT
   )
 
+  it('reads the older entries in their changelog, whose title can define their links', () => {
+    const previousChangelog = `# Changelog\n\n[docs]: https://example.com/docs\n\n## [1.2.3](${REPOSITORY_URL}/compare/v1.2.2...v1.2.3) (2026-01-01)\n\n- See [docs].\n`
+
+    expect(() => {
+      assertOlderEntriesKept(
+        previousChangelog,
+        insertChangelogEntry(previousChangelog, '1.2.4', renderEntry(NOTES))
+      )
+    }).not.toThrow()
+  })
+
+  it('refuses a caret in the notes of a changelog that has footnotes', () => {
+    const withFootnotes = `${INITIAL_CHANGELOG}\n- Old[^note].\n\n[^note]: A footnote.\n`
+
+    // Spellings GitHub reads as a reference to that footnote, and a look at the text does not.
+    for (const notes of [
+      '- Fixed a bug \\`x [^note] ` here.',
+      '- See [&#94;note] here.',
+      String.raw`- See [\^note] here.`,
+      '- See [&Hat;note] and 2^8.',
+    ]) {
+      expect(findFootnoteHazard(notes, withFootnotes)).toBe(
+        `🚨 CHANGELOG.md has footnotes ("[^label]: …"), and the release notes have a caret (line 1: ${notes}). GitHub numbers the footnotes of the whole file together and reads a "[^label]" in more spellings than can be told from the text, so a caret in the notes could change the footnotes of the older entries. Write that part of the notes without a "^" (in words, or with another example), or take the footnotes out of CHANGELOG.md in a commit of its own first.`
+      )
+    }
+
+    // Notes without a caret, and a changelog without footnotes.
+    expect(findFootnoteHazard(NOTES, withFootnotes)).toBeUndefined()
+    expect(
+      findFootnoteHazard('- Now 2^8, and `[^a-z]` in code.', INITIAL_CHANGELOG)
+    ).toBeUndefined()
+  })
+
   it('refuses a changelog whose older entries are not what they were', () => {
     const olderEntry = `## [1.2.3](${REPOSITORY_URL}/compare/v1.2.2...v1.2.3) (2026-01-01)\n\n- Old.\n`
     const previousChangelog = `# Changelog\n\n${olderEntry}`
@@ -2510,7 +2555,7 @@ describe('release notes rules', () => {
       `1: ${WRONG_HEADING_START}${HEADING_HINT}`,
     ])
     // A version as a heading is the heading of the entry, which the release writes.
-    for (const heading of ['## 1.2.4', '# v1.2.4 (2026-03-04)', '## [1.2.4]']) {
+    for (const heading of ['## 1.2.4', '# v1.2.4 (2026-03-04)', '## [1.2.4]', '# Release 1.2.4']) {
       expect(problemsOf(`${heading}\n\n### Bug Fixes\n\n- One.`)).toStrictEqual([
         `1: ${WRONG_HEADING_START} Remove it: the release writes the heading of the entry, with its version, itself.`,
       ])

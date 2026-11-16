@@ -215,8 +215,8 @@ Three things about the command are there to prevent mistakes:
     a line indented less than that one (Markdown ends the block there), and cannot open on
     the line of its item;
   - a line that defines a link for the whole file (`[label]: url`) is refused: it would change
-    every `[label]` of the older entries. Links are written where they are used. A footnote
-    (`[^1]`) is refused too: GitHub numbers those of the whole changelog together;
+    every `[label]` of the older entries. Links are written where they are used. A footnote (`[^1]`) is refused too: GitHub numbers those of the whole changelog together. (In a changelog that already had footnotes, GitHub would read a reference to them in more spellings than a check can list: there, notes with a `^` at all are refused.)
+    Links by reference (`[text][label]`) are refused with the definitions they would need;
   - and with the entry added, the older entries of `CHANGELOG.md` have to be read by the
     parser exactly as they were, in the file as it is and as prettier formats it. A dry run
     formats it in memory to check this; a release checks it before its build, and again on
