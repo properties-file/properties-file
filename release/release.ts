@@ -363,11 +363,17 @@ export const release = (options: ReleaseOptions): string => {
   // The form of the notes, by the rules of the repository when it has some.
   const cleanNotes = cleanReleaseNotes(options.notes)
   const notesHazards = findNotesHazards(cleanNotes)
-  // A code block that is not closed changes how everything after it is read: nothing else can
-  // be said of the notes before it is.
-  if (notesHazards.codeBlock !== undefined) {
-    throw new Error(notesHazards.codeBlock)
-  }
+  // What the notes would do to the changelog: their code blocks, then what they contain.
+  // After a block that is not right, the rest may have been read as code, and is said so.
+  const hazardMessage = [
+    ...(notesHazards.codeBlock === undefined
+      ? []
+      : [
+          `${notesHazards.codeBlock}\n   What comes after a code block that is not right may ` +
+            'have been read as code: more can show once it is corrected.',
+        ]),
+    ...(notesHazards.content === undefined ? [] : [notesHazards.content]),
+  ].join('\n\n')
   const notesRules = readNotesRules(directoryPath)
   if (notesRules !== undefined) {
     const notesContext = { version, level: getReleaseLevel(currentVersion, version) }
@@ -377,22 +383,20 @@ export const release = (options: ReleaseOptions): string => {
       (problem) =>
         // What the repository forbids is said in any case: it is another thing to correct.
         notesRules.forbidden.some((forbidden) => problem.message.startsWith(forbidden.reason)) ||
-        notesHazards.content?.includes(
-          `line ${String(problem.lineNumber ?? 0)}: ${problem.line}`
-        ) !== true
+        !hazardMessage.includes(`line ${String(problem.lineNumber ?? 0)}: ${problem.line}`)
     )
     if (notesProblems.length > 0) {
       // With what the notes would do to the changelog, so that one run says everything there
       // is to correct.
       throw new Error(
-        (notesHazards.content === undefined ? '' : `${notesHazards.content}\n\n`) +
+        (hazardMessage === '' ? '' : `${hazardMessage}\n\n`) +
           `${describeNotesProblems(notesProblems, notesRules, notesContext)}\n\n` +
           `   What the notes should say is in ${GUIDELINES_PATH}.`
       )
     }
   }
-  if (notesHazards.content !== undefined) {
-    throw new Error(notesHazards.content)
+  if (hazardMessage !== '') {
+    throw new Error(hazardMessage)
   }
   log(
     `📦 Releasing ${currentVersion} → ${version}${isDryRun ? ' (dry run: nothing is changed)' : ''}`

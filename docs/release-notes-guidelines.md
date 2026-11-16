@@ -72,7 +72,9 @@ Format:
   `### Performance`.
 - No other heading, at any level, and nothing outside these sections. Every line is a list
   item that starts with `- `, or the indented rest of one. A code block goes under its item,
-  with every one of its lines indented at least as much as the line that opens it.
+  with every one of its lines indented at least as much as the line that opens it; the lines
+  that open and close it have nothing else on them, and it is not in a quote. No rule
+  (`---`).
 - No item left empty, as a placeholder (`- …`, `- TODO`, `- None`, `- N/A`) or copied from
   the example the command shows: a section with nothing to say is left out.
 - No HTML: write Markdown, and put code in backticks, a type such as `Promise<string>`

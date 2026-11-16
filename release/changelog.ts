@@ -245,7 +245,7 @@ export const readCodeBlockLines = (lines: string[]): CodeBlockLine[] => {
         opening = { marker, indentation }
         codeBlockLines.push('opening')
       }
-    } else if (line.trim() !== '' && indentation < opening.indentation) {
+    } else if (!/^[\t ]*$/.test(line) && indentation < opening.indentation) {
       codeBlockLines.push('escaped')
     } else if (
       marker !== undefined &&
@@ -474,12 +474,27 @@ const findCodeBlockHazard = (lines: string[]): string | undefined => {
           !line.slice(fence.length).includes('`')
     return isMisplaced ? index : []
   })
+  const misplacedHazards: string[] = []
   if (misplacedIndexes.length > 0) {
-    // Nothing else is said of the blocks: where they end cannot be told while these lines
-    // are there.
     const quoteIndexes = misplacedIndexes.filter((index) => /^[\t ]*>/.test(lines[index]))
-    const otherIndexes = misplacedIndexes.filter((index) => !quoteIndexes.includes(index))
-    return [
+    // A line that would open or close a block, were it not for a character that does not
+    // show: it looks right, and is told apart.
+    const hiddenIndexes = misplacedIndexes.filter(
+      (index) =>
+        !quoteIndexes.includes(index) &&
+        REGEX_CODE_FENCE.test(lines[index].replaceAll(/[^\t\u{20}-\u{7E}]/gu, ''))
+    )
+    const otherIndexes = misplacedIndexes.filter(
+      (index) => !quoteIndexes.includes(index) && !hiddenIndexes.includes(index)
+    )
+    misplacedHazards.push(
+      ...(hiddenIndexes.length === 0
+        ? []
+        : [
+            `🚨 the release notes have a character that does not show before the marks of a code block (${describeLines(hiddenIndexes)}): a space that is not an ordinary one, most often, which comes with text copied from a page. ` +
+              'Markdown does not read that line as one that opens or closes a block. Delete ' +
+              'what is before the marks, and type the spaces again.',
+          ]),
       ...(quoteIndexes.length === 0
         ? []
         : [
@@ -492,12 +507,18 @@ const findCodeBlockHazard = (lines: string[]): string | undefined => {
             `🚨 the release notes open a code block on a line that has something else, the start of a list item or its text (${describeLines(otherIndexes)}). Put the line that opens the block on a line of its own, ` +
               'indented under the item like the rest of the block, after a first line of the item ' +
               'that says what the code shows.',
-          ]),
-    ].join('\n\n')
+          ])
+    )
+    // A block opened on a line that has something else: where the blocks end cannot be told
+    // while that line is there, and nothing else is said of them. A block in a quote does
+    // not disturb the others.
+    if (otherIndexes.length > 0 || hiddenIndexes.length > 0) {
+      return misplacedHazards.join('\n\n')
+    }
   }
 
   // Every block that Markdown would not end where the notes do, so that one run says them all.
-  const hazards: string[] = []
+  const hazards = [...misplacedHazards]
   const codeBlockLines = readCodeBlockLines(lines)
   const tildeFenceIndexes = lines.flatMap((line, index) =>
     codeBlockLines[index] === 'opening' && /^[\t ]*~/.test(line) && line.includes('`') ? index : []
@@ -688,17 +709,27 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
         'the entry itself'
     )
   }
-  // Every place, so that one run says all there is to take out.
+  // Every line of what the parser read as HTML (a block of it has several), with the tag
+  // itself when it is only a part of its line.
+  const parsedHtmlPlaces = tokens.html.flatMap((token) =>
+    token.raw
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .map((part) => {
+        const place = describePlace(lines, part)
+        return place.replace(/^line \d+: /, '').trim() === part.trim()
+          ? place
+          : `${place}, at "${part.trim()}"`
+      })
+  )
+  // Every place once, so that one run says all there is to take out: a line the look at the
+  // text found too is named as the parser names it.
   const allHtmlPlaces = [
     ...new Set([
-      ...htmlPlaces,
-      // Every line of what the parser read as HTML: a block of it has several.
-      ...tokens.html.flatMap((token) =>
-        token.raw
-          .split('\n')
-          .filter((line) => line.trim() !== '')
-          .map((line) => describePlace(lines, line))
+      ...htmlPlaces.filter((place) =>
+        parsedHtmlPlaces.every((parsedPlace) => !parsedPlace.startsWith(place))
       ),
+      ...parsedHtmlPlaces,
     ]),
   ].toSorted(
     (first, second) =>

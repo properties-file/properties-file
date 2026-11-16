@@ -2203,7 +2203,7 @@ describe('what release notes can do to the changelog', () => {
       'Markdown copies it as it is, and a tag or a comment that is left open would take in the rest of the changelog. Put it in backticks if it is code (a type like `Promise<string>` is read as a tag), write it in Markdown, or remove it.'
 
     expect(() => normalizeReleaseNotes('- <!-- note to self\n\n- Faster.')).toThrow(
-      `🚨 the release notes have HTML (line 1: - <!-- note to self): ${message}`
+      `🚨 the release notes have HTML (line 1: - <!-- note to self, at "<!-- note to self"): ${message}`
     )
     // Every line of a block of HTML is named, not only its first.
     expect(() =>
@@ -2225,7 +2225,7 @@ describe('what release notes can do to the changelog', () => {
     expect(() =>
       normalizeReleaseNotes('- A line<br>and one.\n\n<details>\n\n- Other.\n\nText\n<?x')
     ).toThrow(
-      `🚨 the release notes have HTML (line 1: - A line<br>and one.; line 3: <details>; line 8: <?x): ${message}`
+      `🚨 the release notes have HTML (line 1: - A line<br>and one., at "<br>"; line 3: <details>; line 8: <?x): ${message}`
     )
     for (const notes of [
       'Fixed.\n\n<pre>',
@@ -2243,12 +2243,22 @@ describe('what release notes can do to the changelog', () => {
     ]) {
       expect(() => normalizeReleaseNotes(notes)).toThrow('🚨 the release notes have HTML (line ')
     }
-    // Lines that only look like a code block, after spaces that do not indent, hide nothing.
+    // Lines that only look like a code block, after spaces that do not indent, hide nothing,
+    // and are told apart from the ones that have text before the marks.
     expect(() =>
       normalizeReleaseNotes(
         `- x\n\n${String.fromCodePoint(0xa0)}\`\`\`\n<pre>\n${String.fromCodePoint(0xa0)}\`\`\``
       )
-    ).toThrow('🚨 the release notes open a code block on a line that has something else')
+    ).toThrow(
+      /🚨 the release notes have a character that does not show before the marks of a code block \(line 3: [^\n]*; line 5: [^\n]*\): a space that is not an ordinary one/
+    )
+    // A line of a block that has nothing but such a space is not a blank line: the block ends
+    // there for Markdown, and the line is named.
+    expect(() =>
+      normalizeReleaseNotes(
+        `- x\n\n  \`\`\`\n  code\n${String.fromCodePoint(0xa0)}\n  more\n  \`\`\``
+      )
+    ).toThrow('with a line that is indented less than it (line 5: ')
     expect(() =>
       normalizeReleaseNotes(
         `- x\n\n${String.fromCodePoint(0xa0)}~~~\n<pre>\n${String.fromCodePoint(0xa0)}~~~`
@@ -2323,6 +2333,14 @@ describe('what release notes can do to the changelog', () => {
       normalizeReleaseNotes('- One:\n\n    ```js\n  a()\n    ```\n\n- Two:\n\n  ```js\n  b()')
     ).toThrow(
       /with a line that is indented less than it \(line 4: [^\n]+\n\n🚨 the release notes have a code block that is never closed \(line 9: /
+    )
+    // A block in a quote does not keep the others from being read.
+    expect(() =>
+      normalizeReleaseNotes(
+        '- One:\n\n  > ```js\n  > a()\n  > ```\n\n- Two:\n\n    ```js\n  b()\n    ```'
+      )
+    ).toThrow(
+      /a code block in a quote \(line 3: [^\n]+\n\n🚨 the release notes have a code block \(line 9: [^\n]+ with a line that is indented less than it \(line 10: /
     )
     // A code block in a quote is not something the checks follow.
     expect(() => normalizeReleaseNotes('> Example:\n>\n> ```js\n> const a = 1\n> ```')).toThrow(
@@ -3107,7 +3125,7 @@ describe('release notes rules of a repository', () => {
       // An example that the release would refuse whatever the rules.
       [
         { notes: { ...VALID_CONFIG_NOTES, example: '### A\n\n- Returns Promise<string>.' } },
-        '🚨 release.config.json: "notes.example" could not be used as release notes: it would have HTML (line 3: - Returns Promise<string>.)',
+        '🚨 release.config.json: "notes.example" could not be used as release notes: it would have HTML (line 3: - Returns Promise<string>., at "<string>")',
       ],
       ...['x', null].map((forbidden): [unknown, string] => [
         { notes: { ...VALID_CONFIG_NOTES, forbidden } },
@@ -3364,13 +3382,23 @@ describe('release notes rules of a repository', () => {
         ).toThrow(
           /have HTML \(line 3: [^\n]+\n\n🚨 the release notes do not follow the rules of release\.config\.json \(1 place to correct\):\n\n {3}1\. line 3: [^\n]+\n {6}No issue number\. Here: "#12"\./
         )
+        // A code block that is not right is said with everything else, and with a word on
+        // what may be missing.
+        expect(() =>
+          releaseIn(repository, 'patch', {
+            isDryRun,
+            notes: '### Fixes\n\n* Fix #42.\n- Shown:\n\n    ```js\n  x()\n    ```',
+          })
+        ).toThrow(
+          /with a line that is indented less than it \(line 7: [^\n]+\n {3}What comes after a code block that is not right may have been read as code: more can show once it is corrected\.\n\n🚨 the release notes do not follow the rules of release\.config\.json \(2 places to correct\):\n\n {3}1\. line 1: ### Fixes\n[^\n]+\n {3}2\. line 3: \* Fix #42\.\n {6}No issue number\. Here: "#42"\.\n {6}An item starts with "- "/
+        )
         // Whatever the rules, notes cannot have HTML, or leave a code block open.
         expect(() =>
           releaseIn(repository, 'patch', {
             isDryRun,
             notes: '### Bug Fixes\n\n- A line<br>and one.',
           })
-        ).toThrow('🚨 the release notes have HTML (line 3: - A line<br>and one.)')
+        ).toThrow('🚨 the release notes have HTML (line 3: - A line<br>and one., at "<br>")')
         expect(() =>
           releaseIn(repository, 'patch', { isDryRun, notes: '### Bug Fixes\n\n- One:\n\n  ```' })
         ).toThrow('a code block that is never closed (line 5:   ```)')
