@@ -23,8 +23,15 @@ export const BYTE_ORDER_MARK = String.fromCodePoint(0xfe_ff)
  */
 const REGEX_CODE_FENCE = /^\s*(?<marker>`{3,}|~{3,})/
 
-/** What a line of Markdown is to its fenced code blocks. */
-export type CodeBlockLine = 'opening' | 'content' | 'closing' | 'outside'
+/**
+ * What a line of Markdown is to its fenced code blocks. An `escaped` line is in a block by the
+ * fences, but indented less than the line that opens it: when the block is in a list item,
+ * Markdown ends the item, and the block with it, at that line.
+ */
+export type CodeBlockLine = 'opening' | 'content' | 'closing' | 'outside' | 'escaped'
+
+/** Matches inline code, between as many backticks as it starts with. */
+export const REGEX_INLINE_CODE = /(?<fence>`+).*?\k<fence>/g
 
 /** Matches the compare link of a version entry heading, capturing its URL and its tag range. */
 const REGEX_COMPARE_LINK = /\]\((?<url>[^()\s]+\/compare\/(?<range>[^()\s/]+))\)/
@@ -133,9 +140,31 @@ export const getRepositoryUrl = (packageRepositoryUrl: string): string => {
 }
 
 /**
+ * Measure how far a line is indented, a tab going to the next multiple of four as in Markdown.
+ *
+ * @param line - The line to measure.
+ *
+ * @returns The number of columns before the first character that is not a space or a tab.
+ */
+const getIndentation = (line: string): number => {
+  let indentation = 0
+  for (const character of line) {
+    if (character === ' ') {
+      indentation++
+    } else if (character === '\t') {
+      indentation += 4 - (indentation % 4)
+    } else {
+      break
+    }
+  }
+  return indentation
+}
+
+/**
  * Tell which lines of a Markdown text open, are in, or close a fenced code block. As in
  * Markdown, a block is only closed by a fence of the character that opened it, at least as
- * long and with nothing after it; without one it goes on to the end of the text.
+ * long, with nothing after it and not indented much more; without one it goes on to the end
+ * of the text.
  *
  * @param lines - The lines of the text.
  *
@@ -143,22 +172,31 @@ export const getRepositoryUrl = (packageRepositoryUrl: string): string => {
  */
 export const readCodeBlockLines = (lines: string[]): CodeBlockLine[] => {
   const codeBlockLines: CodeBlockLine[] = []
-  let openMarker: string | undefined
+  // The marker and the indentation of the fence that opened the block the line is in.
+  let opening: { marker: string; indentation: number } | undefined
   for (const line of lines) {
+    const indentation = getIndentation(line)
     const marker = REGEX_CODE_FENCE.exec(line)?.groups?.marker
     // What the line has after the marker: the language of a block that opens, and nothing
     // for one that closes.
     const rest = marker === undefined ? '' : line.trimStart().slice(marker.length)
-    if (openMarker === undefined) {
+    if (opening === undefined) {
       // A backtick fence followed by another backtick is inline code, not a block.
       if (marker === undefined || (marker.startsWith('`') && rest.includes('`'))) {
         codeBlockLines.push('outside')
       } else {
-        openMarker = marker
+        opening = { marker, indentation }
         codeBlockLines.push('opening')
       }
-    } else if (marker !== undefined && marker.startsWith(openMarker) && rest.trim() === '') {
-      openMarker = undefined
+    } else if (line.trim() !== '' && indentation < opening.indentation) {
+      codeBlockLines.push('escaped')
+    } else if (
+      marker !== undefined &&
+      marker.startsWith(opening.marker) &&
+      rest.trim() === '' &&
+      indentation - opening.indentation < 4
+    ) {
+      opening = undefined
       codeBlockLines.push('closing')
     } else {
       codeBlockLines.push('content')
@@ -180,8 +218,8 @@ export const readCodeBlockLines = (lines: string[]): CodeBlockLine[] => {
  * @returns The notes to write under the heading of the changelog entry.
  *
  * @throws If the notes are empty, if one of their lines has the form of an entry heading (the
- *   changelog would then be read as having one more entry), or if they leave a code block
- *   open (every older entry would become part of it).
+ *   changelog would then be read as having one more entry), or if they leave a code block or
+ *   an HTML comment open (every older entry would become part of it).
  */
 export const normalizeReleaseNotes = (notes: string): string => {
   const normalizedNotes = (notes.startsWith(BYTE_ORDER_MARK) ? notes.slice(1) : notes)
@@ -201,12 +239,42 @@ export const normalizeReleaseNotes = (notes: string): string => {
     )
   }
   const codeBlockLines = readCodeBlockLines(lines)
-  if (codeBlockLines.at(-1) === 'opening' || codeBlockLines.at(-1) === 'content') {
+  // A block that is still open at the end: the last line is in one, whatever its indentation.
+  if (codeBlockLines.at(-1) !== 'outside' && codeBlockLines.at(-1) !== 'closing') {
     const openingIndex = codeBlockLines.lastIndexOf('opening')
     throw new Error(
       `🚨 the release notes have a code block that is never closed (line ${String(openingIndex + 1)}: ` +
         `${lines[openingIndex]}): the rest of the changelog would become part of it. End the block ` +
-        'with a line like the one that opens it.'
+        'with a line that has nothing but the marks that open it (``` or ~~~), indented like it.'
+    )
+  }
+  const escapedIndex = codeBlockLines.indexOf('escaped')
+  if (escapedIndex !== -1) {
+    const openingIndex = codeBlockLines.lastIndexOf('opening', escapedIndex)
+    throw new Error(
+      `🚨 the release notes have a code block (line ${String(openingIndex + 1)}: ${lines[openingIndex]}) ` +
+        `with a line that is indented less than it (line ${String(escapedIndex + 1)}: ${lines[escapedIndex]}): ` +
+        'Markdown ends the block at that line, and the rest of the changelog could become part ' +
+        'of another one. Indent every line of the block at least as much as the line that ' +
+        'opens it.'
+    )
+  }
+  // An HTML comment that is left open, outside code, hides what follows it.
+  const textLines = lines.map((line, index) =>
+    codeBlockLines[index] === 'outside' ? line.replaceAll(REGEX_INLINE_CODE, '') : ''
+  )
+  const commentIndex = textLines.findLastIndex((line) => line.includes('<!--'))
+  if (
+    commentIndex !== -1 &&
+    !textLines
+      .slice(commentIndex)
+      .join('\n')
+      .includes('-->', textLines[commentIndex].lastIndexOf('<!--'))
+  ) {
+    throw new Error(
+      `🚨 the release notes have an HTML comment that is never closed (line ${String(commentIndex + 1)}: ` +
+        `${lines[commentIndex]}): the rest of the changelog would not be shown. Close it with ` +
+        '"-->", or remove it.'
     )
   }
   return normalizedNotes
@@ -316,8 +384,8 @@ export const extractReleaseNotes = (changelog: string, version: string): string 
  * @param changelog - Its content now.
  * @param version - The version being released.
  *
- * @throws If the version has no entry that can be read, or if the changelog does not have
- *   exactly one entry more than before.
+ * @throws If the version has no entry that can be read, if the changelog does not have
+ *   exactly one entry more than before, or if its older entries are not what they were.
  */
 export const assertChangelogEntryAdded = (
   previousChangelog: string,
@@ -331,6 +399,21 @@ export const assertChangelogEntryAdded = (
     throw new Error(
       `🚨 CHANGELOG.md had ${String(previousCount)} entries and now reads as having ` +
         `${String(count)}: the release would not add exactly one`
+    )
+  }
+  // Whatever the notes are, the entries that were there stay as they were: if formatting the
+  // file with the new entry changed them, the notes left something open that took them in.
+  const previousLines = previousChangelog.split(/\r?\n/)
+  const firstHeadingIndex = findVersionHeadings(previousLines).at(0)
+  const olderEntries =
+    firstHeadingIndex === undefined
+      ? ''
+      : previousLines.slice(firstHeadingIndex).join('\n').trimEnd()
+  if (!changelog.replaceAll('\r\n', '\n').trimEnd().endsWith(olderEntries)) {
+    throw new Error(
+      '🚨 CHANGELOG.md would not keep its older entries as they were. Either the release ' +
+        'notes leave something open that takes them in (a code block, an HTML tag), or the ' +
+        'file was not formatted with prettier before the release'
     )
   }
 }

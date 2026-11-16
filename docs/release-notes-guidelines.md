@@ -67,15 +67,18 @@ description of its GitHub release.
 
 Format:
 
-- Markdown, as a list under one or more of these headings, in this order, each only if it has
-  items: `### BREAKING CHANGES`, `### Features`, `### Bug Fixes`, `### Performance`.
+- Markdown, as a list under one or more of these headings, in this order, each at most once
+  and only if it has items: `### BREAKING CHANGES`, `### Features`, `### Bug Fixes`,
+  `### Performance`.
 - No other heading, at any level, and nothing outside these sections. Every line is a list
-  item that starts with `- `, or the indented rest of one; a code block goes under its item,
-  indented like it.
+  item that starts with `- `, or the indented rest of one. A code block goes under its item,
+  with every one of its lines indented at least as much as the line that opens it.
+- No item left empty or as a placeholder (`- …`, `- TODO`).
 - `### BREAKING CHANGES` goes with a major version, and only with one. `### Features` needs
   at least a minor version.
 - No commit hash, no pull request or issue number, no link to one, and no pointer to the full
-  changelog: the GitHub release links to it by itself.
+  changelog: the GitHub release links to it by itself. No `@name` either: GitHub would notify
+  that user.
 - A sentence or two per item. Bold the few words that name the change when an item is long.
 - The release command checks this form, in a preview too, with the rules in
   `release.config.json`. When the notes do not follow them, it names each line at fault, says

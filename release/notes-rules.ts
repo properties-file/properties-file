@@ -12,7 +12,7 @@ import path from 'node:path'
 
 import { isNormalizedError, noThrow } from '../utilities/no-throw'
 
-import { BYTE_ORDER_MARK, readCodeBlockLines } from './changelog'
+import { BYTE_ORDER_MARK, readCodeBlockLines, REGEX_INLINE_CODE } from './changelog'
 
 /** The file the rules are read from, at the root of the repository. */
 const CONFIG_FILE_NAME = 'release.config.json'
@@ -26,6 +26,9 @@ const NOTES_KEYS = [
   'example',
   'majorExample',
 ]
+
+/** What a forbidden pattern of the file can have. */
+const FORBIDDEN_KEYS = ['pattern', 'reason', 'flags', 'inCode']
 
 /** How much of a line is quoted with its problems, at most. */
 const QUOTED_LINE_LENGTH = 120
@@ -45,14 +48,17 @@ const REGEX_HEADING_CLOSING = /\s+#+\s*$/
 /** Matches a line that makes a heading of the line above it, or draws a rule. */
 const REGEX_UNDERLINE = /^\s*(?:=+|-{2,}|\*{3,}|_{3,})\s*$/
 
+/** Matches a line that makes a heading of the line of text above it. */
+const REGEX_HEADING_UNDERLINE = /^(?:=+|-{2,})\s*$/
+
+/** Matches what a heading can end with that is not part of its title. */
+const REGEX_HEADING_ENDING = /[\s:.]+$/
+
 /** Matches a line that starts a list item with another marker than `- `. */
 const REGEX_OTHER_LIST_MARKER = /^(?:[*+]|\d+[.)])\s/
 
 /** Matches an item that was left as a placeholder instead of being written. */
 const REGEX_PLACEHOLDER = /^(?:…|\.{3}|todo|tbd)\.?$/i
-
-/** Matches inline code, between as many backticks as it starts with. */
-const REGEX_INLINE_CODE = /(?<fence>`+).*?\k<fence>/g
 
 /** Something the notes must not contain. */
 type ForbiddenPattern = {
@@ -110,7 +116,9 @@ export type NotesProblem = {
  * @param version - The version being released, in the same form.
  *
  * @returns `major` when the first number changes, `minor` when the second one does, and
- *   `patch` otherwise: `5.0.7` to `6.1.0` is a major release.
+ *   `patch` otherwise: `5.0.7` to `6.1.0` is a major release. Versions before `1.0.0` are
+ *   read in the same way, although a minor one can break existing code there: `0.5.0` to
+ *   `0.6.0` is a minor release.
  */
 export const getReleaseLevel = (currentVersion: string, version: string): ReleaseLevel => {
   const [currentMajor, currentMinor] = currentVersion.split('.', 2)
@@ -156,6 +164,13 @@ export const findNotesProblems = (
     reason: forbidden.reason,
     isInCode: forbidden.inCode === true,
   }))
+  // The items of the examples: they show the form, and say nothing of a release.
+  const exampleItems = new Set(
+    [rules.example, rules.majorExample ?? '']
+      .flatMap((example) => example.split('\n'))
+      .filter((line) => line.startsWith('- '))
+      .map((line) => line.trim())
+  )
 
   // The section the current line is in: whether its heading is one the rules allow, the line
   // of that heading, how many items it has so far, and whether one of its lines has a problem
@@ -170,7 +185,14 @@ export const findNotesProblems = (
       }
     | undefined
   // What the lines seen so far say about the notes as a whole.
-  const seen = { lastSectionIndex: -1, hasBreakingSection: false, hasTextBeforeSections: false }
+  const seen = {
+    lastSectionIndex: -1,
+    hasBreakingSection: false,
+    hasTextBeforeSections: false,
+    // The line that underlines the last heading written in that way.
+    underlineIndex: -1,
+  }
+  const allowedHeadings = `The only headings the notes can have are ${headingList}`
 
   /**
    * Record a problem of form on a line, in the section the line is in.
@@ -245,15 +267,25 @@ export const findNotesProblems = (
    * @param line - The heading, as it is written.
    * @param heading - What the line has of a heading: its indentation, its level marker and
    *   its title, or `undefined` when it has no space after its marker.
+   * @param isUnderlined - Whether the line is a heading by the line under it, not by a marker.
    */
   const checkHeading = (
     lineNumber: number,
     line: string,
-    heading: Record<string, string | undefined> | undefined
+    heading: Record<string, string | undefined> | undefined,
+    isUnderlined = false
   ): void => {
     const title = (heading?.title ?? '').replace(REGEX_HEADING_CLOSING, '').trim()
     const sectionIndex =
       heading?.indentation === '' && heading.marker === '###' ? rules.sections.indexOf(title) : -1
+    // The section the heading was most likely meant for, when it only differs from its title
+    // by its case, its marker or what it ends with.
+    const writtenTitle = (heading === undefined ? line.replace(/^#+/, '') : title)
+      .trim()
+      .replace(REGEX_HEADING_ENDING, '')
+      .toLowerCase()
+    const closestSection = rules.sections.find((name) => name.toLowerCase() === writtenTitle)
+    const hint = closestSection === undefined ? '' : ` This one is written "### ${closestSection}".`
     closeSection()
     // What follows a heading that is not allowed is still checked as the content of a
     // section, so that one heading to correct is not reported again for each line under it.
@@ -262,20 +294,29 @@ export const findNotesProblems = (
       checkSectionHeading(lineNumber, line, sectionIndex)
       return
     }
-    const allowedHeadings = `The only headings the notes can have are ${headingList}`
-    if (heading === undefined) {
+    if (isUnderlined) {
       problems.push({
         lineNumber,
         line,
-        message: `A heading needs a space after its "#" marks. ${allowedHeadings}.`,
+        message: `With the line under it, Markdown reads this line as a heading. A heading is written on one line, with "###" before its title. ${allowedHeadings}.${hint}`,
+      })
+    } else if (heading === undefined) {
+      problems.push({
+        lineNumber,
+        line,
+        message: `A heading needs a space after its "#" marks. ${allowedHeadings}.${hint}`,
       })
     } else if (heading.indentation === '') {
-      problems.push({ lineNumber, line, message: `${allowedHeadings}, written exactly so.` })
+      problems.push({
+        lineNumber,
+        line,
+        message: `${allowedHeadings}, written exactly so.${hint}`,
+      })
     } else {
       problems.push({
         lineNumber,
         line,
-        message: `Markdown reads this line as a heading, and a heading starts at the beginning of its line. ${allowedHeadings}.`,
+        message: `Markdown reads this line as a heading, and a heading starts at the beginning of its line. ${allowedHeadings}.${hint}`,
       })
     }
   }
@@ -295,7 +336,7 @@ export const findNotesProblems = (
         addFormProblem(
           lineNumber,
           line,
-          `The notes start with one of the headings ${headingList}: this line, and any other before the first heading, is not in a section.`
+          `The notes start with one of the headings ${headingList}. This line, and any other before the first heading, is not in a section: put what it says under one, as a list item ("- …").`
         )
       }
     } else if (REGEX_UNDERLINE.test(line)) {
@@ -305,7 +346,7 @@ export const findNotesProblems = (
         'Markdown reads this line as a rule, or as making a heading of the line above it. ' +
           `Neither is used in the notes: remove it. The only headings are ${headingList}.`
       )
-    } else if (line.trimEnd() === '-' || line.startsWith('- ')) {
+    } else if (/^-(?:\s|$)/.test(line)) {
       section.itemCount++
       const item = line.slice(1).trim()
       if (item === '') {
@@ -319,6 +360,13 @@ export const findNotesProblems = (
           lineNumber,
           line,
           'This item is a placeholder. Write what changed for the user, or remove it.'
+        )
+      } else if (exampleItems.has(line.trim())) {
+        addFormProblem(
+          lineNumber,
+          line,
+          'This item is the one of the example, which only shows the form. Write what changed ' +
+            'for the user, or remove it.'
         )
       }
     } else if (/^\s/.test(line)) {
@@ -349,6 +397,9 @@ export const findNotesProblems = (
   const lines = notes.split('\n')
   const codeBlockLines = readCodeBlockLines(lines)
   for (const [index, line] of lines.entries()) {
+    if (index === seen.underlineIndex) {
+      continue
+    }
     const lineNumber = index + 1
     const codeBlockLine = codeBlockLines[index]
 
@@ -366,10 +417,19 @@ export const findNotesProblems = (
           lineNumber,
           line,
           message:
-            'This code block is never closed: end it with a line like this one, at the same ' +
-            'indentation.',
+            'This code block is never closed: end it with a line that has nothing but the ' +
+            'marks that open it, indented like this one.',
         })
       }
+    } else if (codeBlockLine === 'escaped' && codeBlockLines.includes('closing', index)) {
+      // In a block that is never closed, that is the one thing to correct.
+      addFormProblem(
+        lineNumber,
+        line,
+        'This line is in a code block, but indented less than the line that opens the block: ' +
+          'Markdown ends the block here. Indent every line of the block at least as much as ' +
+          'that line.'
+      )
     }
     if (codeBlockLine !== 'outside' || line.trim() === '') {
       continue
@@ -378,6 +438,18 @@ export const findNotesProblems = (
     const heading = REGEX_HEADING.exec(line)?.groups
     if (heading !== undefined || REGEX_HEADING_WITHOUT_SPACE.test(line)) {
       checkHeading(lineNumber, line, heading)
+      continue
+    }
+    if (
+      // A line of text only: not an item, the rest of one, or a rule.
+      !/^(?:\s|-(?:\s|$))/.test(line) &&
+      !REGEX_OTHER_LIST_MARKER.test(line) &&
+      !REGEX_UNDERLINE.test(line) &&
+      codeBlockLines[index + 1] === 'outside' &&
+      REGEX_HEADING_UNDERLINE.test(lines.at(index + 1) ?? '')
+    ) {
+      seen.underlineIndex = index + 1
+      checkHeading(lineNumber, line, { indentation: '', marker: '', title: line }, true)
       continue
     }
 
@@ -522,18 +594,63 @@ const isForbiddenPattern = (value: unknown): value is ForbiddenPattern =>
   typeof value.reason === 'string' &&
   value.reason.trim() !== '' &&
   (value.flags === undefined || typeof value.flags === 'string') &&
-  (value.inCode === undefined || typeof value.inCode === 'boolean') &&
-  Object.keys(value).every((key) => ['pattern', 'reason', 'flags', 'inCode'].includes(key))
+  (value.inCode === undefined || typeof value.inCode === 'boolean')
 
 /**
- * Check that a value read from the configuration lists things that are forbidden.
+ * Check that a value read from the configuration is a list.
  *
  * @param value - The value to check.
  *
- * @returns `true` if the value is an array whose elements all describe something forbidden.
+ * @returns `true` if the value is an array, of anything.
  */
-const isForbiddenPatternArray = (value: unknown): value is ForbiddenPattern[] =>
-  Array.isArray(value) && value.every((element) => isForbiddenPattern(element))
+const isConfigList = (value: unknown): value is unknown[] => Array.isArray(value)
+
+/**
+ * Read what the configuration forbids in the notes.
+ *
+ * @param forbidden - The `forbidden` of the `notes` of the configuration.
+ *
+ * @returns The patterns, each of which is a regular expression.
+ *
+ * @throws If the value is not a list, or if one of its patterns has a key that is not known,
+ *   is not in the expected form or is not a regular expression. The error names the pattern.
+ */
+const readForbiddenPatterns = (forbidden: unknown): ForbiddenPattern[] => {
+  if (!isConfigList(forbidden)) {
+    throw createConfigError(
+      '"notes.forbidden" must be a list of { "pattern", "reason", "flags"?, "inCode"? }'
+    )
+  }
+  const forbiddenPatterns: ForbiddenPattern[] = []
+  for (const [index, forbiddenPattern] of forbidden.entries()) {
+    const place = `pattern ${String(index + 1)} of "notes.forbidden"`
+    const unknownKey = isConfigObject(forbiddenPattern)
+      ? Object.keys(forbiddenPattern).find((key) => !FORBIDDEN_KEYS.includes(key))
+      : undefined
+    if (unknownKey !== undefined) {
+      throw createConfigError(
+        `${place} has a key that is not known, "${unknownKey}": the keys are ` +
+          FORBIDDEN_KEYS.map((key) => `"${key}"`).join(', ')
+      )
+    }
+    if (!isForbiddenPattern(forbiddenPattern)) {
+      throw createConfigError(
+        `${place} must be { "pattern", "reason", "flags"?, "inCode"? }, where the pattern and ` +
+          'the reason are text that is not empty, the flags are text and inCode is true or false'
+      )
+    }
+    const expression = noThrow(() => compileForbiddenPattern(forbiddenPattern))
+    if (isNormalizedError(expression)) {
+      throw createConfigError(
+        `${place} is not a regular expression: ${JSON.stringify(forbiddenPattern.pattern)}` +
+          `${forbiddenPattern.flags === undefined ? '' : ` with the flags ${JSON.stringify(forbiddenPattern.flags)}`} ` +
+          `(${expression.message})`
+      )
+    }
+    forbiddenPatterns.push(forbiddenPattern)
+  }
+  return forbiddenPatterns
+}
 
 /**
  * Read a property of the configuration that can name one of the sections.
@@ -586,7 +703,7 @@ const readExampleProperty = (
         'when notes do not follow them'
     )
   }
-  return value
+  return value.replaceAll(/\r\n?/g, '\n')
 }
 
 /**
@@ -609,7 +726,12 @@ const assertExampleFollowsRules = (
   const problem =
     example === undefined
       ? undefined
-      : findNotesProblems(example.trimEnd(), rules, { version: 'The version', level }).at(0)
+      : findNotesProblems(
+          example.trimEnd(),
+          // Without the examples: their items are refused in notes, and are what is checked here.
+          { ...rules, example: '', majorExample: undefined },
+          { version: 'The version', level }
+        ).at(0)
   if (problem !== undefined) {
     throw createConfigError(
       `"notes.${name}" does not follow the rules of the same file` +
@@ -667,27 +789,12 @@ export const readNotesRules = (directoryPath: string): NotesRules | undefined =>
         NOTES_KEYS.map((key) => `"${key}"`).join(', ')
     )
   }
-  const { sections, forbidden = [] } = notes
+  const { sections } = notes
   if (!isSectionList(sections)) {
     throw createConfigError(
       '"notes.sections" must list the titles of the sections: at least one, all different, ' +
         'none empty or with spaces around it'
     )
-  }
-  if (!isForbiddenPatternArray(forbidden)) {
-    throw createConfigError(
-      '"notes.forbidden" must be a list of { "pattern", "reason", "flags"?, "inCode"? }, ' +
-        'where the pattern and the reason are text that is not empty'
-    )
-  }
-  for (const forbiddenPattern of forbidden) {
-    const expression = noThrow(() => compileForbiddenPattern(forbiddenPattern))
-    if (isNormalizedError(expression)) {
-      throw createConfigError(
-        `the "notes.forbidden" pattern ${JSON.stringify(forbiddenPattern.pattern)} is not a ` +
-          `regular expression (${expression.message})`
-      )
-    }
   }
   const example = readExampleProperty(notes, 'example')
   if (example === undefined) {
@@ -696,17 +803,24 @@ export const readNotesRules = (directoryPath: string): NotesRules | undefined =>
     )
   }
   const majorExample = readExampleProperty(notes, 'majorExample')
+  const breakingSection = readSectionProperty(notes, 'breakingSection', sections)
+  if (majorExample === undefined && breakingSection !== undefined) {
+    throw createConfigError(
+      '"notes.majorExample" is missing: with a "breakingSection", the notes of a major release ' +
+        'need an example of their own, which has that section'
+    )
+  }
   const rules = {
     sections,
-    breakingSection: readSectionProperty(notes, 'breakingSection', sections),
+    breakingSection,
     featureSection: readSectionProperty(notes, 'featureSection', sections),
-    forbidden,
+    forbidden: readForbiddenPatterns(notes.forbidden ?? []),
     example,
     majorExample,
   }
   // The example is shown for the releases that are not major ones, so it is checked as the
-  // notes of a minor release, which can have every section but the breaking changes.
-  assertExampleFollowsRules('example', example, rules, 'minor')
+  // notes of a patch release, which every one of them accepts.
+  assertExampleFollowsRules('example', example, rules, 'patch')
   assertExampleFollowsRules('majorExample', majorExample, rules, 'major')
   return rules
 }

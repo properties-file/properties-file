@@ -178,24 +178,32 @@ Three things about the command are there to prevent mistakes:
   - the only headings are those of its `sections`, at level 3, in that order, each at most
     once and with at least one item;
   - everything else is a list item that starts with `- `, or the indented rest of one, a code
-    block included; an item is not empty or a placeholder (`…`, `TODO`);
+    block included; an item is not empty, a placeholder (`…`, `TODO`) or an item of the
+    examples of the file;
   - the `breakingSection` goes with a major version, and only with one, and the
-    `featureSection` does not go with a patch version;
+    `featureSection` does not go with a patch version. What a version is comes from the
+    number it changes, before `1.0.0` too (`0.5.0` to `0.6.0` is a minor version);
   - nothing matches a `forbidden` pattern (here: a commit hash, a pull request or issue
-    number, a link to one, a pointer to the full changelog). Inline code is left out of this
-    check, except for the patterns that say `"inCode": true`, and so are code blocks.
+    number, a link to one, a pointer to the full changelog, a mention of a GitHub user).
+    Inline code is left out of this check, except for the patterns that say
+    `"inCode": true`, and so are code blocks. The patterns are guesses: when one refuses
+    ordinary text, reword the item, or put what it refused in backticks if it is code.
 
   Notes that do not follow the rules stop the command with each line at fault, what is wrong
   with it, and notes in the expected form (the `example` of the file, or its `majorExample`
-  for a major version). The rules belong to the repository, not to the script: change that
-  file to change them, and keep the guidelines in line with it. The file itself is checked
-  when it is read: a key that is not known, a pattern that is not a regular expression or an
-  example that does not follow the rules stops the command, and a test checks that the
-  guidelines name the same headings in the same order. Only the form can be checked; what
-  the notes say is for whoever writes them.
+  for a major version, which a file with a `breakingSection` has to give). The rules belong
+  to the repository, not to the script: change that file to change them, and keep the
+  guidelines in line with it. The file itself is checked when it is read: a key that is not
+  known, a pattern that is not a regular expression or an example that does not follow the
+  rules stops the command, and a test checks that the guidelines name the same headings in
+  the same order. Only the form can be checked; what the notes say is for whoever writes
+  them.
 
-  Whatever the rules, notes that leave a code block open are refused: the older entries of
-  the changelog would become part of it.
+  Whatever the rules, and in a repository without that file, notes that would damage the
+  rest of the changelog are refused: a code block that is never closed or has a line
+  indented less than the line that opens it (Markdown ends the block there), and an HTML
+  comment that is never closed. As a last check before the commit, the older entries of
+  `CHANGELOG.md` have to be what they were once prettier has formatted the file.
 
 ### The brief
 

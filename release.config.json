@@ -15,12 +15,18 @@
         "reason": "This looks like a commit hash. Users do not need it: say what changed for them instead."
       },
       {
-        "pattern": "(?<!&)#\\d{2,}\\b|\\bGH-\\d+\\b",
+        "pattern": "(?<![&\\w])#\\d{2,}\\b|\\(#\\d+\\)|\\b[\\w.-]+/[\\w.-]+#\\d+\\b|\\bGH[- ]\\d+\\b|\\b(?:PR|pull request|issue)s? #?\\d+\\b",
+        "flags": "i",
         "reason": "This looks like a pull request or issue number. Users do not need it: say what changed for them instead."
       },
       {
         "pattern": "github\\.com/[^\\s/]+/[^\\s/]+/(?:pull|issues|commit|compare)/",
         "reason": "This links to the history of the repository (a pull request, an issue, a commit, a comparison). Users do not need it: say what changed for them instead."
+      },
+      {
+        "pattern": "(?<![\\w/.])@[a-z\\d](?:[a-z\\d-]*[a-z\\d])?(?![\\w/-])",
+        "flags": "i",
+        "reason": "This reads as a mention of a GitHub user, who would be notified by the release. Leave the name out, or put it in backticks if it is code."
       }
     ],
     "example": "### Bug Fixes\n\n- **Short name of the fix.** What was wrong, with the input that failed, and what\n  happens now.\n\n### Performance\n\n- `someFunction` is smaller: 1.2 kB → 1.1 kB (min+gzip).\n",
