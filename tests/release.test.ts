@@ -2427,6 +2427,31 @@ describe('what release notes can do to the changelog', () => {
     'gives the last word to how Markdown renders the changelog',
     () => {
       const workspace = createWorkspace('.', ENVIRONMENT)
+      /**
+       * Ask how Markdown reads notes and renders the changelog with them.
+       *
+       * @param notes - The release notes.
+       * @param previous - The changelog before the release.
+       * @param changelogs - The changelog with the entry of the release.
+       * @param formattedNotes - The notes as prettier would write them, when that matters.
+       *
+       * @returns What is wrong with the notes, or with what they do to the rest of the page.
+       */
+      const judge = (
+        notes: string,
+        previous: string,
+        changelogs: string[],
+        formattedNotes = ''
+      ): string | undefined => {
+        const hazards = markdown.findRenderingHazards(
+          workspace,
+          notes,
+          formattedNotes,
+          previous,
+          changelogs
+        )
+        return hazards.notes ?? hazards.page
+      }
       // An older entry with words between brackets, which a definition would make a link.
       const previousChangelog = `${INITIAL_CHANGELOG}\n- Old [thing].\n`
       /**
@@ -2441,9 +2466,7 @@ describe('what release notes can do to the changelog', () => {
       const definition = '- One.\n\n[thing]: https://example.com'
       const hiddenComment = '- One:\n\n  ```\n  x\n   ```\t\n  <!-- hidden\n  ```'
 
-      expect(
-        markdown.findRenderingHazard(workspace, NOTES, previousChangelog, [withNotes(NOTES)])
-      ).toBeUndefined()
+      expect(judge(NOTES, previousChangelog, [withNotes(NOTES)])).toBeUndefined()
       // A definition is found as Markdown finds it, whatever its parts are and wherever they
       // are: here with its label on the line after its bracket, under an item.
       const splitDefinition = '- One.\n\n  [\nthing]: https://example.com'
@@ -2454,9 +2477,7 @@ describe('what release notes can do to the changelog', () => {
       ]
 
       for (const [notes, lineNumber, line] of definitions) {
-        expect(
-          markdown.findRenderingHazard(workspace, notes, previousChangelog, [withNotes(notes)])
-        ).toBe(
+        expect(judge(notes, previousChangelog, [withNotes(notes)])).toBe(
           `🚨 the release notes define a link for the whole changelog (line ${String(lineNumber)}: ${line}): what starts on that line is read as a definition, "[label]: url", in a way that only reading the notes as Markdown shows (its parts can be on several lines). It changes every "[label]" of the changelog. Write the link where it is used: [text](url).`
         )
       }
@@ -2470,26 +2491,20 @@ describe('what release notes can do to the changelog', () => {
       const olderEntriesMessage =
         '🚨 with these release notes, the older entries of CHANGELOG.md, or what comes before its entries, would not render as they do now: the notes leave something open that takes them in, or change what they mean (a code block that is not closed, a list or a quote that goes on, a link definition "[label]: url", however it is written). Check that every code block of the notes is closed and indented under its item, that the notes end with a complete item, and that no line defines a link.'
 
+      expect(judge(NOTES, titledChangelog, [titledRelease])).toBeUndefined()
       expect(
-        markdown.findRenderingHazard(workspace, NOTES, titledChangelog, [titledRelease])
-      ).toBeUndefined()
-      expect(
-        markdown.findRenderingHazard(workspace, NOTES, titledChangelog, [
+        judge(NOTES, titledChangelog, [
           titledRelease.replace('About [thing].', () => 'About thing.'),
         ])
       ).toBe(olderEntriesMessage)
-      expect(
-        markdown.findRenderingHazard(workspace, hiddenComment, previousChangelog, [
-          withNotes(hiddenComment),
-        ])
-      ).toBe(
+      expect(judge(hiddenComment, previousChangelog, [withNotes(hiddenComment)])).toBe(
         '🚨 the release notes have something Markdown reads as HTML, in a way that only rendering them shows: Markdown copies it as it is, and a tag or a comment that is left open would take in the rest of the changelog. Look for a "<" outside backticks, or in a code block that ends sooner than it seems to (a line that closes it, written another way), and put the code in backticks or remove it.'
       )
 
       // The older entries have to be the end of what is rendered, not only a part of it, and
       // to be the same from their first characters.
       expect(
-        markdown.findRenderingHazard(workspace, NOTES, previousChangelog, [
+        judge(NOTES, previousChangelog, [
           `${withNotes(NOTES)}\n- An item after the older entries.\n`,
         ])
       ).toContain('would not render as they do now')
@@ -2497,9 +2512,9 @@ describe('what release notes can do to the changelog', () => {
       const changedOlderLink = withNotes(NOTES).replace(olderLink, () => olderLink.toUpperCase())
 
       expect(changedOlderLink).not.toBe(withNotes(NOTES))
-      expect(
-        markdown.findRenderingHazard(workspace, NOTES, previousChangelog, [changedOlderLink])
-      ).toContain('would not render as they do now')
+      expect(judge(NOTES, previousChangelog, [changedOlderLink])).toContain(
+        'would not render as they do now'
+      )
 
       // A title that does not render the same by itself: it uses a link an entry defines.
       const linkedTitleChangelog = `# Changelog\n\nSee [thing].\n\n## [1.2.3](${REPOSITORY_URL}/compare/v1.2.2...v1.2.3) (2026-01-01)\n\n- Old.\n\n[thing]: https://example.com\n`
@@ -2510,17 +2525,22 @@ describe('what release notes can do to the changelog', () => {
         renderEntry(NOTES)
       )
 
-      expect(
-        markdown.findRenderingHazard(workspace, NOTES, linkedTitleChangelog, [linkedTitleRelease])
-      ).toBeUndefined()
+      expect(judge(NOTES, linkedTitleChangelog, [linkedTitleRelease])).toBeUndefined()
 
       // A release, dry run or not, asks the rendering last, with the changelog as it is
       // written and as it is formatted, and stops on what it says.
       const repository = createRepository()
       const stateBefore = getState(repository)
+      // A definition that only shows once prettier has put its parts on one line.
+      expect(
+        judge(NOTES, previousChangelog, [withNotes(NOTES)], '- One.\n\n2. [some words]: /url')
+      ).toBe(
+        '🚨 once formatted, the release notes define a link for the whole changelog (line 3: 2. [some words]: /url, as prettier writes it): the notes have it in parts, on several lines or after a table, which GitHub reads as a definition, "[label]: url". It changes every "[label]" of the changelog. Find the lines of the notes that have those words, and write the link where it is used: [text](url).'
+      )
+
       const rendering = jest
-        .spyOn(markdown, 'findRenderingHazard')
-        .mockReturnValue('🚨 refused by the rendering')
+        .spyOn(markdown, 'findRenderingHazards')
+        .mockReturnValue({ notes: undefined, page: '🚨 refused by the rendering' })
 
       for (const isDryRun of [true, false]) {
         expect(() => releaseIn(repository, 'patch', { isDryRun })).toThrow(
@@ -2529,11 +2549,12 @@ describe('what release notes can do to the changelog', () => {
       }
 
       expect(rendering).toHaveBeenCalledTimes(2)
-      expect(rendering.mock.calls[0].slice(1, 3)).toStrictEqual([
+      expect(rendering.mock.calls[0].slice(1, 4)).toStrictEqual([
+        NOTES.trimEnd(),
         NOTES.trimEnd(),
         INITIAL_CHANGELOG,
       ])
-      expect(rendering.mock.calls[0][3]).toHaveLength(2)
+      expect(rendering.mock.calls[0][4]).toHaveLength(2)
 
       rendering.mockRestore()
 
@@ -2627,6 +2648,17 @@ describe('what release notes can do to the changelog', () => {
           releaseIn(repository, 'patch', { isDryRun, notes: '- One.\n\n$$\nx' })
         ).toThrow(
           '🚨 once CHANGELOG.md is formatted with prettier, the release notes would change its older entries, or would not be read as one entry: prettier reads something in them in its own way (a line of "$$" opens a block of mathematics, a code block can end on another line than it seems to). Write that part of the notes more plainly.\n   What the check said: 🚨 CHANGELOG.md would not keep its older entries as they were, once formatted.'
+        )
+      }
+
+      for (const isDryRun of [true, false]) {
+        expect(() =>
+          releaseIn(repository, 'patch', {
+            isDryRun,
+            notes: '| a |\n| - |\n| x |\n2. [some\n   words]: /url',
+          })
+        ).toThrow(
+          '🚨 once formatted, the release notes define a link for the whole changelog (line '
         )
       }
 

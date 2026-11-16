@@ -23,10 +23,11 @@ import {
   findNotesHazards,
   getRepositoryUrl,
   insertChangelogEntry,
+  readEntryNotes,
   renderChangelogEntry,
   resolveNextVersion,
 } from './changelog'
-import { findRenderingHazard } from './markdown'
+import { findRenderingHazards } from './markdown'
 import {
   describeNotesProblems,
   findNotesProblems,
@@ -470,11 +471,24 @@ export const release = (options: ReleaseOptions): string => {
     }
     return formatted.output
   }
+  const formattedChangelog = formatChangelog(changelog)
   const formattedCheck = noThrow(() => {
-    const formattedChangelog = formatChangelog(changelog)
     assertChangelogEntryAdded(previousChangelog, formattedChangelog, version)
-    return formattedChangelog
   })
+  // How Markdown reads the notes, as they are written and as they are formatted, and renders
+  // the changelog with them, by the rules GitHub follows. What it says of the notes
+  // themselves comes first: it names a line, which the comparison of the formatted file
+  // cannot.
+  const renderingHazards = findRenderingHazards(
+    workspace,
+    cleanNotes,
+    readEntryNotes(formattedChangelog, version),
+    previousChangelog,
+    [changelog, formattedChangelog]
+  )
+  if (renderingHazards.notes !== undefined) {
+    throw new Error(renderingHazards.notes)
+  }
   if (isNormalizedError(formattedCheck)) {
     // The notes were fine as they are written: either the file was not formatted, and
     // formatting it changes the older entries whatever the notes are, or prettier reads
@@ -497,14 +511,8 @@ export const release = (options: ReleaseOptions): string => {
         `   What the check said: ${formattedCheck.message}`
     )
   }
-  // The last word: how Markdown renders the changelog, by the rules GitHub follows, with the
-  // entry as it is written and as it is formatted.
-  const renderingHazard = findRenderingHazard(workspace, cleanNotes, previousChangelog, [
-    changelog,
-    formattedCheck,
-  ])
-  if (renderingHazard !== undefined) {
-    throw new Error(renderingHazard)
+  if (renderingHazards.page !== undefined) {
+    throw new Error(renderingHazards.page)
   }
 
   // The full gate (lint, compile, tests, package checks), before anything is committed.

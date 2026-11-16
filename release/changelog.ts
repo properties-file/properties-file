@@ -961,6 +961,51 @@ export const insertChangelogEntry = (changelog: string, version: string, entry: 
 }
 
 /**
+ * Read the entry of a version in a `CHANGELOG.md`.
+ *
+ * @param changelog - The content of `CHANGELOG.md`.
+ * @param version - The version whose entry to read.
+ *
+ * @returns The heading of the entry, and the notes under it: without blank lines before or
+ *   after, the first line keeping its indentation.
+ *
+ * @throws If the changelog has no entry for the version.
+ */
+const readEntry = (changelog: string, version: string): { heading: string; notes: string } => {
+  const lines = changelog.split(/\r?\n/)
+  const headingIndexes = findVersionHeadings(lines)
+  const headingIndex = headingIndexes.find((index) => isHeadingOfVersion(lines[index], version))
+  if (headingIndex === undefined) {
+    throw new Error(`🚨 CHANGELOG.md has no entry for version ${version}`)
+  }
+  const nextHeadingIndex = headingIndexes.find((index) => index > headingIndex) ?? lines.length
+  return {
+    heading: lines[headingIndex],
+    notes: lines
+      .slice(headingIndex + 1, nextHeadingIndex)
+      .join('\n')
+      .replace(/^(?:[^\S\n]*\n)+/, '')
+      .trimEnd(),
+  }
+}
+
+/**
+ * Read the notes of a version as its `CHANGELOG.md` entry has them: after the file was
+ * formatted, they are the notes as prettier wrote them.
+ *
+ * @param changelog - The content of `CHANGELOG.md`.
+ * @param version - The version whose notes to read.
+ *
+ * @returns The notes, or an empty string when the changelog has no entry for the version.
+ */
+export const readEntryNotes = (changelog: string, version: string): string => {
+  const lines = changelog.split(/\r?\n/)
+  return findVersionHeadings(lines).some((index) => isHeadingOfVersion(lines[index], version))
+    ? readEntry(changelog, version).notes
+    : ''
+}
+
+/**
  * Get the notes of a release from `CHANGELOG.md`, for its GitHub release: the content of the
  * version's entry without its heading, followed by a "Full changelog" line when the heading
  * has a compare link.
@@ -973,21 +1018,9 @@ export const insertChangelogEntry = (changelog: string, version: string, entry: 
  * @throws If the changelog has no entry for that version.
  */
 export const extractReleaseNotes = (changelog: string, version: string): string => {
-  const lines = changelog.split(/\r?\n/)
-  const headingIndexes = findVersionHeadings(lines)
-  const headingIndex = headingIndexes.find((index) => isHeadingOfVersion(lines[index], version))
-  if (headingIndex === undefined) {
-    throw new Error(`🚨 CHANGELOG.md has no entry for version ${version}`)
-  }
-  const nextHeadingIndex = headingIndexes.find((index) => index > headingIndex) ?? lines.length
-  const blocks = [
-    lines
-      .slice(headingIndex + 1, nextHeadingIndex)
-      .join('\n')
-      .replace(/^(?:[^\S\n]*\n)+/, '')
-      .trimEnd(),
-  ]
-  const compareLink = REGEX_COMPARE_LINK.exec(lines[headingIndex])?.groups
+  const entry = readEntry(changelog, version)
+  const blocks = [entry.notes]
+  const compareLink = REGEX_COMPARE_LINK.exec(entry.heading)?.groups
   if (compareLink !== undefined) {
     blocks.push(`**Full changelog**: [${compareLink.range}](${compareLink.url})`)
   }

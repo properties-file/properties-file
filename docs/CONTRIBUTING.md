@@ -229,7 +229,7 @@ Three things about the command are there to prevent mistakes:
   The last word is how Markdown renders the changelog, by the rules GitHub follows: it is
   rendered with [`micromark`](https://github.com/micromark/micromark), another development
   dependency, before and after the entry is added, as the entry is written and as prettier
-  formats it. What comes before the entries and the older entries have to render exactly as they did, the notes must not render differently when the HTML they hold is copied as it is, and the notes must not hold a link definition as that parser finds them (one can be written over several lines). The checks above say what is
+  formats it. What comes before the entries and the older entries have to render exactly as they did, the notes must not render differently when the HTML they hold is copied as it is, and the notes must not hold a link definition as that parser finds them, in the notes as they are written or as prettier formats them (one can be written over several lines, or only be one for GitHub until prettier puts it on a line). The checks above say what is
   wrong and where; this one is there for what they would miss. (`micromark` is run by
   `node` in a process of its own, which is why `knip.json` lists it: no file imports it.)
 

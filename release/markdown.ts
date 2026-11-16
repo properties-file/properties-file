@@ -16,7 +16,8 @@ import type { Workspace } from './workspace'
 /**
  * Renders the Markdown texts it is given as a JSON array on its standard input, with their
  * HTML copied as it is, as GitHub renders it. The first one, the notes, is also rendered with
- * its HTML shown as text, and read for the link definitions Markdown finds in it.
+ * its HTML shown as text. The first two, the notes as they are written and as they are
+ * formatted, are read for the link definitions Markdown finds in them.
  */
 const RENDER_SCRIPT = [
   "import { micromark, parse, postprocess, preprocess } from 'micromark'",
@@ -28,10 +29,13 @@ const RENDER_SCRIPT = [
   '  micromark(text, { allowDangerousHtml: true }),',
   "  index === 0 ? micromark(text) : '',",
   ']',
-  'const events = postprocess(parse().document().write(preprocess()(texts[0], undefined, true)))',
-  'const definitionLines = events',
-  "  .filter(([kind, token]) => kind === 'enter' && token.type === 'definition')",
-  '  .map(([, token]) => token.start.line)',
+  'const readEvents = (text) =>',
+  '  postprocess(parse().document().write(preprocess()(text, undefined, true)))',
+  'const readDefinitionLines = (text) =>',
+  '  readEvents(text)',
+  "    .filter(([kind, token]) => kind === 'enter' && token.type === 'definition')",
+  '    .map(([, token]) => token.start.line)',
+  'const definitionLines = texts.slice(0, 2).map(readDefinitionLines)',
   'process.stdout.write(JSON.stringify({ renderings: texts.map(render), definitionLines }))',
 ].join('\n')
 
@@ -47,8 +51,11 @@ type Rendering = {
 type MarkdownReading = {
   /** Each text rendered, in the order they were given. */
   renderings: Rendering[]
-  /** The lines of the first text where a link definition starts (1 for the first line). */
-  definitionLines: number[]
+  /**
+   * For each of the first two texts, the lines where a link definition starts (1 for the
+   * first line).
+   */
+  definitionLines: number[][]
 }
 
 /**
@@ -72,7 +79,7 @@ const isRenderedPair = (value: unknown): value is [string, string] =>
  */
 const isScriptOutput = (
   value: unknown
-): value is { renderings: [string, string][]; definitionLines: number[] } =>
+): value is { renderings: [string, string][]; definitionLines: number[][] } =>
   typeof value === 'object' &&
   value !== null &&
   'renderings' in value &&
@@ -80,15 +87,17 @@ const isScriptOutput = (
   value.renderings.every((rendering) => isRenderedPair(rendering)) &&
   'definitionLines' in value &&
   Array.isArray(value.definitionLines) &&
-  value.definitionLines.every((line) => typeof line === 'number')
+  value.definitionLines.every(
+    (lines) => Array.isArray(lines) && lines.every((line) => typeof line === 'number')
+  )
 
 /**
  * Read Markdown texts as Markdown does.
  *
  * @param workspace - Where to run the reader: the repository, which has it installed.
- * @param texts - What to read: the release notes first.
+ * @param texts - What to read: the release notes first, as written then as formatted.
  *
- * @returns Each text rendered, in the same order, and where the first one defines links.
+ * @returns Each text rendered, in the same order, and where the first two define links.
  *
  * @throws If the reader cannot be run.
  */
@@ -146,59 +155,87 @@ const hasSameOlderEntries = (previousHtml: string, titleHtml: string, html: stri
 }
 
 /**
+ * Name lines of a text, for a message.
+ *
+ * @param text - The text the lines are in.
+ * @param lineNumbers - Which lines to name (1 for the first).
+ *
+ * @returns Their numbers and what they say.
+ */
+const describeLines = (text: string, lineNumbers: number[]): string => {
+  const lines = text.split('\n')
+  return lineNumbers
+    .map((lineNumber) => `line ${String(lineNumber)}: ${lines[lineNumber - 1]}`)
+    .join('; ')
+}
+
+/**
  * Find what release notes would do to a changelog when Markdown renders it, that the other
  * checks did not find.
  *
  * @param workspace - The repository being released.
  * @param notes - The release notes (see `cleanReleaseNotes`).
+ * @param formattedNotes - The notes as prettier formats them in the changelog, or an empty
+ *   string when that could not be read.
  * @param previousChangelog - The content of `CHANGELOG.md` before the release.
  * @param changelogs - Its content with the entry of the release: as it is written, and as
  *   prettier formats it.
  *
- * @returns What is wrong and what to do about it, or `undefined` when nothing is.
+ * @returns What is wrong and what to do about it, each `undefined` when nothing is: with the
+ *   notes themselves (HTML, a link definition), and with what they do to the rest of the
+ *   page.
  *
  * @throws If the changelog cannot be rendered.
  */
-export const findRenderingHazard = (
+export const findRenderingHazards = (
   workspace: Workspace,
   notes: string,
+  formattedNotes: string,
   previousChangelog: string,
   changelogs: string[]
-): string | undefined => {
+): { notes: string | undefined; page: string | undefined } => {
   const { renderings, definitionLines } = readMarkdown(workspace, [
     notes,
+    formattedNotes,
     previousChangelog,
     readChangelogTitle(previousChangelog),
     ...changelogs,
   ])
-  const [renderedNotes, renderedPrevious, renderedTitle, ...renderedChangelogs] = renderings
+  const [renderedNotes, , renderedPrevious, renderedTitle, ...renderedChangelogs] = renderings
+  const [notesDefinitionLines, formattedDefinitionLines] = definitionLines
+  let notesHazard: string | undefined
   if (renderedNotes.html !== renderedNotes.safeHtml) {
-    return (
+    notesHazard =
       '🚨 the release notes have something Markdown reads as HTML, in a way that only ' +
       'rendering them shows: Markdown copies it as it is, and a tag or a comment that is ' +
       'left open would take in the rest of the changelog. Look for a "<" outside backticks, ' +
       'or in a code block that ends sooner than it seems to (a line that closes it, written ' +
       'another way), and put the code in backticks or remove it.'
-    )
-  }
-  if (definitionLines.length > 0) {
-    const lines = notes.split('\n')
-    return (
-      `🚨 the release notes define a link for the whole changelog (${definitionLines.map((lineNumber) => `line ${String(lineNumber)}: ${lines[lineNumber - 1]}`).join('; ')}): ` +
+  } else if (notesDefinitionLines.length > 0) {
+    notesHazard =
+      `🚨 the release notes define a link for the whole changelog (${describeLines(notes, notesDefinitionLines)}): ` +
       'what starts on that line is read as a definition, "[label]: url", in a way that only ' +
       'reading the notes as Markdown shows (its parts can be on several lines). It changes ' +
       'every "[label]" of the changelog. Write the link where it is used: [text](url).'
-    )
+  } else if (formattedDefinitionLines.length > 0) {
+    notesHazard =
+      `🚨 once formatted, the release notes define a link for the whole changelog (${describeLines(formattedNotes, formattedDefinitionLines)}, as prettier writes it): ` +
+      'the notes have it in parts, on several lines or after a table, which GitHub reads as ' +
+      'a definition, "[label]: url". It changes every "[label]" of the changelog. Find the ' +
+      'lines of the notes that have those words, and write the link where it is used: ' +
+      '[text](url).'
   }
-  return renderedChangelogs.some(
-    (rendered) => !hasSameOlderEntries(renderedPrevious.html, renderedTitle.html, rendered.html)
-  )
-    ? '🚨 with these release notes, the older entries of CHANGELOG.md, or what comes before ' +
+  return {
+    notes: notesHazard,
+    page: renderedChangelogs.some(
+      (rendered) => !hasSameOlderEntries(renderedPrevious.html, renderedTitle.html, rendered.html)
+    )
+      ? '🚨 with these release notes, the older entries of CHANGELOG.md, or what comes before ' +
         'its entries, would not render as they do now: the notes leave something open that ' +
-        'takes them in, or change what they ' +
-        'mean (a code block that is not closed, a list or a quote that goes on, a link ' +
-        'definition "[label]: url", however it is written). Check that every code block of ' +
-        'the notes is closed and indented under its item, that the notes end with a complete ' +
-        'item, and that no line defines a link.'
-    : undefined
+        'takes them in, or change what they mean (a code block that is not closed, a list or ' +
+        'a quote that goes on, a link definition "[label]: url", however it is written). ' +
+        'Check that every code block of the notes is closed and indented under its item, ' +
+        'that the notes end with a complete item, and that no line defines a link.'
+      : undefined,
+  }
 }
