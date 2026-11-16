@@ -164,7 +164,7 @@ NOTES
 starts the release workflow, which stages the version on npm, and **the version becomes public
 when a maintainer approves it there** (see [Approving a version](#approving-a-version)).
 
-Two things about the command are there to prevent mistakes:
+Three things about the command are there to prevent mistakes:
 
 - **Only `--confirm` makes a release real**, so a mistyped command is a dry run. In particular,
   npm keeps for itself any option written without the `--` separator
@@ -173,6 +173,15 @@ Two things about the command are there to prevent mistakes:
   (`<<'NOTES'`). The shell then leaves the text alone, where backticks or a `$` inside a quoted
   argument would be run as commands, and no file is left behind to be committed by mistake.
   A line of the notes that is exactly `NOTES` would end them early: use another word then.
+- **The form of the notes is checked**, in a dry run too, against the rules in
+  [`release.config.json`](../release.config.json): the headings the notes can have and their
+  order, that everything under a heading is a list item, that a `### BREAKING CHANGES` section
+  goes with a major version and only with one, and what does not belong in notes (commit
+  hashes, pull request numbers, a "Full changelog" link). Notes that do not follow the rules
+  stop the command with the lines at fault, the reason for each, and notes in the expected
+  form. The rules belong to the repository, not to the script: change that file to change
+  them, and keep the guidelines in line with it (a test checks that both name the same
+  headings). Only the form can be checked; what the notes say is for whoever writes them.
 
 ### The brief
 
@@ -238,8 +247,10 @@ maintainer of the package:
 
 1. **Checks that what is staged is what the run built**: the shasum npm shows for the staged
    version, on npmjs.com (the **Staged Packages** tab) or with `npm stage view <stage-id>`,
-   must be the one in the summary of the run. Staging takes no two-factor authentication, so
-   this check is what ties the approval to the release that was reviewed.
+   must be the one in the summary of the Release run of the tag `v<version>`, whose Publish
+   job succeeded. npm also says who staged the version, which should be the trusted
+   publisher and not a person. Staging takes no two-factor authentication, so this check is
+   what ties the approval to the release that was reviewed.
 2. **Approves it** with two-factor authentication, on npmjs.com or with
    `npm stage approve <stage-id>`.
 
@@ -280,12 +291,15 @@ release could not be created), a re-run fails at the staging step. Leave the tag
 and create the GitHub release by hand, from a checkout of the tag:
 
 ```bash
-npx tsx release/notes.ts <version> > notes.md && gh release create v<version> --verify-tag --title "Release <version>" --notes-file notes.md
+npm ci --legacy-peer-deps
+npx tsx release/notes.ts <version> > /tmp/notes.md && gh release create v<version> --verify-tag --title "Release <version>" --notes-file /tmp/notes.md
 ```
 
-If the staging step fails although this run did not stage the version, something else did:
-do not approve what is staged before knowing what it is (see
-[Approving a version](#approving-a-version)).
+If the staging step fails because the version is already staged, although no run of yours
+staged it, something else did: do not approve what is staged before knowing what it is (see
+[Approving a version](#approving-a-version)). If the step failed after npm staged the
+version, so that its summary is missing, the shasum to expect is in the log of the step, on
+the line `npm notice shasum:`.
 
 To publish a version that failed from a fixed commit:
 
@@ -298,7 +312,7 @@ To publish a version that failed from a fixed commit:
    ```bash
    git switch main && git pull --ff-only
    git tag --force --annotate v<version> --message "Release <version>"
-   git push --force origin v<version>
+   git push --force origin refs/tags/v<version>
    ```
 
 Other clones keep the old tag until they run `git fetch --tags --force`.
@@ -350,7 +364,8 @@ Set up, in this order:
    trusted publishing and approving a staged version keep working.
 
 With all four in place, nothing becomes public without a maintainer's two-factor approval,
-and the workflow can only be made to stage a version by pushing a `v*` tag. That is not the
+and the workflow can only be made to stage a version by pushing a `v*` tag, or by re-running
+a release run that was not deleted. That is not the
 only way to stage one, though: staging takes no two-factor authentication, so an npm session
 or token of a maintainer can do it too. This is why the shasum is checked before approving
 (see [Approving a version](#approving-a-version)). Whatever is on `main` goes into the next

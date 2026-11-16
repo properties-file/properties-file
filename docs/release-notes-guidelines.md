@@ -38,9 +38,9 @@ Check the published files, not the commit messages:
   bug fix. So is a change to behaviour that was never documented, such as an ordering: mention
   it if someone could have relied on it.
 - `minor`: new features that leave existing code working.
-- `major`: anything that can break existing code, including code that only compiles: a public
-  type that becomes narrower, declarations that need a newer TypeScript, a runtime that is no
-  longer supported. It needs a `### BREAKING CHANGES` section and, when code has to be
+- `major`: anything that can break existing code, including code that stops compiling: a
+  public type that accepts less or returns more than before, declarations that need a newer
+  TypeScript, a runtime that is no longer supported. It needs a `### BREAKING CHANGES` section and, when code has to be
   changed, a migration guide under `docs/migration/`.
 
 ## 3. Write the notes
@@ -57,8 +57,11 @@ description of its GitHub release.
   commit that changes nothing for users is no item.
 - **Be specific.** Name the function or option in backticks, give the input that failed and
   what happens now, and give numbers with their unit for size and speed. `npm run size`
-  measures the sizes against the published version; if you report one, do not leave out a
-  larger change in the other direction.
+  measures the sizes against the published version. A size is worth an item when it is the
+  point of a change or moves by more than a few percent; when sizes moved in both
+  directions, give both or neither.
+- **A change that only untyped JavaScript can reach** (a value the types do not allow) is
+  worth a short item when what happens changed, and nothing otherwise.
 - **Leave out** commit hashes, pull request numbers, internal names, and anything about
   tests, tooling or dependencies that does not change the package.
 
@@ -69,16 +72,23 @@ Format:
 - No heading above level 3 (`#` and `##` belong to the changelog itself) and no "Full
   changelog" link: the GitHub release gets one by itself.
 - A sentence or two per item. Bold the few words that name the change when an item is long.
+- The release command checks this form, in a preview too, with the rules in
+  `release.config.json`. When the notes do not follow them, it names each line at fault, says
+  why, and shows notes in the expected form: correct the notes and run it again. It cannot
+  check what the notes say, which is up to you.
 
-For the form only, here is an entry adapted from an earlier release (5.0.6):
+The older entries of `CHANGELOG.md` were written before these guidelines, and some are empty:
+they are not models. For the form only, here is an entry adapted from an earlier release
+(5.0.6):
 
 ```markdown
 ### Bug Fixes
 
 - **ES5 runtime compatibility restored for the full API.** The compiled output of every
-  previous 5.x release contained unguarded `Symbol.iterator` lookups, so on ES5-only engines
-  `PropertiesEditor`, `Properties#toObject` and `Properties#format` crashed with `Symbol is not
-defined`. The full API now works on every supported runtime, back to Node.js 0.4.0.
+  previous 5.x release contained unguarded `Symbol.iterator` lookups. On ES5-only engines,
+  `PropertiesEditor`, `Properties#toObject` and `Properties#format` crashed with the error
+  `Symbol is not defined`. The full API now works on every supported runtime, back to
+  Node.js 0.4.0.
 
 ### Performance
 

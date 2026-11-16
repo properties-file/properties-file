@@ -1,0 +1,22 @@
+{
+  "notes": {
+    "sections": ["BREAKING CHANGES", "Features", "Bug Fixes", "Performance"],
+    "breakingSection": "BREAKING CHANGES",
+    "forbidden": [
+      {
+        "pattern": "full changelog",
+        "flags": "i",
+        "reason": "Leave the \"Full changelog\" link out: the GitHub release gets one by itself."
+      },
+      {
+        "pattern": "\\b(?=[0-9a-f]*\\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\\b",
+        "reason": "This looks like a commit hash. Users do not need it: say what changed for them instead."
+      },
+      {
+        "pattern": "(?<![\\w&])#\\d+\\b",
+        "reason": "This looks like a pull request or issue number. Users do not need it: say what changed for them instead."
+      }
+    ],
+    "example": "### Bug Fixes\n\n- **Short name of the fix.** What was wrong, with the input that failed, and what\n  happens now.\n\n### Performance\n\n- `someFunction` is smaller: 970 B → 954 B (min+gzip).\n"
+  }
+}

@@ -122,8 +122,10 @@ export const brief = (options: BriefOptions): void => {
         '',
         ...listCommits(otherCommits),
         '',
-        'These change tests, tooling, documentation or dependencies. They only matter to users',
-        'if they change the files of the package, listed below.',
+        'These change the build, tests, tooling, documentation or dependencies. The two lists',
+        'are split by path, not by what users see: one of these commits matters to users when',
+        'it changes the files of the package, listed below. A build script can add or change',
+        'a published file without touching the source.',
       ].join('\n')
     )
   } else {
@@ -163,8 +165,10 @@ export const brief = (options: BriefOptions): void => {
         ...describePackageDifference(comparison.difference).map((line) => `- ${line}`),
         '',
         `Both packages are in ${keptPath} (a temporary directory), under \`published\` and`,
-        '`current`. To see how a file differs:',
-        `\`diff -u ${path.join(keptPath, 'published')}/<file> ${path.join(keptPath, 'current')}/<file>\``,
+        '`current`. To see how a file differs (without its line endings, as above):',
+        `\`diff -u --strip-trailing-cr ${path.join(keptPath, 'published')}/<file> ${path.join(keptPath, 'current')}/<file>\``,
+        'Each of the two is a package that can be loaded, to run both versions side by side:',
+        `\`node -p "require('${path.join(keptPath, 'published')}')"\` and the same with \`current\`.`,
         '',
         'A difference is what makes a release possible, not what makes it worth making: see',
         'the guidelines.',

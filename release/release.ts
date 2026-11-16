@@ -19,9 +19,11 @@ import {
   assertChangelogEntryAdded,
   getRepositoryUrl,
   insertChangelogEntry,
+  normalizeReleaseNotes,
   renderChangelogEntry,
   resolveNextVersion,
 } from './changelog'
+import { describeNotesProblems, findNotesProblems, readNotesRules } from './notes-rules'
 import { compareWithPublishedPackage, isSamePackage } from './package-diff'
 import {
   createWorkspace,
@@ -295,7 +297,8 @@ const getPreflightProblems = (workspace: Workspace, tag: string, previousTag: st
  * locally or on the remote). What is wrong with the checkout (see
  * {@link getPreflightProblems}) is then reported as a warning, so that the remaining steps can
  * still be previewed; what the steps cannot be worked out without (the release files, the
- * release notes, the tag of the current version, a version without a changelog entry) stops a
+ * release notes and their form, the tag of the current version, a version without a changelog
+ * entry) stops a
  * dry run too.
  *
  * @param options - What to release and how.
@@ -347,6 +350,21 @@ export const release = (options: ReleaseOptions): string => {
   const version = resolveNextVersion(currentVersion, options.request)
   const tag = `v${version}`
   const previousTag = `v${currentVersion}`
+
+  // The form of the notes, by the rules of the repository when it has some.
+  const notesRules = readNotesRules(directoryPath)
+  if (notesRules !== undefined) {
+    const notesProblems = findNotesProblems(normalizeReleaseNotes(options.notes), notesRules, {
+      version,
+      isMajor: version.endsWith('.0.0'),
+    })
+    if (notesProblems.length > 0) {
+      throw new Error(
+        `${describeNotesProblems(notesProblems, notesRules)}\n\n` +
+          `   What the notes should say is in ${GUIDELINES_PATH}.`
+      )
+    }
+  }
   log(
     `📦 Releasing ${currentVersion} → ${version}${isDryRun ? ' (dry run: nothing is changed)' : ''}`
   )
@@ -485,7 +503,8 @@ export const release = (options: ReleaseOptions): string => {
             `${repositoryUrl}/actions/workflows/release.yml`,
           '   2. A maintainer approves the staged version with two-factor authentication: on ' +
             'npmjs.com (the Staged Packages tab), or with `npm stage approve <stage-id>`. ' +
-            'The summary of the workflow run gives the id, and the shasum to check first.',
+            'The summary of the workflow run gives the id, and the shasum to check first. ' +
+            'Tell them when the version is waiting.',
           `   3. ${manifest.name}@${version} is then public: ` +
             `\`npm view ${manifest.name}@${version} version\` prints the version once it is.`,
         ].join('\n')
