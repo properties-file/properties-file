@@ -15,18 +15,24 @@ import type { Workspace } from './workspace'
 
 /**
  * Renders the Markdown texts it is given as a JSON array on its standard input, with their
- * HTML copied as it is, as GitHub renders it; the first one also with its HTML shown as text.
+ * HTML copied as it is, as GitHub renders it. The first one, the notes, is also rendered with
+ * its HTML shown as text, and read for the link definitions Markdown finds in it.
  */
 const RENDER_SCRIPT = [
-  "import { micromark } from 'micromark'",
+  "import { micromark, parse, postprocess, preprocess } from 'micromark'",
   "let input = ''",
   'for await (const chunk of process.stdin) input += chunk',
-  // Only the first text, the notes, is rendered both ways: the others can be large.
+  'const texts = JSON.parse(input)',
+  // Only the notes are rendered both ways: the other texts can be large.
   'const render = (text, index) => [',
   '  micromark(text, { allowDangerousHtml: true }),',
   "  index === 0 ? micromark(text) : '',",
   ']',
-  'process.stdout.write(JSON.stringify(JSON.parse(input).map(render)))',
+  'const events = postprocess(parse().document().write(preprocess()(texts[0], undefined, true)))',
+  'const definitionLines = events',
+  "  .filter(([kind, token]) => kind === 'enter' && token.type === 'definition')",
+  '  .map(([, token]) => token.start.line)',
+  'process.stdout.write(JSON.stringify({ renderings: texts.map(render), definitionLines }))',
 ].join('\n')
 
 /** A Markdown text, rendered both ways. */
@@ -35,6 +41,14 @@ type Rendering = {
   html: string
   /** The HTML of the text, with the HTML it holds shown as text: only for the first text. */
   safeHtml: string
+}
+
+/** What the script found. */
+type MarkdownReading = {
+  /** Each text rendered, in the order they were given. */
+  renderings: Rendering[]
+  /** The lines of the first text where a link definition starts (1 for the first line). */
+  definitionLines: number[]
 }
 
 /**
@@ -50,16 +64,35 @@ const isRenderedPair = (value: unknown): value is [string, string] =>
   value.every((element) => typeof element === 'string')
 
 /**
- * Render Markdown texts.
+ * Check that a value is what the script printed.
  *
- * @param workspace - Where to run the renderer: the repository, which has it installed.
- * @param texts - What to render.
+ * @param value - The value to check.
  *
- * @returns Each text rendered, in the same order.
- *
- * @throws If the renderer cannot be run.
+ * @returns `true` if the value has the renderings, as pairs, and the lines of the definitions.
  */
-const renderMarkdown = (workspace: Workspace, texts: string[]): Rendering[] => {
+const isScriptOutput = (
+  value: unknown
+): value is { renderings: [string, string][]; definitionLines: number[] } =>
+  typeof value === 'object' &&
+  value !== null &&
+  'renderings' in value &&
+  Array.isArray(value.renderings) &&
+  value.renderings.every((rendering) => isRenderedPair(rendering)) &&
+  'definitionLines' in value &&
+  Array.isArray(value.definitionLines) &&
+  value.definitionLines.every((line) => typeof line === 'number')
+
+/**
+ * Read Markdown texts as Markdown does.
+ *
+ * @param workspace - Where to run the reader: the repository, which has it installed.
+ * @param texts - What to read: the release notes first.
+ *
+ * @returns Each text rendered, in the same order, and where the first one defines links.
+ *
+ * @throws If the reader cannot be run.
+ */
+const readMarkdown = (workspace: Workspace, texts: string[]): MarkdownReading => {
   const result = runCommand(
     workspace,
     'node',
@@ -67,17 +100,18 @@ const renderMarkdown = (workspace: Workspace, texts: string[]): Rendering[] => {
     false,
     JSON.stringify(texts)
   )
-  const renderings: unknown = result.isSuccess ? JSON.parse(result.output) : undefined
-  if (!Array.isArray(renderings) || renderings.some((rendering) => !isRenderedPair(rendering))) {
+  const output: unknown = result.isSuccess ? JSON.parse(result.output) : undefined
+  if (!isScriptOutput(output)) {
     throw new Error(
       `🚨 the release could not render Markdown to check its notes: ${result.failure.replace(RENDER_SCRIPT, '<a script that renders Markdown>')}\n` +
         '   It does so with micromark, a development dependency: install the dependencies ' +
         '(`npm ci`), or add it (`npm install --save-dev micromark`), then run this again.'
     )
   }
-  return renderings
-    .filter((rendering) => isRenderedPair(rendering))
-    .map(([html, safeHtml]) => ({ html, safeHtml }))
+  return {
+    renderings: output.renderings.map(([html, safeHtml]) => ({ html, safeHtml })),
+    definitionLines: output.definitionLines,
+  }
 }
 
 /**
@@ -87,14 +121,16 @@ const renderMarkdown = (workspace: Workspace, texts: string[]): Rendering[] => {
  * @param titleHtml - What that changelog has before its entries, rendered.
  * @param html - The changelog with the entry of the release, rendered.
  *
- * @returns `true` if everything the changelog rendered after its title, its entries, is still
- *   what it renders last.
+ * @returns `true` if the changelog still starts with what its title rendered, and ends with
+ *   what its entries rendered.
  */
 const hasSameOlderEntries = (previousHtml: string, titleHtml: string, html: string): boolean => {
   // Without the end of the last line, which a text that ends without one does not render.
   const title = titleHtml.trimEnd()
   if (previousHtml.startsWith(title)) {
-    return html.trimEnd().endsWith(previousHtml.slice(title.length).trim())
+    return (
+      html.startsWith(title) && html.trimEnd().endsWith(previousHtml.slice(title.length).trim())
+    )
   }
   // A title that does not render the same by itself (it defines links the entries use): the
   // older entries are then what the changelog has after what it shares with the new one,
@@ -129,10 +165,13 @@ export const findRenderingHazard = (
   previousChangelog: string,
   changelogs: string[]
 ): string | undefined => {
-  const [renderedNotes, renderedPrevious, renderedTitle, ...renderedChangelogs] = renderMarkdown(
-    workspace,
-    [notes, previousChangelog, readChangelogTitle(previousChangelog), ...changelogs]
-  )
+  const { renderings, definitionLines } = readMarkdown(workspace, [
+    notes,
+    previousChangelog,
+    readChangelogTitle(previousChangelog),
+    ...changelogs,
+  ])
+  const [renderedNotes, renderedPrevious, renderedTitle, ...renderedChangelogs] = renderings
   if (renderedNotes.html !== renderedNotes.safeHtml) {
     return (
       '🚨 the release notes have something Markdown reads as HTML, in a way that only ' +
@@ -142,19 +181,24 @@ export const findRenderingHazard = (
       'another way), and put the code in backticks or remove it.'
     )
   }
-  if (
-    renderedChangelogs.some(
-      (rendered) => !hasSameOlderEntries(renderedPrevious.html, renderedTitle.html, rendered.html)
-    )
-  ) {
+  if (definitionLines.length > 0) {
+    const lines = notes.split('\n')
     return (
-      '🚨 with these release notes, the older entries of CHANGELOG.md would not render as ' +
-      'they do now: the notes leave something open that takes them in, or change what they ' +
-      'mean (a code block that is not closed, a list or a quote that goes on, a link ' +
-      'definition "[label]: url", however it is written). Check that every code block of ' +
-      'the notes is closed and indented under its item, that the notes end with a complete ' +
-      'item, and that no line defines a link.'
+      `🚨 the release notes define a link for the whole changelog (${definitionLines.map((lineNumber) => `line ${String(lineNumber)}: ${lines[lineNumber - 1]}`).join('; ')}): ` +
+      'what starts on that line is read as a definition, "[label]: url", in a way that only ' +
+      'reading the notes as Markdown shows (its parts can be on several lines). It changes ' +
+      'every "[label]" of the changelog. Write the link where it is used: [text](url).'
     )
   }
-  return undefined
+  return renderedChangelogs.some(
+    (rendered) => !hasSameOlderEntries(renderedPrevious.html, renderedTitle.html, rendered.html)
+  )
+    ? '🚨 with these release notes, the older entries of CHANGELOG.md, or what comes before ' +
+        'its entries, would not render as they do now: the notes leave something open that ' +
+        'takes them in, or change what they ' +
+        'mean (a code block that is not closed, a list or a quote that goes on, a link ' +
+        'definition "[label]: url", however it is written). Check that every code block of ' +
+        'the notes is closed and indented under its item, that the notes end with a complete ' +
+        'item, and that no line defines a link.'
+    : undefined
 }

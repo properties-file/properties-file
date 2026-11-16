@@ -383,7 +383,10 @@ export const release = (options: ReleaseOptions): string => {
       (problem) =>
         // What the repository forbids is said in any case: it is another thing to correct.
         notesRules.forbidden.some((forbidden) => problem.message.startsWith(forbidden.reason)) ||
-        !hazardMessage.includes(`line ${String(problem.lineNumber ?? 0)}: ${problem.line}`)
+        // What the rules say of a code block is left out when its blocks are already refused:
+        // they were read differently there.
+        (!hazardMessage.includes(`line ${String(problem.lineNumber ?? 0)}: ${problem.line}`) &&
+          (notesHazards.codeBlock === undefined || !problem.message.includes('code block')))
     )
     if (notesProblems.length > 0) {
       // With what the notes would do to the changelog, so that one run says everything there

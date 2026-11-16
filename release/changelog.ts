@@ -506,9 +506,9 @@ const findCodeBlockHazard = (lines: string[]): string | undefined => {
       ...(hiddenIndexes.length === 0
         ? []
         : [
-            `🚨 the release notes have a character that does not show before the marks of a code block (${describeLines(hiddenIndexes)}): a space that is not an ordinary one, most often, which comes with text copied from a page. ` +
+            `🚨 the release notes have a character that does not show before or after the marks of a code block (${describeLines(hiddenIndexes)}): a space that is not an ordinary one, most often, which comes with text copied from a page. ` +
               'Markdown does not read that line as one that opens or closes a block. Delete ' +
-              'what is before the marks, and type the spaces again.',
+              'what is around the marks, and type the spaces again.',
           ]),
       ...(quoteIndexes.length === 0
         ? []
@@ -575,6 +575,25 @@ const findCodeBlockHazard = (lines: string[]): string | undefined => {
     }
     // A block that is still open at the end of the notes.
     const marker = REGEX_CODE_FENCE.exec(lines[openingIndex])?.groups?.marker ?? ''
+    // A line that would close the block, were it not for a character that does not show.
+    const hiddenClosingIndex = lines.findIndex((line, index) => {
+      const visibleMarks = line.replaceAll(/[^\u{21}-\u{7E}]/gu, '')
+      return (
+        index > openingIndex &&
+        codeBlockLines[index] === 'content' &&
+        visibleMarks.startsWith(marker) &&
+        visibleMarks.replaceAll(marker.charAt(0), '') === '' &&
+        !/^[\t ]*[`~]+[\t ]*$/.test(line)
+      )
+    })
+    if (hiddenClosingIndex !== -1) {
+      hazards.push(
+        `🚨 the release notes have a character that does not show before or after the marks of a code block (${describeLines([hiddenClosingIndex])}): a space that is not an ordinary one, most often, which comes with text copied from a page. ` +
+          'Markdown does not read that line as one that opens or closes a block. Delete ' +
+          'what is around the marks, and type the spaces again.'
+      )
+      continue
+    }
     // A line that would close the block, were it indented like the line that opens it.
     const unindentedClosingIndex = lines.findIndex(
       (line, index) =>
@@ -675,11 +694,7 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
   // changelog together, whatever entry they are in. Every line that has one is named: a
   // reference and its definition go together.
   const footnotePlaces = lines.flatMap((line, index) =>
-    // The text of a footnote is looked for in code too: where code ends is not read in the
-    // same way by everything that reads Markdown, and GitHub is what counts for footnotes.
-    REGEX_FOOTNOTE.test(textLines[index]) || hasFootnoteText(line)
-      ? `line ${String(index + 1)}: ${line}`
-      : []
+    REGEX_FOOTNOTE.test(textLines[index]) ? `line ${String(index + 1)}: ${line}` : []
   )
   if (footnotePlaces.length > 0) {
     hazards.push(
@@ -687,9 +702,27 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
         'footnotes of the whole changelog together, so one in the notes changes those of the ' +
         'older entries, and it is not rendered in the release. Write what it says in the item ' +
         'itself and take out both its mark and its text, or put it in backticks if it is code ' +
-        '(part of a regular expression, for instance). A line that has "[^" and, further on, ' +
-        '"]:" is refused in code too, whatever is between them: put the two on different ' +
-        'lines, or write that example in another way.'
+        '(part of a regular expression, for instance).'
+    )
+  }
+  // The text of a footnote is looked for in code too: where code ends is not read in the same
+  // way by everything that reads Markdown, and GitHub is what counts for footnotes. Such a
+  // line is named with the part of it that reads like one.
+  const codeFootnotePlaces = lines.flatMap((line, index) => {
+    if (REGEX_FOOTNOTE.test(textLines[index]) || !hasFootnoteText(line)) {
+      return []
+    }
+    const spanStart = line.indexOf('[^')
+    const span = line.slice(spanStart, line.indexOf(']:', spanStart) + 2)
+    return `line ${String(index + 1)}: ${line}, at "${span}"`
+  })
+  if (codeFootnotePlaces.length > 0) {
+    hazards.push(
+      `🚨 the release notes have code that reads like the text of a footnote (${codeFootnotePlaces.join('; ')}): ` +
+        'a line that has "[^" and, further on, "]:" is refused in code too, whatever is ' +
+        'between them, since GitHub decides what is code and numbers the footnotes of the ' +
+        'whole changelog together. Put the two on different lines, or show that example in ' +
+        'another way.'
     )
   }
   // Every line that defines a link; the text of a footnote, which looks like one, was named
@@ -745,7 +778,12 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
   }
   // A definition the look at the lines did not find: its label is on more than one line.
   const linkLabel = tokens.linkLabels.at(0)
-  if (linkLabel !== undefined && definitionPlaces.length === 0 && footnotePlaces.length === 0) {
+  if (
+    linkLabel !== undefined &&
+    definitionPlaces.length === 0 &&
+    footnotePlaces.length === 0 &&
+    codeFootnotePlaces.length === 0
+  ) {
     const labelIndex = lines.findIndex((line) => line.includes(']:'))
     hazards.push(
       '🚨 the release notes define a link for the whole changelog ' +

@@ -2250,7 +2250,13 @@ describe('what release notes can do to the changelog', () => {
         `- x\n\n${String.fromCodePoint(0xa0)}\`\`\`\n<pre>\n${String.fromCodePoint(0xa0)}\`\`\``
       )
     ).toThrow(
-      /🚨 the release notes have a character that does not show before the marks of a code block \(line 3: [^\n]*; line 5: [^\n]*\): a space that is not an ordinary one/
+      /🚨 the release notes have a character that does not show before or after the marks of a code block \(line 3: [^\n]*; line 5: [^\n]*\): a space that is not an ordinary one/
+    )
+    // After the marks that would close a block, too.
+    expect(() =>
+      normalizeReleaseNotes(`- x\n\n  \`\`\`\n  code\n  \`\`\`${String.fromCodePoint(0x20_0b)}`)
+    ).toThrow(
+      /🚨 the release notes have a character that does not show before or after the marks of a code block \(line 5: /
     )
     // A line of a block that has nothing but such a space is not a blank line: the block ends
     // there for Markdown, and the line is named.
@@ -2298,7 +2304,7 @@ describe('what release notes can do to the changelog', () => {
       String.raw`[^a\]b]: Two words.`,
     ]) {
       expect(() => normalizeReleaseNotes(`- One.\n\n${footnote}`)).toThrow(
-        `🚨 the release notes have a footnote (line 3: ${footnote}): GitHub numbers the footnotes of the whole changelog together, so one in the notes changes those of the older entries, and it is not rendered in the release. Write what it says in the item itself and take out both its mark and its text, or put it in backticks if it is code (part of a regular expression, for instance). A line that has "[^" and, further on, "]:" is refused in code too, whatever is between them: put the two on different lines, or write that example in another way.`
+        `🚨 the release notes have a footnote (line 3: ${footnote}): GitHub numbers the footnotes of the whole changelog together, so one in the notes changes those of the older entries, and it is not rendered in the release. Write what it says in the item itself and take out both its mark and its text, or put it in backticks if it is code (part of a regular expression, for instance).`
       )
     }
     // The text of a footnote is refused in code too, and after a line that closes a block
@@ -2309,11 +2315,14 @@ describe('what release notes can do to the changelog', () => {
       '- One `[^abc]: text`.',
     ]) {
       expect(() => normalizeReleaseNotes(notes)).toThrow(
-        /the release notes have (?:a footnote|a code block that is never closed)/
+        /the release notes have (?:code that reads like the text of a footnote|a code block that is never closed)/
       )
     }
-    expect(() => normalizeReleaseNotes('- One:\n\n  ```\n  [^abc]: text\n  ```')).toThrow(
-      'A line that has "[^" and, further on, "]:" is refused in code too, whatever is between them: put the two on different lines, or write that example in another way.'
+    // In code, the line is named with what reads like one, and is not told to go in backticks.
+    expect(() =>
+      normalizeReleaseNotes('- One:\n\n  ```js\n  const r = /[^a]:/ || /[^b]/\n  ```')
+    ).toThrow(
+      '🚨 the release notes have code that reads like the text of a footnote (line 4:   const r = /[^a]:/ || /[^b]/, at "[^a]:"): a line that has "[^" and, further on, "]:" is refused in code too, whatever is between them, since GitHub decides what is code and numbers the footnotes of the whole changelog together. Put the two on different lines, or show that example in another way.'
     )
     // Whatever its label is made of, and whatever would hide it from a reader of code: a
     // space that is not one for GitHub, inline code that starts in the label, a fence that
@@ -2323,7 +2332,9 @@ describe('what release notes can do to the changelog', () => {
       `- A fix[^${String.fromCodePoint(0xa0)}x\`].\n\n[^${String.fromCodePoint(0xa0)}x\`]: a note\` here.`,
       `- One:\n\n\`\`\`\n\`\`\`${String.fromCodePoint(0xa0)}\n\`\`\`\n[^${String.fromCodePoint(0xa0)}x]: a note here.\n\`\`\`\n\`\`\`${String.fromCodePoint(0xa0)}\n\`\`\``,
     ]) {
-      expect(() => normalizeReleaseNotes(notes)).toThrow('🚨 the release notes have a footnote (')
+      expect(() => normalizeReleaseNotes(notes)).toThrow(
+        /🚨 the release notes have (?:a footnote|code that reads like the text of a footnote) \(/
+      )
     }
     // Only spaces and tabs can follow the fence that closes a block.
     expect(
@@ -2433,13 +2444,40 @@ describe('what release notes can do to the changelog', () => {
       expect(
         markdown.findRenderingHazard(workspace, NOTES, previousChangelog, [withNotes(NOTES)])
       ).toBeUndefined()
-      expect(
-        markdown.findRenderingHazard(workspace, definition, previousChangelog, [
-          withNotes(definition),
-        ])
-      ).toBe(
-        '🚨 with these release notes, the older entries of CHANGELOG.md would not render as they do now: the notes leave something open that takes them in, or change what they mean (a code block that is not closed, a list or a quote that goes on, a link definition "[label]: url", however it is written). Check that every code block of the notes is closed and indented under its item, that the notes end with a complete item, and that no line defines a link.'
+      // A definition is found as Markdown finds it, whatever its parts are and wherever they
+      // are: here with its label on the line after its bracket, under an item.
+      const splitDefinition = '- One.\n\n  [\nthing]: https://example.com'
+
+      const definitions: [notes: string, lineNumber: number, line: string][] = [
+        [definition, 3, '[thing]: https://example.com'],
+        [splitDefinition, 3, '  ['],
+      ]
+
+      for (const [notes, lineNumber, line] of definitions) {
+        expect(
+          markdown.findRenderingHazard(workspace, notes, previousChangelog, [withNotes(notes)])
+        ).toBe(
+          `🚨 the release notes define a link for the whole changelog (line ${String(lineNumber)}: ${line}): what starts on that line is read as a definition, "[label]: url", in a way that only reading the notes as Markdown shows (its parts can be on several lines). It changes every "[label]" of the changelog. Write the link where it is used: [text](url).`
+        )
+      }
+
+      // What comes before the entries has to render as it did, like the entries.
+      const titledChangelog = previousChangelog.replace(
+        '# Changelog\n',
+        () => '# Changelog\n\nAbout [thing].\n'
       )
+      const titledRelease = insertChangelogEntry(titledChangelog, '1.2.4', renderEntry(NOTES))
+      const olderEntriesMessage =
+        '🚨 with these release notes, the older entries of CHANGELOG.md, or what comes before its entries, would not render as they do now: the notes leave something open that takes them in, or change what they mean (a code block that is not closed, a list or a quote that goes on, a link definition "[label]: url", however it is written). Check that every code block of the notes is closed and indented under its item, that the notes end with a complete item, and that no line defines a link.'
+
+      expect(
+        markdown.findRenderingHazard(workspace, NOTES, titledChangelog, [titledRelease])
+      ).toBeUndefined()
+      expect(
+        markdown.findRenderingHazard(workspace, NOTES, titledChangelog, [
+          titledRelease.replace('About [thing].', () => 'About thing.'),
+        ])
+      ).toBe(olderEntriesMessage)
       expect(
         markdown.findRenderingHazard(workspace, hiddenComment, previousChangelog, [
           withNotes(hiddenComment),
@@ -2454,14 +2492,14 @@ describe('what release notes can do to the changelog', () => {
         markdown.findRenderingHazard(workspace, NOTES, previousChangelog, [
           `${withNotes(NOTES)}\n- An item after the older entries.\n`,
         ])
-      ).toContain('the older entries of CHANGELOG.md would not render as they do now')
+      ).toContain('would not render as they do now')
       const olderLink = `${REPOSITORY_URL}/compare/v1.2.2`
       const changedOlderLink = withNotes(NOTES).replace(olderLink, () => olderLink.toUpperCase())
 
       expect(changedOlderLink).not.toBe(withNotes(NOTES))
       expect(
         markdown.findRenderingHazard(workspace, NOTES, previousChangelog, [changedOlderLink])
-      ).toContain('the older entries of CHANGELOG.md would not render as they do now')
+      ).toContain('would not render as they do now')
 
       // A title that does not render the same by itself: it uses a link an entry defines.
       const linkedTitleChangelog = `# Changelog\n\nSee [thing].\n\n## [1.2.3](${REPOSITORY_URL}/compare/v1.2.2...v1.2.3) (2026-01-01)\n\n- Old.\n\n[thing]: https://example.com\n`
