@@ -2232,6 +2232,8 @@ describe('what release notes can do to the changelog', () => {
       '- x\n\n<details>\n\n- y',
       '- Returns a Promise<string> now.',
       '- A line<br>and another.',
+      // After a backslash that is itself escaped.
+      String.raw`- A \\<!-- comment`,
       // What only some readers of Markdown take for HTML, after a line of text.
       'Text\n<?x',
       // A tag that ends the notes: other lines follow it in the changelog.
@@ -2310,9 +2312,21 @@ describe('what release notes can do to the changelog', () => {
     expect(
       readCodeBlockLines(['```', `\`\`\`${String.fromCodePoint(0xa0)}`, '```\t ', 'text'])
     ).toStrictEqual(['opening', 'content', 'closing', 'outside'])
+    // Every block that is wrong is said in one run: one opened on the line of its item and
+    // one in a quote, one with a line indented less than it and one that is never closed.
+    expect(() =>
+      normalizeReleaseNotes('- ```js\n  a()\n  ```\n- Two:\n\n  > ```js\n  > b()\n  > ```')
+    ).toThrow(
+      /a code block in a quote \(line 6: [^\n]+\n\n🚨 the release notes open a code block on a line that has something else, the start of a list item or its text \(line 1: /
+    )
+    expect(() =>
+      normalizeReleaseNotes('- One:\n\n    ```js\n  a()\n    ```\n\n- Two:\n\n  ```js\n  b()')
+    ).toThrow(
+      /with a line that is indented less than it \(line 4: [^\n]+\n\n🚨 the release notes have a code block that is never closed \(line 9: /
+    )
     // A code block in a quote is not something the checks follow.
     expect(() => normalizeReleaseNotes('> Example:\n>\n> ```js\n> const a = 1\n> ```')).toThrow(
-      '🚨 the release notes have a code block in a quote (line 3: > ```js), which this release cannot check. Take the block out of the quote: put it under a list item, indented like the text of the item.'
+      '🚨 the release notes have a code block in a quote (line 3: > ```js; line 5: > ```), which this release cannot check. Take the block out of the quote: put it under a list item, indented like the text of the item.'
     )
 
     // The mark and the text of a footnote are named together.
@@ -2334,7 +2348,13 @@ describe('what release notes can do to the changelog', () => {
       /have a footnote \(line 1: - A fix\.\[\^1\]; line 3: \[\^1\]: A note\.\): [^\n]+\n\n🚨 the release notes define a link for the whole changelog \(line 4: \[docs\]: https:\/\/example\.com; line 5: \[more\]: <https:\/\/example\.com>\): /
     )
     // A link by reference could only be defined on a line the notes cannot have.
-    for (const reference of ['- See [the docs][docs].', '- See [the docs][].']) {
+    for (const reference of [
+      '- See [the docs][docs].',
+      '- See [the docs][].',
+      // After a backslash that is itself escaped, and around inline code.
+      String.raw`- See \\[the docs][docs].`,
+      '- See [`the docs`][docs].',
+    ]) {
       expect(() => normalizeReleaseNotes(reference)).toThrow(
         `🚨 the release notes have a link by reference (line 1: ${reference}): its address would be on a line of its own, "[label]: url", which the notes cannot have. Write the address in the link, [text](url), or put it in backticks if it is code (two pairs of brackets in a row).`
       )
@@ -2729,6 +2749,14 @@ describe('release notes rules', () => {
       `11: ${OTHER_MARKER}`,
       `12: ${UNDERLINE}`,
       `13: ${UNDERLINE}`,
+    ])
+  })
+
+  it('check what an item says in the same run as its marker', () => {
+    expect(problemsOf('### Bug Fixes\n\n1. A fix.\n2. TODO')).toStrictEqual([
+      `3: ${OTHER_MARKER}`,
+      `4: ${OTHER_MARKER}`,
+      '4: This item is a placeholder. Write what changed for the user, or remove it (with its heading, if the section has nothing else).',
     ])
   })
 

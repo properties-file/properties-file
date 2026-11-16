@@ -520,6 +520,19 @@ export const findNotesProblems = (
         line,
         'An item starts with "- ": the other list markers ("*", "+", "1.") are not used.'
       )
+      // What the item says is checked in the same run as its marker.
+      if (
+        REGEX_PLACEHOLDER.test(
+          line.replace(REGEX_OTHER_LIST_MARKER, '').replaceAll(REGEX_EMPHASIS, '').trim()
+        )
+      ) {
+        addFormProblem(
+          lineNumber,
+          line,
+          'This item is a placeholder. Write what changed for the user, or remove it (with ' +
+            'its heading, if the section has nothing else).'
+        )
+      }
     } else {
       addFormProblem(
         lineNumber,

@@ -32,7 +32,7 @@ const REGEX_CODE_FENCE = /^[\t ]*(?<marker>`{3,}|~{3,})/
  * always tell: a processing instruction (`<?`), a declaration (`<!x`), a comment or a
  * `CDATA` section.
  */
-const REGEX_HTML_START = /(?<!\\)<(?:\?|![A-Z[-])/i
+const REGEX_HTML_START = /(?<!(?:^|[^\\])(?:\\\\)*\\)<(?:\?|![A-Z[-])/i
 
 /**
  * Matches a line that defines a link (or a footnote) for the whole document, at the beginning
@@ -42,7 +42,7 @@ const REGEX_LINK_DEFINITION =
   /^(?:[\t >]|[*+-][\t ]|\d+[.)][\t ])*(?:\[\^(?:\\.|[^\]\\])+\]:|\[[^\]]+\]:[\t ]*(?:(?:<[^>]*>|[^\t ]+)(?:[\t ]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[\t ]*)?$)/
 
 /** Matches a footnote, which GitHub adds to Markdown: its reference or its definition. */
-const REGEX_FOOTNOTE = /(?<!\\)\[\^[^\]\t\n\r ][^\]]*\]/
+const REGEX_FOOTNOTE = /(?<!(?:^|[^\\])(?:\\\\)*\\)\[\^[^\]\t\n\r ][^\]]*\]/
 
 /**
  * Check whether a line could hold the text of a footnote, `[^label]: …`, wherever GitHub
@@ -64,8 +64,11 @@ const REGEX_FOOTNOTE_DEFINITION = /^(?:[\t >]|[*+-][\t ]|\d+[.)][\t ])*\[\^[^\]]
 /** Matches a caret, as it is or as one of the entities Markdown reads as one. */
 const REGEX_CARET = /\^|&#0*94;|&#x0*5e;|&Hat;/i
 
+/** What stands for inline code in a line that is checked as text: a character no check reads. */
+const INLINE_CODE_MARK = String.fromCodePoint(0xff_fc)
+
 /** Matches a link whose address is given elsewhere, by a label: `[text][label]`. */
-const REGEX_LINK_REFERENCE = /(?<!\\)\[[^\]]+\]\[[^\]]*\]/
+const REGEX_LINK_REFERENCE = /(?<!(?:^|[^\\])(?:\\\\)*\\)\[[^\]]+\]\[[^\]]*\]/
 
 /** Matches a line that ends with what opens a fenced code block: backticks and a language. */
 const REGEX_TRAILING_CODE_FENCE = /`{3,}[\w+-]*[\t ]*$/
@@ -445,80 +448,107 @@ export const cleanReleaseNotes = (notes: string): string =>
  *
  * @param lines - The lines of the notes.
  *
- * @returns What is wrong with the first such block and what to do about it, or `undefined`.
+ * @returns What is wrong with each such block and what to do about it, or `undefined`.
  */
 const findCodeBlockHazard = (lines: string[]): string | undefined => {
-  const itemFenceIndex = lines.findIndex((line) => {
+  /**
+   * Name lines of the notes, for a message.
+   *
+   * @param indexes - Which lines to name.
+   *
+   * @returns Their numbers and what they say.
+   */
+  const describeLines = (indexes: number[]): string =>
+    indexes.map((index) => `line ${String(index + 1)}: ${lines[index]}`).join('; ')
+
+  // Every line that opens a block where one cannot be opened.
+  const misplacedIndexes = lines.flatMap((line, index) => {
     const fence = REGEX_ITEM_CODE_FENCE.exec(line)?.[0]
-    return fence === undefined
-      ? // After the text of the line: backticks that open something and close nothing.
-        !REGEX_CODE_FENCE.test(line) &&
+    const isMisplaced =
+      fence === undefined
+        ? // After the text of the line: backticks that open something and close nothing.
+          !REGEX_CODE_FENCE.test(line) &&
           REGEX_TRAILING_CODE_FENCE.test(line) &&
           line.split('```').length % 2 === 0
-      : // With a backtick after the fence, the line has inline code, not the start of a block.
-        !line.slice(fence.length).includes('`')
+        : // With a backtick after the fence, the line has inline code, not the start of a block.
+          !line.slice(fence.length).includes('`')
+    return isMisplaced ? index : []
   })
-  if (itemFenceIndex !== -1 && /^[\t ]*>/.test(lines[itemFenceIndex])) {
-    return (
-      `🚨 the release notes have a code block in a quote (line ${String(itemFenceIndex + 1)}: ` +
-      `${lines[itemFenceIndex]}), which this release cannot check. Take the block out of the ` +
-      'quote: put it under a list item, indented like the text of the item.'
-    )
+  if (misplacedIndexes.length > 0) {
+    // Nothing else is said of the blocks: where they end cannot be told while these lines
+    // are there.
+    const quoteIndexes = misplacedIndexes.filter((index) => /^[\t ]*>/.test(lines[index]))
+    const otherIndexes = misplacedIndexes.filter((index) => !quoteIndexes.includes(index))
+    return [
+      ...(quoteIndexes.length === 0
+        ? []
+        : [
+            `🚨 the release notes have a code block in a quote (${describeLines(quoteIndexes)}), which this release cannot check. Take the block out of the ` +
+              'quote: put it under a list item, indented like the text of the item.',
+          ]),
+      ...(otherIndexes.length === 0
+        ? []
+        : [
+            `🚨 the release notes open a code block on a line that has something else, the start of a list item or its text (${describeLines(otherIndexes)}). Put the line that opens the block on a line of its own, ` +
+              'indented under the item like the rest of the block, after a first line of the item ' +
+              'that says what the code shows.',
+          ]),
+    ].join('\n\n')
   }
-  if (itemFenceIndex !== -1) {
-    return (
-      `🚨 the release notes open a code block on a line that has something else, the start of a list item or its text (line ${String(itemFenceIndex + 1)}: ` +
-      `${lines[itemFenceIndex]}). Put the line that opens the block on a line of its own, ` +
-      'indented under the item like the rest of the block, after a first line of the item ' +
-      'that says what the code shows.'
-    )
-  }
+
+  // Every block that Markdown would not end where the notes do, so that one run says them all.
+  const hazards: string[] = []
   const codeBlockLines = readCodeBlockLines(lines)
-  const tildeFenceIndex = lines.findIndex(
-    (line, index) =>
-      codeBlockLines[index] === 'opening' && /^[\t ]*~/.test(line) && line.includes('`')
+  const tildeFenceIndexes = lines.flatMap((line, index) =>
+    codeBlockLines[index] === 'opening' && /^[\t ]*~/.test(line) && line.includes('`') ? index : []
   )
-  if (tildeFenceIndex !== -1) {
-    return (
-      `🚨 the release notes open a code block with "~~~" on a line that has a backtick (line ${String(tildeFenceIndex + 1)}: ` +
-      `${lines[tildeFenceIndex]}): once formatted, the block is opened with backticks, and ` +
-      'that line would open nothing. Take the backtick out of the line.'
+  if (tildeFenceIndexes.length > 0) {
+    hazards.push(
+      `🚨 the release notes open a code block with "~~~" on a line that has a backtick (${describeLines(tildeFenceIndexes)}): once formatted, the block is opened with backticks, and ` +
+        'that line would open nothing. Take the backtick out of the line.'
     )
   }
-  // A block that is still open at the end: the last line is in one, whatever its indentation.
-  if (codeBlockLines.at(-1) !== 'outside' && codeBlockLines.at(-1) !== 'closing') {
-    const openingIndex = codeBlockLines.lastIndexOf('opening')
+  const openingIndexes = codeBlockLines.flatMap((kind, index) => (kind === 'opening' ? index : []))
+  for (const [position, openingIndex] of openingIndexes.entries()) {
+    const nextOpeningIndex = openingIndexes.at(position + 1) ?? lines.length
+    const closingIndex = codeBlockLines.indexOf('closing', openingIndex)
+    const isClosed = closingIndex !== -1 && closingIndex < nextOpeningIndex
+    const escapedIndex = codeBlockLines.indexOf('escaped', openingIndex)
+    if (isClosed && escapedIndex !== -1 && escapedIndex < closingIndex) {
+      hazards.push(
+        `🚨 the release notes have a code block (${describeLines([openingIndex])}) ` +
+          `with a line that is indented less than it (${describeLines([escapedIndex])}): ` +
+          'Markdown ends the block at that line, and the rest of the changelog could become part ' +
+          'of another one. Indent every line of the block at least as much as the line that ' +
+          'opens it.'
+      )
+    }
+    if (isClosed) {
+      continue
+    }
+    // A block that is still open at the end of the notes.
     const marker = REGEX_CODE_FENCE.exec(lines[openingIndex])?.groups?.marker ?? ''
     // A line that would close the block, were it indented like the line that opens it.
-    const closingIndex = lines.findIndex(
+    const unindentedClosingIndex = lines.findIndex(
       (line, index) =>
         index > openingIndex &&
         codeBlockLines[index] === 'escaped' &&
         line.replaceAll(/[\t ]/g, '').startsWith(marker) &&
         line.replaceAll(/[\t ]/g, '').replaceAll(marker.charAt(0), '') === ''
     )
-    return closingIndex !== -1
-      ? `🚨 the release notes have a code block (line ${String(openingIndex + 1)}: ${lines[openingIndex]}) ` +
-          `that its last line does not close (line ${String(closingIndex + 1)}: ${lines[closingIndex]}): ` +
-          'that line is indented less than the one that opens the block, so Markdown reads it ' +
-          'as the start of another block, which the rest of the changelog would become part ' +
-          'of. Indent it like the line that opens the block.'
-      : `🚨 the release notes have a code block that is never closed (line ${String(openingIndex + 1)}: ` +
-          `${lines[openingIndex]}): the rest of the changelog would become part of it. End the block ` +
-          'with a line that has nothing but the marks that open it (``` or ~~~), indented like it.'
-  }
-  const escapedIndex = codeBlockLines.indexOf('escaped')
-  if (escapedIndex !== -1) {
-    const openingIndex = codeBlockLines.lastIndexOf('opening', escapedIndex)
-    return (
-      `🚨 the release notes have a code block (line ${String(openingIndex + 1)}: ${lines[openingIndex]}) ` +
-      `with a line that is indented less than it (line ${String(escapedIndex + 1)}: ${lines[escapedIndex]}): ` +
-      'Markdown ends the block at that line, and the rest of the changelog could become part ' +
-      'of another one. Indent every line of the block at least as much as the line that ' +
-      'opens it.'
+    hazards.push(
+      unindentedClosingIndex === -1
+        ? `🚨 the release notes have a code block that is never closed (${describeLines([openingIndex])}): ` +
+            'the rest of the changelog would become part of it. End the block ' +
+            'with a line that has nothing but the marks that open it (``` or ~~~), indented like it.'
+        : `🚨 the release notes have a code block (${describeLines([openingIndex])}) ` +
+            `that its last line does not close (${describeLines([unindentedClosingIndex])}): ` +
+            'that line is indented less than the one that opens the block, so Markdown reads it ' +
+            'as the start of another block, which the rest of the changelog would become part ' +
+            'of. Indent it like the line that opens the block.'
     )
   }
-  return undefined
+  return hazards.length === 0 ? undefined : hazards.join('\n\n')
 }
 
 /**
@@ -559,7 +589,10 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
   // label in the older entries (labels are compared in ways the parser does not follow).
   const codeBlockLines = readCodeBlockLines(lines)
   const textLines = lines.map((line, index) =>
-    codeBlockLines[index] === 'outside' ? line.replaceAll(REGEX_INLINE_CODE, '') : ''
+    // Inline code leaves a mark where it was: what is around it still reads as it did.
+    codeBlockLines[index] === 'outside'
+      ? line.replaceAll(REGEX_INLINE_CODE, () => INLINE_CODE_MARK)
+      : ''
   )
   const htmlPlaces = lines.flatMap((line, index) =>
     REGEX_HTML_START.test(textLines[index]) ? `line ${String(index + 1)}: ${line}` : []
