@@ -154,7 +154,7 @@ npm run benchmark -- --strict   # fails if any benchmark regresses >20%
 npm run size -- --strict        # fails if any entry point grows >10%
 ```
 
-This can be added to `release-it`'s `before:init` hook.
+`npm run release` runs `npm run build` only: the two strict comparisons are not part of it.
 
 ## Typical Workflows
 
