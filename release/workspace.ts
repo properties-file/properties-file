@@ -57,8 +57,6 @@ export type GitCommit = {
   hash: string
   /** The first line of the commit message. */
   subject: string
-  /** The commit message without its first line. */
-  body: string
 }
 
 /**
@@ -207,22 +205,30 @@ export const hasLocalTag = (workspace: Workspace, tag: string): boolean =>
  *
  * @param workspace - The repository.
  * @param tag - The tag to start after.
+ * @param pathspecs - The paths the commits have to change (any path when left out), as git
+ *   pathspecs.
  *
  * @returns The commits between the tag and `HEAD`.
  */
-export const readCommitsSince = (workspace: Workspace, tag: string): GitCommit[] =>
+export const readCommitsSince = (
+  workspace: Workspace,
+  tag: string,
+  pathspecs: string[] = []
+): GitCommit[] =>
   readGit(workspace, [
     'log',
     '--no-merges',
     '--no-show-signature',
     '--encoding=UTF-8',
-    '--format=%H%x1f%s%x1f%b%x1e',
+    '--format=%H%x1f%s%x1e',
     `refs/tags/${tag}..HEAD`,
+    '--',
+    ...pathspecs,
   ])
     .split(RECORD_SEPARATOR)
     .map((record) => record.trim())
     .filter((record) => record !== '')
     .map((record) => {
-      const [hash, subject, body] = record.split(FIELD_SEPARATOR)
-      return { hash, subject, body }
+      const [hash, subject] = record.split(FIELD_SEPARATOR)
+      return { hash, subject }
     })

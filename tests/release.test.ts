@@ -10,11 +10,12 @@
  * network. `release/` is outside of `src/`, so it is not part of the coverage threshold: these
  * tests are what exercises its error branches.
  */
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -28,6 +29,7 @@ import { gzipSync } from 'node:zlib'
 
 import { brief } from '../release/brief'
 import {
+  assertChangelogEntryAdded,
   compareVersions,
   extractReleaseNotes,
   getRepositoryUrl,
@@ -188,10 +190,22 @@ describe('repository URL', () => {
 })
 
 describe('release notes', () => {
-  it('are written as they are, without blank lines around them or trailing whitespace', () => {
+  it('are written as they are, without blank lines around them', () => {
     expect(
-      normalizeReleaseNotes('\n\r\n### Features  \r\n\r\n- Add `a_b`, *really*.\t\n  More.\n\n\n')
-    ).toBe('### Features\n\n- Add `a_b`, *really*.\n  More.')
+      normalizeReleaseNotes('\n \t\r\n### Features\r\n\r\n- Add `a_b`, *really*.  \n  More.\n\n\n')
+    ).toBe('### Features\n\n- Add `a_b`, *really*.  \n  More.')
+  })
+
+  it('have Unix line endings, whatever they were given with, and no byte order mark', () => {
+    // A lone carriage return included: prettier would take one for the line ending of the
+    // whole changelog.
+    expect(
+      normalizeReleaseNotes(`${String.fromCodePoint(0xfe_ff)}- One.\r- Two.\r\n- Three.\n`)
+    ).toBe('- One.\n- Two.\n- Three.')
+    // A heading hidden behind one is still refused.
+    expect(() => normalizeReleaseNotes('- One.\r## [1.2.2](url) (date)\r- Two.')).toThrow(
+      'the release notes have a line in the form of a changelog entry heading'
+    )
   })
 
   it('may have headings and code that only look like parts of a changelog', () => {
@@ -305,6 +319,34 @@ describe('changelog file', () => {
     expect(extractReleaseNotes(changelog, '1.2.3')).toBe('Notes.\n')
   })
 
+  it('can be checked to have exactly one more entry, the one of the release', () => {
+    const changelogWithEntry = insertChangelogEntry(INITIAL_CHANGELOG, '1.2.4', renderEntry(NOTES))
+
+    expect(() => {
+      assertChangelogEntryAdded(INITIAL_CHANGELOG, changelogWithEntry, '1.2.4')
+    }).not.toThrow()
+    // The entry cannot be read: every line ending became a lone carriage return.
+    expect(() => {
+      assertChangelogEntryAdded(
+        INITIAL_CHANGELOG,
+        changelogWithEntry.replaceAll('\n', '\r'),
+        '1.2.4'
+      )
+    }).toThrow('CHANGELOG.md has no entry for version 1.2.4')
+    // The entry is there, with another one that was not asked for.
+    expect(() => {
+      assertChangelogEntryAdded(
+        INITIAL_CHANGELOG,
+        changelogWithEntry.replace('- Keep', '## [1.2.2](url) (date)\n\n- Keep'),
+        '1.2.4'
+      )
+    }).toThrow('CHANGELOG.md had 1 entries and now reads as having 3')
+    // An entry was lost.
+    expect(() => {
+      assertChangelogEntryAdded(changelogWithEntry, changelogWithEntry, '1.2.4')
+    }).toThrow('CHANGELOG.md had 2 entries and now reads as having 2')
+  })
+
   it('does not mistake a version for another one that starts with it', () => {
     expect(insertChangelogEntry(INITIAL_CHANGELOG, '1.2', 'entry\n')).toContain('entry')
     expect(() => extractReleaseNotes(INITIAL_CHANGELOG, '1.2')).toThrow(
@@ -369,6 +411,9 @@ describe('GitHub release notes', () => {
   it('are read from a changelog with Windows line endings', () => {
     expect(extractReleaseNotes(changelog.replaceAll('\n', '\r\n'), '1.2.0')).toBe(
       `Notes of 1.2.0.\n\n**Full changelog**: [v1.1.0...v1.2.0](${REPOSITORY_URL}/compare/v1.1.0...v1.2.0)\n`
+    )
+    expect(extractReleaseNotes(changelog.replaceAll('\n', '\r\n'), '1.2.4')).toBe(
+      extractReleaseNotes(changelog, '1.2.4')
     )
   })
 
@@ -525,6 +570,7 @@ describe('package comparison', () => {
       added: ['dist/a-added.js', 'dist/z-added.js'],
       removed: ['dist/removed.js'],
       changed: ['dist/index.js'],
+      changedManifestFields: [],
     })
     expect(isSamePackage(difference)).toBe(false)
     expect(describePackageDifference(difference)).toStrictEqual([
@@ -535,31 +581,64 @@ describe('package comparison', () => {
     ])
   })
 
-  it('ignores the version and the development dependencies of package.json, in any layout', () => {
+  it('ignores what says nothing to those who install the package', () => {
     const current = new Map(published)
+    // Another version, other development dependencies, scripts that do not run at install,
+    // fields in another order and layout.
     current.set(
       'package.json',
       Buffer.from(
-        '{\n  "name": "scratch",\n  "version": "2.0.0",\n  "main": "x.js",\n  "devDependencies": { "a": "2.0.0", "b": "1.0.0" }\n}\n'
+        '{\n  "scripts": { "build": "x", "prepare": "y" },\n  "main": "x.js",\n  "name": "scratch",\n  "version": "2.0.0",\n  "devDependencies": { "a": "2.0.0", "b": "1.0.0" }\n}\n'
       )
     )
-    const difference = comparePackageFiles(published, current)
+    // Other line endings.
+    const windowsPublished = new Map(published).set('README.md', Buffer.from('sa\r\nme\r\n'))
+    current.set('README.md', Buffer.from('sa\nme\n'))
+    const difference = comparePackageFiles(windowsPublished, current)
 
-    expect(difference).toStrictEqual({ added: [], removed: [], changed: [] })
+    expect(difference).toStrictEqual({
+      added: [],
+      removed: [],
+      changed: [],
+      changedManifestFields: [],
+    })
     expect(isSamePackage(difference)).toBe(true)
     expect(describePackageDifference(difference)).toStrictEqual([])
   })
 
-  it('counts any other change to package.json', () => {
-    for (const manifest of [
-      '{"name":"scratch","version":"1.2.3","devDependencies":{"a":"1.0.0"},"main":"y.js"}',
-      '{"name":"scratch","version":"1.2.3","devDependencies":{"a":"1.0.0"},"main":"x.js","dependencies":{"a":"1.0.0"}}',
-      '{"name":"scratch","version":"1.2.3","devDependencies":{"a":"1.0.0"},"main":"x.js","scripts":{"postinstall":"x"}}',
-    ]) {
+  it('counts any other change to package.json, and says which fields changed', () => {
+    const cases: [string, string[]][] = [
+      ['{"name":"scratch","main":"y.js"}', ['main']],
+      ['{"name":"scratch","main":"x.js","dependencies":{"a":"1.0.0"}}', ['dependencies']],
+      ['{"name":"scratch","main":"x.js","scripts":{"build":"x","postinstall":"y"}}', ['scripts']],
+      ['{"name":"other","exports":{}}', ['exports', 'main', 'name']],
+    ]
+
+    for (const [manifest, fields] of cases) {
       const current = new Map(published)
       current.set('package.json', Buffer.from(manifest))
+      const difference = comparePackageFiles(published, current)
 
-      expect(comparePackageFiles(published, current).changed).toStrictEqual(['package.json'])
+      expect(difference.changed).toStrictEqual(['package.json'])
+      expect(difference.changedManifestFields).toStrictEqual(fields)
+      expect(describePackageDifference(difference)).toStrictEqual([
+        `changed  package.json (${fields.join(', ')})`,
+      ])
+    }
+  })
+
+  it('counts a difference other than line endings, and any difference in a binary file', () => {
+    for (const [publishedContent, currentContent] of [
+      ['a\r\nb', 'a\nc'],
+      ['a\rb', 'a\nb'],
+      ['a\r\n\0b', 'a\n\0b'],
+    ]) {
+      const difference = comparePackageFiles(
+        toPackageFiles({ 'file.bin': publishedContent }),
+        toPackageFiles({ 'file.bin': currentContent })
+      )
+
+      expect(difference.changed).toStrictEqual(['file.bin'])
     }
   })
 })
@@ -821,7 +900,12 @@ const createRepository = (
     name: 'scratch',
     version: '1.2.3',
     repository: { type: 'git', url: `git+${REPOSITORY_URL}.git` },
-    scripts: { build: buildScript, 'build-artifacts': packageBuildScript },
+    scripts: {
+      build: buildScript,
+      'build-artifacts': packageBuildScript,
+      // Packing the package to compare it does not run this script, which fails.
+      prepack: 'exit 1',
+    },
   }
   const lockfile = {
     name: 'scratch',
@@ -970,8 +1054,16 @@ describe('release', () => {
       git(repository.workPath, 'tag', '--annotate', 'unrelated', '--message', 'Not a release')
       // The build only passes with a variable of the environment the release is given.
       const environment = { ...ENVIRONMENT, RELEASE_TEST_VARIABLE: 'set' }
+      // The notes are given with a lone carriage return, which must not become the line
+      // ending of the changelog.
+      const notes = NOTES.replace('\n\n', '\r\r')
+      const temporaryNamesBefore = readdirSync(tmpdir())
 
-      expect(releaseIn(repository, 'patch', { environment })).toBe('1.2.4')
+      expect(releaseIn(repository, 'patch', { environment, notes })).toBe('1.2.4')
+      // The directory the two packages were packed in to be compared is gone.
+      expect(
+        readdirSync(tmpdir()).filter((name) => name.startsWith('release-package-'))
+      ).toStrictEqual(temporaryNamesBefore.filter((name) => name.startsWith('release-package-')))
       expect(git(repository.originPath, 'tag', '--list')).toBe('v1.2.3\nv1.2.4')
       expect(git(repository.originPath, 'branch', '--format=%(refname)')).toBe('refs/heads/main')
 
@@ -1010,7 +1102,7 @@ describe('release', () => {
         [
           '✅ v1.2.4 is pushed. It is not on npm yet. What happens next:',
           `   1. The release workflow tests the version, builds it and stages it on npm: ${REPOSITORY_URL}/actions/workflows/release.yml`,
-          '   2. A maintainer approves the staged version with two-factor authentication: on npmjs.com (the Staged Packages tab), or with `npm stage approve <stage-id>` (the summary of the workflow run gives the id).',
+          '   2. A maintainer approves the staged version with two-factor authentication: on npmjs.com (the Staged Packages tab), or with `npm stage approve <stage-id>`. The summary of the workflow run gives the id, and the shasum to check first.',
           '   3. scratch@1.2.4 is then public: `npm view scratch@1.2.4 version` prints the version once it is.',
         ].join('\n')
       )
@@ -1084,8 +1176,9 @@ describe('release', () => {
     expect(repository.logs.at(-1)).toBe(
       [
         '✅ Dry run of v1.2.4 complete, nothing was changed.',
-        '   Before releasing: check the notes above against docs/release-notes-guidelines.md (`npm run release -- brief` prints it with what changed), and have a maintainer agree to them.',
-        '   To release: the same command with --confirm after the version.',
+        '   Not checked by a dry run: that `npm run build` passes without changing a file, and that the package differs from the published one. The release checks both before it changes anything.',
+        '   Next: check the notes above against docs/release-notes-guidelines.md (`npm run release -- brief` prints it with what changed), then show a maintainer the version and the notes, and wait for their go-ahead.',
+        '   To release: the same command with --confirm after the version. The maintainer will then have to approve the version on npm.',
       ].join('\n')
     )
   })
@@ -1399,14 +1492,17 @@ describe('release', () => {
     'stops when the build changes files, without committing them',
     () => {
       const repository = createRepository(
-        `node --eval "require('fs').writeFileSync('built.txt', '')"`
+        `node --eval "fs.writeFileSync('built.txt', ''); fs.appendFileSync('index.js', '//')"`
       )
       const stateBefore = getState(repository)
 
       expect(() => releaseIn(repository, 'patch')).toThrow(
-        '`npm run build` changed files, commit them first:\n?? built.txt'
+        '`npm run build` changed files, commit them first:\n M index.js\n?? built.txt'
       )
-      expect(getState(repository)).toStrictEqual({ ...stateBefore, status: '?? built.txt' })
+      expect(getState(repository)).toStrictEqual({
+        ...stateBefore,
+        status: ' M index.js\n?? built.txt',
+      })
     },
     COMMAND_TIMEOUT
   )
@@ -1588,7 +1684,10 @@ describe('release brief', () => {
       ]) {
         git(repository.workPath, 'config', name, value)
       }
-      const featureHash = commitFile(repository, 'feature.txt', 'feat: add a thing é')
+      mkdirSync(path.join(repository.workPath, 'src', 'build-scripts'), { recursive: true })
+      const sourceHash = commitFile(repository, 'src/thing.js', 'docs: reword a thing é')
+      const toolHash = commitFile(repository, 'src/build-scripts/tool.js', 'fix: build faster')
+      const featureHash = commitFile(repository, 'feature.txt', 'feat: add a thing')
       // A merge commit, which is not listed: the commits it merges are.
       git(repository.workPath, 'checkout', '--quiet', '-b', 'fix')
       const fixHash = commitFile(repository, 'index.js', 'module.exports = 2')
@@ -1599,18 +1698,41 @@ describe('release brief', () => {
       const report = briefIn(repository)
 
       expect(report).toContain('# Release brief: scratch, currently at 1.2.3\n')
-      expect(report).toContain('\n## Commits since v1.2.3 (2)\n\n')
-      expect(report).toContain(`\n- ${featureHash.slice(0, 7)} feat: add a thing é\n`)
-      expect(report).toContain(`\n- ${fixHash.slice(0, 7)} module.exports = 2\n`)
+      // The commits that change the source of the package, whatever their type says, then
+      // the others, among them the one that only changes a build script.
+      expect(report).toContain(
+        `\n## Commits since v1.2.3 that change the source of the package (1)\n\n- ${sourceHash.slice(0, 7)} docs: reword a thing é\n\nWhat they changed, all together: \`git diff v1.2.3 -- 'src' ':(exclude)src/build-scripts'\`.`
+      )
+      const otherCommits = report.slice(report.indexOf('\n## Other commits since v1.2.3 (3)\n'))
+
+      expect(otherCommits).toContain(`\n- ${toolHash.slice(0, 7)} fix: build faster\n`)
+      expect(otherCommits).toContain(`\n- ${featureHash.slice(0, 7)} feat: add a thing\n`)
+      expect(otherCommits).toContain(`\n- ${fixHash.slice(0, 7)} module.exports = 2\n`)
+      expect(otherCommits).not.toContain(sourceHash.slice(0, 7))
       expect(report).not.toContain('Merge the fix')
       // The files of the package, against the stand-in for the published one.
       expect(report).toContain(
         `\n## Files of the package that differ from ${publishedPackagePath}\n`
       )
       expect(report).toContain('\n- changed  index.js\n')
-      expect(report).toContain('\n- changed  package.json\n')
+      expect(report).toContain('\n- changed  package.json (repository)\n')
       expect(report).toContain('\n- added    feature.txt\n')
       expect(report).not.toContain('node_modules')
+      // Both packages are kept where the brief says, to look at a difference.
+      const keptPath =
+        /\nBoth packages are in (?<path>\S+) \(a temporary directory\)/.exec(report)?.groups
+          ?.path ?? ''
+      temporaryDirectories.push(keptPath)
+
+      expect(report).toContain(
+        `\`diff -u ${keptPath}/published/<file> ${keptPath}/current/<file>\``
+      )
+      expect(readFileSync(path.join(keptPath, 'published', 'index.js'), 'utf8')).toBe(
+        'module.exports = 1\n'
+      )
+      expect(readFileSync(path.join(keptPath, 'current', 'index.js'), 'utf8')).toBe(
+        'module.exports = 2'
+      )
       // The guidelines come last.
       expect(
         report.endsWith(
@@ -1629,11 +1751,36 @@ describe('release brief', () => {
       const publishedPackageSpec = packPackage(repository.workPath, repository.rootPath)
       const report = briefIn(repository, { publishedPackageSpec })
 
-      expect(report).toContain('\n## Commits since v1.2.3 (0)\n\nNone.\n')
+      expect(report).toContain(
+        '\n## Commits since v1.2.3 that change the source of the package (0)\n\nNone.\n'
+      )
+      expect(report).toContain('\n## Other commits since v1.2.3 (0)\n\nNone.\n')
       expect(report).toContain(
         'None: the package is the same as the published one. There is nothing to release, and `npm run release` would refuse to.'
       )
       expect(report).not.toContain('- changed')
+    },
+    COMMAND_TIMEOUT
+  )
+
+  it(
+    'warns about uncommitted changes, and works when npm was asked for a dry run',
+    () => {
+      const repository = createRepository()
+      commitFile(repository, 'feature.txt', `feat: add${String.fromCodePoint(0x1b)}[31m a thing`)
+      writeFileSync(path.join(repository.workPath, 'untracked.js'), '')
+      // `npm run release brief --dry-run`: npm keeps the option, and passes it on to the
+      // `npm pack` the brief runs, which must still write its archive.
+      const report = briefIn(repository, {
+        environment: { ...ENVIRONMENT, npm_config_dry_run: 'true' },
+      })
+
+      expect(report).toContain(
+        'The working tree has uncommitted changes. The package below is built from the working tree, not from the last commit, and a release would refuse to start:\n?? untracked.js'
+      )
+      expect(report).toContain('\n- added    untracked.js\n')
+      // The escape character of the subject is not printed.
+      expect(report).toContain(' feat: add [31m a thing\n')
     },
     COMMAND_TIMEOUT
   )
@@ -1649,7 +1796,7 @@ describe('release brief', () => {
       expect(report).toContain(
         'The tag of the current version (v1.2.3) does not exist locally (try `git fetch --tags`), so the commits made since cannot be listed.'
       )
-      expect(report).not.toContain('## Commits since')
+      expect(report).not.toContain('commits since')
       expect(report).toContain(
         `${publishedPackageSpec} could not be fetched, so the package was not compared with it (\`npm pack `
       )
@@ -1710,7 +1857,7 @@ describe('release command', () => {
       expect(result.errors).toBe('')
       expect(result.status).toBe(0)
       expect(result.output).toMatch(
-        /^📦 Releasing 1\.2\.3 → 1\.2\.4 \(dry run: nothing is changed\)\n[\s\S]+### Bug Fixes\n\n- Keep a `__proto__` key\.\n[\s\S]+To release: the same command with --confirm after the version\.\n$/
+        /^📦 Releasing 1\.2\.3 → 1\.2\.4 \(dry run: nothing is changed\)\n[\s\S]+### Bug Fixes\n\n- Keep a `__proto__` key\.\n[\s\S]+To release: the same command with --confirm after the version\. The maintainer will then have to approve the version on npm\.\n$/
       )
       expect(getState(repository)).toStrictEqual(stateBefore)
     },
@@ -1754,6 +1901,36 @@ describe('release command', () => {
         output: '',
         errors: '🚨 1.2.3 is not higher than the current version (1.2.3)\n',
       })
+    },
+    COMMAND_TIMEOUT
+  )
+
+  it(
+    'gives up on release notes that never come, instead of waiting for them',
+    async () => {
+      const repository = createRepository()
+      const start = performance.now()
+      // The standard input is left open and nothing is ever written to it, as a tool that
+      // runs commands may do.
+      const child = spawn(
+        path.resolve('node_modules/.bin/tsx'),
+        [path.resolve('release/cli.ts'), 'patch'],
+        { cwd: repository.workPath, env: ENVIRONMENT, stdio: ['pipe', 'ignore', 'pipe'] }
+      )
+      let errors = ''
+      child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
+        errors += chunk
+      })
+      const status = await new Promise((resolve) => {
+        child.on('close', resolve)
+      })
+      child.stdin.end()
+
+      expect(status).toBe(1)
+      expect(errors).toBe(`🚨 no release notes were given on the standard input\n${USAGE}\n`)
+      // It waits three seconds for a first byte.
+      expect(performance.now() - start).toBeGreaterThan(2500)
+      expect(performance.now() - start).toBeLessThan(15_000)
     },
     COMMAND_TIMEOUT
   )

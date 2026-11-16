@@ -16,6 +16,7 @@ import path from 'node:path'
 import { isNormalizedError, noThrow } from '../utilities/no-throw'
 
 import {
+  assertChangelogEntryAdded,
   getRepositoryUrl,
   insertChangelogEntry,
   renderChangelogEntry,
@@ -374,8 +375,9 @@ export const release = (options: ReleaseOptions): string => {
     notes: options.notes,
   })
   const changelogPath = path.join(directoryPath, 'CHANGELOG.md')
+  const previousChangelog = readFileSync(changelogPath, 'utf8')
   // Computed before anything is changed: this fails if the version already has an entry.
-  const changelog = insertChangelogEntry(readFileSync(changelogPath, 'utf8'), version, entry)
+  const changelog = insertChangelogEntry(previousChangelog, version, entry)
 
   // The full gate (lint, compile, tests, package checks), before anything is committed.
   execute('npm', ['run', 'build'])
@@ -390,6 +392,7 @@ export const release = (options: ReleaseOptions): string => {
       throw new Error(`🚨 \`npm run build\` changed files, commit them first:\n${changes}`)
     }
     // A release is for users: one that publishes the same files again has nothing for them.
+    log(`   📦 comparing the package with ${publishedPackageSpec}`)
     const comparison = compareWithPublishedPackage(workspace, publishedPackageSpec)
     if (comparison.difference === undefined) {
       log(
@@ -410,6 +413,10 @@ export const release = (options: ReleaseOptions): string => {
       writeFileSync(changelogPath, changelog)
     }
     execute('npx', ['--no-install', 'prettier', '--write', 'CHANGELOG.md'])
+    if (!isDryRun) {
+      // The file as it will be committed: prettier formatted it as a whole.
+      assertChangelogEntryAdded(previousChangelog, readFileSync(changelogPath, 'utf8'), version)
+    }
     execute('git', ['add', ...RELEASE_FILES])
     // The pre-commit hook is the build, which just ran: only the version and the changelog
     // entry changed since.
@@ -463,18 +470,22 @@ export const release = (options: ReleaseOptions): string => {
     isDryRun
       ? [
           `✅ Dry run of ${tag} complete, nothing was changed.`,
-          `   Before releasing: check the notes above against ${GUIDELINES_PATH} ` +
-            `(\`npm run release -- ${BRIEF_COMMAND}\` prints it with what changed), and have a ` +
-            `maintainer agree to them.`,
-          `   To release: the same command with ${CONFIRM_OPTION} after the version.`,
+          '   Not checked by a dry run: that `npm run build` passes without changing a file, and ' +
+            'that the package differs from the published one. The release checks both before ' +
+            'it changes anything.',
+          `   Next: check the notes above against ${GUIDELINES_PATH} ` +
+            `(\`npm run release -- ${BRIEF_COMMAND}\` prints it with what changed), then show a ` +
+            'maintainer the version and the notes, and wait for their go-ahead.',
+          `   To release: the same command with ${CONFIRM_OPTION} after the version. The ` +
+            'maintainer will then have to approve the version on npm.',
         ].join('\n')
       : [
           `✅ ${tag} is pushed. It is not on npm yet. What happens next:`,
           `   1. The release workflow tests the version, builds it and stages it on npm: ` +
             `${repositoryUrl}/actions/workflows/release.yml`,
-          `   2. A maintainer approves the staged version with two-factor authentication: on ` +
-            `npmjs.com (the Staged Packages tab), or with \`npm stage approve <stage-id>\` ` +
-            `(the summary of the workflow run gives the id).`,
+          '   2. A maintainer approves the staged version with two-factor authentication: on ' +
+            'npmjs.com (the Staged Packages tab), or with `npm stage approve <stage-id>`. ' +
+            'The summary of the workflow run gives the id, and the shasum to check first.',
           `   3. ${manifest.name}@${version} is then public: ` +
             `\`npm view ${manifest.name}@${version} version\` prints the version once it is.`,
         ].join('\n')

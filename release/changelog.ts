@@ -14,6 +14,9 @@ const REGEX_RELEASE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
  */
 const REGEX_VERSION_HEADING = /^#{1,2} \[\d+\.\d+\.\d[^\]]*\]\(/
 
+/** The character some editors put at the start of a file, which is not part of its text. */
+const BYTE_ORDER_MARK = String.fromCodePoint(0xfe_ff)
+
 /** Matches the compare link of a version entry heading, capturing its URL and its tag range. */
 const REGEX_COMPARE_LINK = /\]\((?<url>[^()\s]+\/compare\/(?<range>[^()\s/]+))\)/
 
@@ -122,10 +125,11 @@ export const getRepositoryUrl = (packageRepositoryUrl: string): string => {
 
 /**
  * Check the release notes a release was given, and put them in the form they are written in:
- * Unix line endings, no trailing whitespace, no blank line before or after.
+ * Unix line endings, no blank line before or after.
  *
  * What the notes say and how they are laid out is for `docs/release-notes-guidelines.md`: they
- * are written as they are. Only what would break the changelog is refused.
+ * are written as they are (prettier then formats the changelog as a whole). Only what would
+ * break the changelog is refused.
  *
  * @param notes - The release notes, in Markdown.
  *
@@ -135,11 +139,13 @@ export const getRepositoryUrl = (packageRepositoryUrl: string): string => {
  *   the changelog would then be read as having one more entry.
  */
 export const normalizeReleaseNotes = (notes: string): string => {
-  const lines = notes
-    .replaceAll('\r\n', '\n')
-    .split('\n')
-    .map((line) => line.trimEnd())
-  const normalizedNotes = lines.join('\n').replace(/^\n+/, '').trimEnd()
+  const normalizedNotes = (notes.startsWith(BYTE_ORDER_MARK) ? notes.slice(1) : notes)
+    // Every form of line ending, a lone `\r` included: prettier would take one for the line
+    // ending of the whole changelog, and rewrite every line of it.
+    .replaceAll(/\r\n?/g, '\n')
+    .replace(/^(?:[^\S\n]*\n)+/, '')
+    .trimEnd()
+  const lines = normalizedNotes.split('\n')
   if (normalizedNotes === '') {
     throw new Error('🚨 the release notes are empty')
   }
@@ -246,4 +252,31 @@ export const extractReleaseNotes = (changelog: string, version: string): string 
     blocks.push(`**Full changelog**: [${compareLink.range}](${compareLink.url})`)
   }
   return `${blocks.filter((block) => block !== '').join('\n\n')}\n`
+}
+
+/**
+ * Check that a changelog reads as it did before a release, with the entry of the release
+ * added: the last check before the release is committed, after prettier formatted the file.
+ *
+ * @param previousChangelog - The content of `CHANGELOG.md` before the release.
+ * @param changelog - Its content now.
+ * @param version - The version being released.
+ *
+ * @throws If the version has no entry that can be read, or if the changelog does not have
+ *   exactly one entry more than before.
+ */
+export const assertChangelogEntryAdded = (
+  previousChangelog: string,
+  changelog: string,
+  version: string
+): void => {
+  extractReleaseNotes(changelog, version)
+  const previousCount = findVersionHeadings(previousChangelog.split(/\r?\n/)).length
+  const count = findVersionHeadings(changelog.split(/\r?\n/)).length
+  if (count !== previousCount + 1) {
+    throw new Error(
+      `🚨 CHANGELOG.md had ${String(previousCount)} entries and now reads as having ` +
+        `${String(count)}: the release would not add exactly one`
+    )
+  }
 }

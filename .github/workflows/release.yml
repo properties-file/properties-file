@@ -8,9 +8,8 @@ on:
   push:
     tags: ['v[0-9]+.[0-9]+.[0-9]+']
 
-# One release at a time, in the order the tags were pushed: a running release is never
-# cancelled, and `queue: max` keeps every waiting one (by default only the latest would be
-# kept).
+# One release at a time: a running release is never cancelled, and `queue: max` keeps every
+# waiting one (by default only the latest would be kept).
 concurrency:
   group: release
   cancel-in-progress: false
@@ -175,11 +174,19 @@ jobs:
             echo "::notice::$NAME@$VERSION is already on npm, not staging it again."
             exit 0
           fi
-          if ! npm stage publish "release/$NAME-$VERSION.tgz" --ignore-scripts --loglevel verbose 2>&1 | tee stage.log; then
-            echo "::error::npm did not stage $NAME@$VERSION. A version can only be staged once: if an earlier attempt of this job staged it, it is waiting for approval on npmjs.com."
+          # With its leading "./": npm takes "release/<file>" for the GitHub repository of a
+          # user named "release", and would fetch that instead of the file.
+          archive="./release/$NAME-$VERSION.tgz"
+          if ! npm stage publish "$archive" --ignore-scripts --loglevel verbose 2>&1 | tee stage.log; then
+            echo "::error::npm did not stage $NAME@$VERSION: the log of this step says why. \`npm stage list $NAME\` shows whether the version is already staged; see \"When a run fails\" in docs/CONTRIBUTING.md."
             exit 1
           fi
-          stage_id="$(sed -n 's/.*(staged with id \([0-9a-f-]*\)).*/\1/p' stage.log | tail -n 1)"
+          if ! grep --quiet --fixed-strings "+ $NAME@$VERSION (staged" stage.log; then
+            echo "::error::npm staged something, but not $NAME@$VERSION: see the log of this step, and reject what was staged."
+            exit 1
+          fi
+          stage_id="$(sed -n 's/.*(staged with id \([0-9a-fA-F-]*\)).*/\1/p' stage.log | tail -n 1)"
+          shasum="$(sha1sum "$archive" | cut -d ' ' -f 1)"
           {
             echo "### $NAME@$VERSION is staged on npm: it is not public yet"
             echo
@@ -188,10 +195,12 @@ jobs:
             echo "- on npmjs.com, in the **Staged Packages** tab (the staged files can be inspected there), or"
             echo "- with \`npm stage approve ${stage_id:-<stage-id>}\` (\`npm stage list $NAME\` lists what is staged)."
             echo
+            echo "**Before approving, check that the staged version is the one this run built:** its shasum must be \`$shasum\` (npm shows it next to the staged version, and so does \`npm stage view ${stage_id:-<stage-id>}\`)."
+            echo
             echo "\`npm view $NAME@$VERSION version\` prints the version once it is public."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Skipped when the release already exists, for the same reason.
+      # Skipped when the release already exists, so that the job can be run again.
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

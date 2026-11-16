@@ -172,18 +172,23 @@ Two things about the command are there to prevent mistakes:
 - **The notes are read from the standard input**, as a heredoc whose delimiter is quoted
   (`<<'NOTES'`). The shell then leaves the text alone, where backticks or a `$` inside a quoted
   argument would be run as commands, and no file is left behind to be committed by mistake.
+  A line of the notes that is exactly `NOTES` would end them early: use another word then.
 
 ### The brief
 
 `npm run release -- brief` prints, for whoever writes the notes:
 
-1. the commits made since the tag of the current version (merge commits left out);
+1. the commits made since the tag of the current version (merge commits left out): those that
+   change the source of the package (`src/`, without `src/build-scripts/`), then the others;
 2. the files of the package that differ from the version on npm, after building the package
-   (`npm run build-artifacts`). Of `package.json`, the version and the development dependencies
-   are not compared: they do not reach those who install the package;
+   (`npm run build-artifacts`), and where both packages are kept so that a difference can be
+   looked at. What says nothing to those who install the package is not compared: line
+   endings, and in `package.json` the version, the development dependencies and the scripts
+   that do not run at install;
 3. the release notes guidelines.
 
-It changes no tracked file.
+It changes no tracked file. It builds the package from the working tree, and says so when
+the working tree has uncommitted changes.
 
 ### The release
 
@@ -199,9 +204,13 @@ It changes no tracked file.
    and goes on.
 4. Bumps the version in `package.json` and `package-lock.json`.
 5. Adds the version's entry to `CHANGELOG.md`: a heading with the compare link and the date
-   (UTC), then the notes as they were given.
+   (UTC), then the notes as they were given. Prettier then formats the file, as it does for
+   every other.
 6. Commits the three files as `🔖 release v<version>`, creates the annotated `v<version>` tag,
    and pushes the branch and the tag together, and nothing else.
+
+A dry run reports these steps without running the build or comparing the package (steps 2 and
+3): it says so when it ends, with what to do next.
 
 If a step fails before the commit, the three files are restored. If the tag or the push fails,
 the error says how to retry or undo. When it succeeds, the command ends by saying what happens
@@ -224,25 +233,39 @@ next and who has to do it.
 ### Approving a version
 
 A staged version is on npm but not public: nobody can install it. The summary of the workflow
-run says that it is waiting, and how to approve it. A maintainer of the package approves it
-with two-factor authentication:
+run says that it is waiting, gives its stage id and the shasum of the archive the run built. A
+maintainer of the package:
 
-- on npmjs.com, in the **Staged Packages** tab, where the staged files can be inspected; or
-- with `npm stage approve <stage-id>` (the summary of the run gives the id, and so does
-  `npm stage list properties-file`).
+1. **Checks that what is staged is what the run built**: the shasum npm shows for the staged
+   version, on npmjs.com (the **Staged Packages** tab) or with `npm stage view <stage-id>`,
+   must be the one in the summary of the run. Staging takes no two-factor authentication, so
+   this check is what ties the approval to the release that was reviewed.
+2. **Approves it** with two-factor authentication, on npmjs.com or with
+   `npm stage approve <stage-id>`.
 
-`npm view properties-file@<version> version` prints the version once it is public. A staged
-version that should not be published is rejected in the same two places
-(`npm stage reject <stage-id>`). The GitHub release is created when the version is staged, so
-it can be there a little before the version is public.
+`npm stage list properties-file` lists what is staged. `npm view properties-file@<version>
+version` prints the version once it is public. The GitHub release is created when the version
+is staged, so it can be there a little before the version is public.
 
 An agent that ran the release tells the maintainer when the version is waiting for them, and
 checks afterwards that it is public.
 
+A staged version that should not be published is rejected in the same two places
+(`npm stage reject <stage-id>`). It is then neither staged nor public, and three things are
+left to clean up:
+
+1. delete the workflow run that staged it (its jobs could otherwise be re-run, and would stage
+   it again);
+2. delete the GitHub release the run created (`gh release delete v<version>`);
+3. fix what was wrong on `main`, then move the version's tag to the fixed commit, as described
+   below. The new run stages the version again and creates its GitHub release again.
+
 ### When a run fails
 
-What to do depends on its cause and on whether the version reached npm (in the Publish job,
-the version is staged first, then the GitHub release is created):
+What to do depends on its cause and on whether the version reached npm
+(`npm stage list properties-file` says whether it is staged, `npm view
+properties-file@<version> version` whether it is public). In the Publish job, the version is
+staged first, then the GitHub release is created.
 
 - **The cause is outside the repository** (the trusted publisher is not set up, npm or GitHub
   is unavailable): fix it and re-run the failed jobs from the Actions tab, which GitHub allows
@@ -252,13 +275,17 @@ the version is staged first, then the GitHub release is created):
   cannot fix it, because it runs the tagged commit again, workflow file included. If the
   version is neither staged nor public, publish it from a fixed commit, as described below.
 
-A version can only be staged once. If the run failed after staging it (the GitHub release
-could not be created), a re-run fails at the staging step: leave the tag where it is, and
-create the GitHub release by hand, from a checkout of the tag:
+A version can only be staged once. If the run staged the version and then failed (the GitHub
+release could not be created), a re-run fails at the staging step. Leave the tag where it is,
+and create the GitHub release by hand, from a checkout of the tag:
 
 ```bash
-npx tsx release/notes.ts <version> | gh release create v<version> --verify-tag --title "Release <version>" --notes-file -
+npx tsx release/notes.ts <version> > notes.md && gh release create v<version> --verify-tag --title "Release <version>" --notes-file notes.md
 ```
+
+If the staging step fails although this run did not stage the version, something else did:
+do not approve what is staged before knowing what it is (see
+[Approving a version](#approving-a-version)).
 
 To publish a version that failed from a fixed commit:
 
@@ -322,8 +349,11 @@ Set up, in this order:
    authentication and disallow tokens. npm then refuses a publish made with an npm token;
    trusted publishing and approving a staged version keep working.
 
-With all four in place, nothing becomes public without a maintainer's two-factor approval, and
-staging a version takes the right to push a `v*` tag. Whatever is on `main` goes into the next
+With all four in place, nothing becomes public without a maintainer's two-factor approval,
+and the workflow can only be made to stage a version by pushing a `v*` tag. That is not the
+only way to stage one, though: staging takes no two-factor authentication, so an npm session
+or token of a maintainer can do it too. This is why the shasum is checked before approving
+(see [Approving a version](#approving-a-version)). Whatever is on `main` goes into the next
 release, so write access to `main` is trusted as well: protect the branch if more people get
 that access. Each release also shows as a deployment to `npm` on the repository's page.
 
