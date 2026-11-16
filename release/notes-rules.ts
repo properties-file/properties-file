@@ -254,14 +254,18 @@ export const findNotesProblems = (
       return
     }
 
-    // A section with nothing in it is to remove, whatever release it goes with.
+    // A section with nothing in it is to remove; one that does not go with the release
+    // either is not told to get an item.
     for (const levelProblem of section.levelProblems) {
       problems.splice(problems.indexOf(levelProblem), 1)
     }
     problems.push({
       lineNumber: section.lineNumber,
       line: section.line,
-      message: 'This section has no item. Give it at least one ("- …"), or leave the section out.',
+      message:
+        section.levelProblems.length > 0
+          ? `This section has no item, and the notes of ${context.version} could not have it: leave the section out.`
+          : 'This section has no item. Give it at least one ("- …"), or leave the section out.',
     })
   }
 

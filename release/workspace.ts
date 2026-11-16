@@ -91,6 +91,9 @@ export const createWorkspace = (directoryPath: string, environment: Environment)
 export const formatCommand = (command: string, commandArguments: string[]): string =>
   [command, ...commandArguments].map((part) => (part.includes(' ') ? `"${part}"` : part)).join(' ')
 
+/** How much a command can print before it is stopped: enough for any changelog, rendered. */
+const MAXIMUM_OUTPUT_LENGTH = 512 * 1024 * 1024
+
 /**
  * Run a command and wait for it.
  *
@@ -116,6 +119,9 @@ export const runCommand = (
     env: workspace.environment,
     encoding: 'utf8',
     input,
+    // A changelog is rendered and formatted through these commands: more than the megabyte a
+    // command can print by default.
+    maxBuffer: MAXIMUM_OUTPUT_LENGTH,
     stdio: [input === undefined ? 'ignore' : 'pipe', outputMode, outputMode],
   })
   const isSuccess = result.error === undefined && result.status === 0

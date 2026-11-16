@@ -41,6 +41,9 @@ const REGEX_HTML_START = /(?<!\\)<(?:\?|![A-Z[-])/i
 const REGEX_LINK_DEFINITION =
   /^(?:[\t >]|[*+-][\t ]|\d+[.)][\t ])*(?:\[\^(?:\\.|[^\]\\])+\]:|\[[^\]]+\]:[\t ]*(?:(?:<[^>]*>|[^\t ]+)(?:[\t ]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[\t ]*)?$)/
 
+/** Matches a footnote, which GitHub adds to Markdown: its reference or its definition. */
+const REGEX_FOOTNOTE = /(?<!\\)\[\^[^\]\s][^\]]*\]/
+
 /** Matches a line that ends with what opens a fenced code block: backticks and a language. */
 const REGEX_TRAILING_CODE_FENCE = /`{3,}[\w+-]*[\t ]*$/
 
@@ -133,7 +136,10 @@ export const resolveNextVersion = (currentVersion: string, request: string): str
   }
   if (!isReleaseVersion(request)) {
     throw new Error(
-      `🚨 "${request}" is not "major", "minor", "patch" or a plain major.minor.patch version`
+      `🚨 "${request}" is not "major", "minor", "patch" or a plain major.minor.patch version` +
+        (isReleaseVersion(request.replace(/^v/i, ''))
+          ? `: write it without its first letter, ${request.slice(1)}`
+          : '')
     )
   }
   if (compareVersions(request, currentVersion) <= 0) {
@@ -493,6 +499,18 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
       'entries. Write the link where it is used: [text](url).'
     )
   }
+  // A footnote: no parser used here knows them, and GitHub numbers those of the whole
+  // changelog together, whatever entry they are in.
+  const footnoteIndex = textLines.findIndex((line) => REGEX_FOOTNOTE.test(line))
+  if (footnoteIndex !== -1) {
+    return (
+      `🚨 the release notes have a footnote (line ${String(footnoteIndex + 1)}: ${lines[footnoteIndex]}): ` +
+      'GitHub numbers the footnotes of the whole changelog together, so one in the notes ' +
+      'changes those of the older entries, and it is not rendered in the release. Write what ' +
+      'it says in the item itself, or put it in backticks if it is code (part of a regular ' +
+      'expression, for instance).'
+    )
+  }
   // What only a parser can tell: an entry heading that is not written like the others
   // (indented, underlined), which formatting would make one of them, and HTML, which Markdown
   // copies as it is and which can take in everything after it.
@@ -615,6 +633,19 @@ export const renderChangelogEntry = (input: ChangelogEntryInput): string => {
  */
 const findVersionHeadings = (lines: string[]): number[] =>
   lines.flatMap((line, index) => (REGEX_VERSION_HEADING.test(line) ? index : []))
+
+/**
+ * Read what a `CHANGELOG.md` has before its entries: its title, and what it says of itself.
+ *
+ * @param changelog - The content of `CHANGELOG.md`.
+ *
+ * @returns Its content up to the heading of its first entry, or all of it when it has none.
+ */
+export const readChangelogTitle = (changelog: string): string => {
+  const lines = changelog.split(/\r?\n/)
+  const firstHeadingIndex = findVersionHeadings(lines).at(0)
+  return firstHeadingIndex === undefined ? changelog : lines.slice(0, firstHeadingIndex).join('\n')
+}
 
 /**
  * Check whether a `CHANGELOG.md` line is the heading of a given version's entry.

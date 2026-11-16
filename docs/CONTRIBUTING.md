@@ -160,6 +160,7 @@ npm run release -- patch --confirm <<'NOTES'
 NOTES
 ```
 
+The `- …` and `…` above stand for the notes: the command refuses them as they are.
 `patch` can be `minor`, `major`, or an explicit version such as `5.1.0`. The pushed tag then
 starts the release workflow, which stages the version on npm, and **the version becomes public
 when a maintainer approves it there** (see [Approving a version](#approving-a-version)).
@@ -214,7 +215,8 @@ Three things about the command are there to prevent mistakes:
     a line indented less than that one (Markdown ends the block there), and cannot open on
     the line of its item;
   - a line that defines a link for the whole file (`[label]: url`) is refused: it would change
-    every `[label]` of the older entries. Links are written where they are used;
+    every `[label]` of the older entries. Links are written where they are used. A footnote
+    (`[^1]`) is refused too: GitHub numbers those of the whole changelog together;
   - and with the entry added, the older entries of `CHANGELOG.md` have to be read by the
     parser exactly as they were, in the file as it is and as prettier formats it. A dry run
     formats it in memory to check this; a release checks it before its build, and again on
@@ -282,7 +284,8 @@ next and who has to do it.
   `README.md` is tolerated (its size badge is measured again), and packed as it was tagged.
   This job cannot publish anything.
 - **Publish** runs once both pass: it stages the packed archive on npm, then creates the
-  GitHub release, with the version's `CHANGELOG.md` entry as its notes. It is the only job
+  GitHub release, with the version's `CHANGELOG.md` entry as its notes, followed by a "Full
+  changelog" link made from the heading of the entry. It is the only job
   allowed to do so, and nothing from the repository or its dependencies runs in it.
 
 ### Approving a version

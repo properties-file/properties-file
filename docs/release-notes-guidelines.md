@@ -78,7 +78,8 @@ Format:
 - No HTML: write Markdown, and put code in backticks, a type such as `Promise<string>`
   included (outside backticks, Markdown reads it as a tag and it disappears).
 - Links are written where they are used, `[text](url)`, not defined on a line of their own
-  (`[label]: url`).
+  (`[label]: url`), and there are no footnotes (`[^1]`): GitHub numbers those of the whole
+  changelog together.
 - Code in a block is formatted by prettier with the rest of the changelog when the block names
   a language it knows (`js`, `ts`, `json`…): the preview shows the notes as given, and the
   changelog can lay the code out differently.

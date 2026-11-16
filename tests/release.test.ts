@@ -184,6 +184,10 @@ describe('release versions', () => {
         `"${request}" is not "major", "minor", "patch" or a plain major.minor.patch version`
       )
     }
+    // A version written like the tag of a release is told how to write it.
+    expect(() => resolveNextVersion('1.2.3', 'v1.2.4')).toThrow(
+      '🚨 "v1.2.4" is not "major", "minor", "patch" or a plain major.minor.patch version: write it without its first letter, 1.2.4'
+    )
   })
 
   it('rejects a current version that is not a plain version', () => {
@@ -2245,6 +2249,14 @@ describe('what release notes can do to the changelog', () => {
       )
     }
 
+    // A footnote, which GitHub numbers with those of the older entries: its definition is
+    // found as one, and its reference too.
+    for (const footnote of ['- A fix[^1].', '- A fix [^note] and more.', '[^1] : spaced']) {
+      expect(() => normalizeReleaseNotes(`- One.\n\n${footnote}`)).toThrow(
+        `🚨 the release notes have a footnote (line 3: ${footnote}): GitHub numbers the footnotes of the whole changelog together, so one in the notes changes those of the older entries, and it is not rendered in the release. Write what it says in the item itself, or put it in backticks if it is code (part of a regular expression, for instance).`
+      )
+    }
+
     // A label on more than one line, which only the parser finds.
     for (const definition of [
       '[\nthing]: https://example.com',
@@ -2257,7 +2269,7 @@ describe('what release notes can do to the changelog', () => {
 
     // Brackets and a colon followed by a sentence are text.
     const notes =
-      '- A [link](https://example.com), a [word]: and `[x]: y` in code.\n- [options]: the object passed to `getProperties`.'
+      '- A [link](https://example.com), a [word]: and `[x]: y` in code.\n- [options]: the object passed to `getProperties`, and `[^a-z]` in code.'
 
     expect(normalizeReleaseNotes(notes)).toBe(notes)
   })
@@ -2303,6 +2315,21 @@ describe('what release notes can do to the changelog', () => {
       ).toBe(
         '🚨 the release notes have something Markdown reads as HTML, in a way that only rendering them shows: Markdown copies it as it is, and a tag or a comment that is left open would take in the rest of the changelog. Look for a "<" outside backticks, or in a code block that ends sooner than it seems to (a line that closes it, written another way), and put the code in backticks or remove it.'
       )
+
+      // The older entries have to be the end of what is rendered, not only a part of it, and
+      // to be the same from their first characters.
+      expect(
+        findRenderingHazard(workspace, NOTES, previousChangelog, [
+          `${withNotes(NOTES)}\n- An item after the older entries.\n`,
+        ])
+      ).toContain('the older entries of CHANGELOG.md would not render as they do now')
+      const olderLink = `${REPOSITORY_URL}/compare/v1.2.2`
+      const changedOlderLink = withNotes(NOTES).replace(olderLink, () => olderLink.toUpperCase())
+
+      expect(changedOlderLink).not.toBe(withNotes(NOTES))
+      expect(
+        findRenderingHazard(workspace, NOTES, previousChangelog, [changedOlderLink])
+      ).toContain('the older entries of CHANGELOG.md would not render as they do now')
 
       // A release, dry run or not, refuses what only rendering shows: here a comment after a
       // line that closes the code block for Markdown, and not for the other checks.
@@ -2578,7 +2605,9 @@ describe('release notes rules', () => {
       `11: ${placeholder}`,
     ])
     // A section that is empty is only said to be, whatever release it goes with.
-    expect(problemsOf('### Features\n\n### Bug Fixes\n\n- One.')).toStrictEqual([`1: ${NO_ITEM}`])
+    expect(problemsOf('### Features\n\n### Bug Fixes\n\n- One.')).toStrictEqual([
+      '1: This section has no item, and the notes of 1.2.4 could not have it: leave the section out.',
+    ])
     // Other words that stand for nothing to say.
     expect(
       problemsOf('### Bug Fixes\n\n- None\n- N/A.\n- WIP\n- [description]\n- -\n- XXX')

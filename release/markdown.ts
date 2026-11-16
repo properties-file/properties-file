@@ -8,6 +8,7 @@
  * `micromark` is an ES module, which the tests of this repository cannot load in their own
  * process: it is run in one of its own, like `git`, `npm` and `prettier`.
  */
+import { readChangelogTitle } from './changelog'
 import { runCommand } from './workspace'
 
 import type { Workspace } from './workspace'
@@ -65,7 +66,7 @@ const renderMarkdown = (workspace: Workspace, texts: string[]): Rendering[] => {
   const renderings: unknown = result.isSuccess ? JSON.parse(result.output) : undefined
   if (!Array.isArray(renderings) || renderings.some((rendering) => !isRenderedPair(rendering))) {
     throw new Error(
-      `🚨 the release could not render Markdown to check its notes: ${result.failure}\n` +
+      `🚨 the release could not render Markdown to check its notes: ${result.failure.replace(RENDER_SCRIPT, '<a script that renders Markdown>')}\n` +
         '   It does so with micromark, a development dependency: install the dependencies ' +
         '(`npm ci`), or add it (`npm install --save-dev micromark`), then run this again.'
     )
@@ -79,14 +80,21 @@ const renderMarkdown = (workspace: Workspace, texts: string[]): Rendering[] => {
  * Check that a changelog renders its older entries as before, now that it has one more.
  *
  * @param previousHtml - The changelog before the release, rendered.
+ * @param titleHtml - What that changelog has before its entries, rendered.
  * @param html - The changelog with the entry of the release, rendered.
  *
- * @returns `true` if everything the changelog rendered after the place of the new entry is
- *   still what it renders last.
+ * @returns `true` if everything the changelog rendered after its title, its entries, is still
+ *   what it renders last.
  */
-const hasSameOlderEntries = (previousHtml: string, html: string): boolean => {
-  // What comes before the new entry is what both start with; the rest of the changelog as it
-  // was is its older entries.
+const hasSameOlderEntries = (previousHtml: string, titleHtml: string, html: string): boolean => {
+  // Without the end of the last line, which a text that ends without one does not render.
+  const title = titleHtml.trimEnd()
+  if (previousHtml.startsWith(title)) {
+    return html.trimEnd().endsWith(previousHtml.slice(title.length).trim())
+  }
+  // A title that does not render the same by itself (it defines links the entries use): the
+  // older entries are then what the changelog has after what it shares with the new one,
+  // which leaves out the first characters of their first heading.
   let sharedLength = 0
   while (
     sharedLength < previousHtml.length &&
@@ -94,7 +102,6 @@ const hasSameOlderEntries = (previousHtml: string, html: string): boolean => {
   ) {
     sharedLength++
   }
-  // Without the end of the last line, which a text that ends without one does not render.
   return html.trimEnd().endsWith(previousHtml.slice(sharedLength).trimEnd())
 }
 
@@ -118,11 +125,10 @@ export const findRenderingHazard = (
   previousChangelog: string,
   changelogs: string[]
 ): string | undefined => {
-  const [renderedNotes, renderedPrevious, ...renderedChangelogs] = renderMarkdown(workspace, [
-    notes,
-    previousChangelog,
-    ...changelogs,
-  ])
+  const [renderedNotes, renderedPrevious, renderedTitle, ...renderedChangelogs] = renderMarkdown(
+    workspace,
+    [notes, previousChangelog, readChangelogTitle(previousChangelog), ...changelogs]
+  )
   if (renderedNotes.html !== renderedNotes.safeHtml) {
     return (
       '🚨 the release notes have something Markdown reads as HTML, in a way that only ' +
@@ -134,7 +140,7 @@ export const findRenderingHazard = (
   }
   if (
     renderedChangelogs.some(
-      (rendered) => !hasSameOlderEntries(renderedPrevious.html, rendered.html)
+      (rendered) => !hasSameOlderEntries(renderedPrevious.html, renderedTitle.html, rendered.html)
     )
   ) {
     return (

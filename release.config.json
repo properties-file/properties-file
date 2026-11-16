@@ -36,7 +36,9 @@
       "New Features": "Features",
       "Fixed": "Bug Fixes",
       "Fixes": "Bug Fixes",
+      "Bugfix": "Bug Fixes",
       "Bugfixes": "Bug Fixes",
+      "Bug Fix": "Bug Fixes",
       "Performance Improvements": "Performance"
     }
   }
