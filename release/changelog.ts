@@ -44,8 +44,11 @@ const REGEX_LINK_DEFINITION =
 /** Matches a footnote, which GitHub adds to Markdown: its reference or its definition. */
 const REGEX_FOOTNOTE = /(?<!\\)\[\^[^\]\s][^\]]*\]/
 
+/** Matches the start of the text of a footnote, anywhere in a line: `[^label]:`. */
+const REGEX_FOOTNOTE_TEXT = /\[\^[^\]\s][^\]]*\]:/
+
 /** Matches the definition of a footnote, at the beginning of a line of a file. */
-const REGEX_FOOTNOTE_DEFINITION = /^(?:[\t >]|[*+-][\t ]|\d+[.)][\t ])*\[\^[^\]]+\]:/m
+const REGEX_FOOTNOTE_DEFINITION = /^(?:[\t >]|[*+-][\t ]|\d+[.)][\t ])*\[\^[^\]]+\]:/
 
 /** Matches a caret, as it is or as one of the entities Markdown reads as one. */
 const REGEX_CARET = /\^|&#0*94;|&#x0*5e;|&Hat;/i
@@ -202,7 +205,8 @@ const getIndentation = (line: string): number => {
 /**
  * Tell which lines of a Markdown text open, are in, or close a fenced code block. A block is
  * only closed by a fence of the character that opened it, at least as long, with nothing
- * after it and indented like it, which is stricter than Markdown; without one it goes on to
+ * after it and indented at least like it, which closes a block wherever Markdown could (what
+ * follows is then checked as text, not skipped as code); without one it goes on to
  * the end of the text. Only spaces and tabs indent a line.
  *
  * @param lines - The lines of the text.
@@ -229,12 +233,7 @@ export const readCodeBlockLines = (lines: string[]): CodeBlockLine[] => {
       }
     } else if (line.trim() !== '' && indentation < opening.indentation) {
       codeBlockLines.push('escaped')
-    } else if (
-      marker !== undefined &&
-      marker.startsWith(opening.marker) &&
-      rest.trim() === '' &&
-      indentation === opening.indentation
-    ) {
+    } else if (marker !== undefined && marker.startsWith(opening.marker) && rest.trim() === '') {
       opening = undefined
       codeBlockLines.push('closing')
     } else {
@@ -369,19 +368,22 @@ export const findFootnoteHazard = (
   normalizedNotes: string,
   previousChangelog: string
 ): string | undefined => {
-  if (!REGEX_FOOTNOTE_DEFINITION.test(previousChangelog)) {
+  const changelogLines = previousChangelog.split(/\r?\n/)
+  const footnoteIndex = changelogLines.findIndex((line) => REGEX_FOOTNOTE_DEFINITION.test(line))
+  if (footnoteIndex === -1) {
     return undefined
   }
   const lines = normalizedNotes.split('\n')
   const caretIndex = lines.findIndex((line) => REGEX_CARET.test(line))
   return caretIndex === -1
     ? undefined
-    : `🚨 CHANGELOG.md has footnotes ("[^label]: ${String.fromCodePoint(0x2026)}"), and the release notes have a caret (line ${String(caretIndex + 1)}: ` +
-        `${lines[caretIndex]}). GitHub numbers the footnotes of the whole file together and reads ` +
-        'a "[^label]" in more spellings than can be told from the text, so a caret in the notes ' +
-        'could change the footnotes of the older entries. Write that part of the notes without ' +
-        'a "^" (in words, or with another example), or take the footnotes out of CHANGELOG.md ' +
-        'in a commit of its own first.'
+    : `🚨 CHANGELOG.md has the text of a footnote (its line ${String(footnoteIndex + 1)}: ${changelogLines[footnoteIndex]}), ` +
+        `and the release notes have a caret (line ${String(caretIndex + 1)}: ${lines[caretIndex]}). ` +
+        'GitHub numbers the footnotes of the whole file together and reads a "[^label]" in ' +
+        'more spellings than can be told from the text, so a caret in the notes could change ' +
+        'the footnotes of the older entries. Write that part of the notes without a "^" (in ' +
+        'words, or with another example), or take that line out of CHANGELOG.md in a commit ' +
+        'of its own first (it counts even when it is an example in a code block).'
 }
 
 /**
@@ -440,6 +442,13 @@ const findCodeBlockHazard = (lines: string[]): string | undefined => {
       : // With a backtick after the fence, the line has inline code, not the start of a block.
         !line.slice(fence.length).includes('`')
   })
+  if (itemFenceIndex !== -1 && /^[\t ]*>/.test(lines[itemFenceIndex])) {
+    return (
+      `🚨 the release notes have a code block in a quote (line ${String(itemFenceIndex + 1)}: ` +
+      `${lines[itemFenceIndex]}), which this release cannot check. Take the block out of the ` +
+      'quote: put it under a list item, indented like the text of the item.'
+    )
+  }
   if (itemFenceIndex !== -1) {
     return (
       `🚨 the release notes open a code block on a line that has something else, the start of a list item or its text (line ${String(itemFenceIndex + 1)}: ` +
@@ -541,7 +550,11 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
   // changelog together, whatever entry they are in. Every line that has one is named: a
   // reference and its definition go together.
   const footnotePlaces = lines.flatMap((line, index) =>
-    REGEX_FOOTNOTE.test(textLines[index]) ? `line ${String(index + 1)}: ${line}` : []
+    // The text of a footnote is looked for in code too: where code ends is not read in the
+    // same way by everything that reads Markdown, and GitHub is what counts for footnotes.
+    REGEX_FOOTNOTE.test(textLines[index]) || REGEX_FOOTNOTE_TEXT.test(line)
+      ? `line ${String(index + 1)}: ${line}`
+      : []
   )
   if (footnotePlaces.length > 0) {
     return (
@@ -549,15 +562,21 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
       'footnotes of the whole changelog together, so one in the notes changes those of the ' +
       'older entries, and it is not rendered in the release. Write what it says in the item ' +
       'itself and take out both its mark and its text, or put it in backticks if it is code ' +
-      '(part of a regular expression, for instance).'
+      '(part of a regular expression, for instance). A line with "[^label]:" is refused in ' +
+      'code too: write that example in another way.'
     )
   }
   const definitionIndex = textLines.findIndex((line) => REGEX_LINK_DEFINITION.test(line))
   if (definitionIndex !== -1) {
+    // With the links that use it, which are to write in another way too: one run says both.
+    const referencePlaces = lines.flatMap((line, index) =>
+      REGEX_LINK_REFERENCE.test(textLines[index]) ? `line ${String(index + 1)}: ${line}` : []
+    )
     return (
       `🚨 the release notes define a link for the whole changelog (line ${String(definitionIndex + 1)}: ` +
       `${lines[definitionIndex]}): a line "[label]: url" changes every "[label]" of the older ` +
-      'entries. Write the link where it is used: [text](url).'
+      'entries. Write the link where it is used: [text](url).' +
+      (referencePlaces.length === 0 ? '' : ` That is here: ${referencePlaces.join('; ')}.`)
     )
   }
   // A link by reference, whose definition the notes cannot have: it would use one of the

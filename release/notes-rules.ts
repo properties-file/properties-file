@@ -373,6 +373,8 @@ export const findNotesProblems = (
     const writtenTitle = (heading === undefined ? line.replace(/^#+/, '') : title)
       .trim()
       .replace(REGEX_HEADING_ENDING, '')
+      // Without the sign some tools put before a title.
+      .replace(/^[^\p{L}\p{N}[]+/u, '')
       .toLowerCase()
     const closestSection =
       rules.sections.find((name) => name.toLowerCase() === writtenTitle) ??

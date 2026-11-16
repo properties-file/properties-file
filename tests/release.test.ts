@@ -42,7 +42,7 @@ import {
   renderChangelogEntry,
   resolveNextVersion,
 } from '../release/changelog'
-import { findRenderingHazard } from '../release/markdown'
+import * as markdown from '../release/markdown'
 import {
   describeNotesProblems,
   findNotesProblems,
@@ -2124,8 +2124,16 @@ describe('what release notes can do to the changelog', () => {
       'opening',
       'escaped',
       'content',
+      // Closed wherever Markdown could close it, further in and before a tab too: what
+      // follows is then read as text.
+      'closing',
+      'opening',
+    ])
+    expect(readCodeBlockLines(['  ~~~', '  x', '     ~~~~\t', '  text'])).toStrictEqual([
+      'opening',
       'content',
       'closing',
+      'outside',
     ])
     // A tab indents as far as the next multiple of four columns.
     expect(readCodeBlockLines([' \t```', '    code', '  less', '\t```'])).toStrictEqual([
@@ -2255,12 +2263,37 @@ describe('what release notes can do to the changelog', () => {
       String.raw`[^a\]b]: Two words.`,
     ]) {
       expect(() => normalizeReleaseNotes(`- One.\n\n${footnote}`)).toThrow(
-        `🚨 the release notes have a footnote (line 3: ${footnote}): GitHub numbers the footnotes of the whole changelog together, so one in the notes changes those of the older entries, and it is not rendered in the release. Write what it says in the item itself and take out both its mark and its text, or put it in backticks if it is code (part of a regular expression, for instance).`
+        `🚨 the release notes have a footnote (line 3: ${footnote}): GitHub numbers the footnotes of the whole changelog together, so one in the notes changes those of the older entries, and it is not rendered in the release. Write what it says in the item itself and take out both its mark and its text, or put it in backticks if it is code (part of a regular expression, for instance). A line with "[^label]:" is refused in code too: write that example in another way.`
       )
     }
+    // The text of a footnote is refused in code too, and after a line that closes a block
+    // for Markdown: what is code is not read in the same way by everything.
+    for (const notes of [
+      '- One:\n\n  ```\n  [^abc]: text\n  ```',
+      '- One:\n\n  ```\n  code\n    ```\n  [^abc]: text\n  ```',
+      '- One `[^abc]: text`.',
+    ]) {
+      expect(() => normalizeReleaseNotes(notes)).toThrow(
+        /the release notes have (?:a footnote|a code block that is never closed)/
+      )
+    }
+    expect(() => normalizeReleaseNotes('- One:\n\n  ```\n  [^abc]: text\n  ```')).toThrow(
+      'A line with "[^label]:" is refused in code too: write that example in another way.'
+    )
+    // A code block in a quote is not something the checks follow.
+    expect(() => normalizeReleaseNotes('> Example:\n>\n> ```js\n> const a = 1\n> ```')).toThrow(
+      '🚨 the release notes have a code block in a quote (line 3: > ```js), which this release cannot check. Take the block out of the quote: put it under a list item, indented like the text of the item.'
+    )
+
     // The mark and the text of a footnote are named together.
     expect(() => normalizeReleaseNotes('- A fix.[^1]\n\n  [^1]: On every engine.')).toThrow(
       '🚨 the release notes have a footnote (line 1: - A fix.[^1]; line 3:   [^1]: On every engine.): '
+    )
+    // A definition is named with the links that use it.
+    expect(() =>
+      normalizeReleaseNotes('- See [the docs][docs].\n\n[docs]: https://example.com')
+    ).toThrow(
+      '🚨 the release notes define a link for the whole changelog (line 3: [docs]: https://example.com): a line "[label]: url" changes every "[label]" of the older entries. Write the link where it is used: [text](url). That is here: line 1: - See [the docs][docs]..'
     )
     // A link by reference could only be defined on a line the notes cannot have.
     for (const reference of ['- See [the docs][docs].', '- See [the docs][].']) {
@@ -2315,15 +2348,19 @@ describe('what release notes can do to the changelog', () => {
       const hiddenComment = '- One:\n\n  ```\n  x\n   ```\t\n  <!-- hidden\n  ```'
 
       expect(
-        findRenderingHazard(workspace, NOTES, previousChangelog, [withNotes(NOTES)])
+        markdown.findRenderingHazard(workspace, NOTES, previousChangelog, [withNotes(NOTES)])
       ).toBeUndefined()
       expect(
-        findRenderingHazard(workspace, definition, previousChangelog, [withNotes(definition)])
+        markdown.findRenderingHazard(workspace, definition, previousChangelog, [
+          withNotes(definition),
+        ])
       ).toBe(
         '🚨 with these release notes, the older entries of CHANGELOG.md would not render as they do now: the notes leave something open that takes them in, or change what they mean (a code block that is not closed, a list or a quote that goes on, a link definition "[label]: url", however it is written). Check that every code block of the notes is closed and indented under its item, that the notes end with a complete item, and that no line defines a link.'
       )
       expect(
-        findRenderingHazard(workspace, hiddenComment, previousChangelog, [withNotes(hiddenComment)])
+        markdown.findRenderingHazard(workspace, hiddenComment, previousChangelog, [
+          withNotes(hiddenComment),
+        ])
       ).toBe(
         '🚨 the release notes have something Markdown reads as HTML, in a way that only rendering them shows: Markdown copies it as it is, and a tag or a comment that is left open would take in the rest of the changelog. Look for a "<" outside backticks, or in a code block that ends sooner than it seems to (a line that closes it, written another way), and put the code in backticks or remove it.'
       )
@@ -2331,7 +2368,7 @@ describe('what release notes can do to the changelog', () => {
       // The older entries have to be the end of what is rendered, not only a part of it, and
       // to be the same from their first characters.
       expect(
-        findRenderingHazard(workspace, NOTES, previousChangelog, [
+        markdown.findRenderingHazard(workspace, NOTES, previousChangelog, [
           `${withNotes(NOTES)}\n- An item after the older entries.\n`,
         ])
       ).toContain('the older entries of CHANGELOG.md would not render as they do now')
@@ -2340,19 +2377,31 @@ describe('what release notes can do to the changelog', () => {
 
       expect(changedOlderLink).not.toBe(withNotes(NOTES))
       expect(
-        findRenderingHazard(workspace, NOTES, previousChangelog, [changedOlderLink])
+        markdown.findRenderingHazard(workspace, NOTES, previousChangelog, [changedOlderLink])
       ).toContain('the older entries of CHANGELOG.md would not render as they do now')
 
-      // A release, dry run or not, refuses what only rendering shows: here a comment after a
-      // line that closes the code block for Markdown, and not for the other checks.
+      // A release, dry run or not, asks the rendering last, with the changelog as it is
+      // written and as it is formatted, and stops on what it says.
       const repository = createRepository()
       const stateBefore = getState(repository)
+      const rendering = jest
+        .spyOn(markdown, 'findRenderingHazard')
+        .mockReturnValue('🚨 refused by the rendering')
 
       for (const isDryRun of [true, false]) {
-        expect(() => releaseIn(repository, 'patch', { isDryRun, notes: hiddenComment })).toThrow(
-          '🚨 the release notes have something Markdown reads as HTML, in a way that only rendering them shows'
+        expect(() => releaseIn(repository, 'patch', { isDryRun })).toThrow(
+          '🚨 refused by the rendering'
         )
       }
+
+      expect(rendering).toHaveBeenCalledTimes(2)
+      expect(rendering.mock.calls[0].slice(1, 3)).toStrictEqual([
+        NOTES.trimEnd(),
+        INITIAL_CHANGELOG,
+      ])
+      expect(rendering.mock.calls[0][3]).toHaveLength(2)
+
+      rendering.mockRestore()
 
       expect(getState(repository)).toStrictEqual(stateBefore)
     },
@@ -2458,11 +2507,23 @@ describe('what release notes can do to the changelog', () => {
       '- Fixed a bug \\`x [^note] ` here.',
       '- See [&#94;note] here.',
       String.raw`- See [\^note] here.`,
-      '- See [&Hat;note] and 2^8.',
+      '- See [&Hat;note].',
+      '- See [&#x5E;note].',
+      '- Now 2^8.',
     ]) {
       expect(findFootnoteHazard(notes, withFootnotes)).toBe(
-        `🚨 CHANGELOG.md has footnotes ("[^label]: …"), and the release notes have a caret (line 1: ${notes}). GitHub numbers the footnotes of the whole file together and reads a "[^label]" in more spellings than can be told from the text, so a caret in the notes could change the footnotes of the older entries. Write that part of the notes without a "^" (in words, or with another example), or take the footnotes out of CHANGELOG.md in a commit of its own first.`
+        `🚨 CHANGELOG.md has the text of a footnote (its line 7: [^note]: A footnote.), and the release notes have a caret (line 1: ${notes}). GitHub numbers the footnotes of the whole file together and reads a "[^label]" in more spellings than can be told from the text, so a caret in the notes could change the footnotes of the older entries. Write that part of the notes without a "^" (in words, or with another example), or take that line out of CHANGELOG.md in a commit of its own first (it counts even when it is an example in a code block).`
       )
+    }
+    // The footnote of the changelog can be under an item, or in a quote.
+    for (const footnote of [
+      '  [^1]: Under an item.',
+      '> [^1]: In a quote.',
+      '- [^1]: In an item.',
+    ]) {
+      expect(
+        findFootnoteHazard('- Now 2^8.', `${INITIAL_CHANGELOG}\n- Old[^1].\n\n${footnote}\n`)
+      ).toContain(`CHANGELOG.md has the text of a footnote (its line 7: ${footnote})`)
     }
 
     // Notes without a caret, and a changelog without footnotes.
@@ -2571,6 +2632,10 @@ describe('release notes rules', () => {
     expect(problemsOf('## BREAKING CHANGES\n\n- One.', MAJOR_RELEASE)).toStrictEqual([
       `1: ${WRONG_HEADING_START} Write it "### BREAKING CHANGES".`,
     ])
+    // With the sign some tools put before the title.
+    expect(
+      problemsOf(`### ${String.fromCodePoint(0x26a0)} BREAKING CHANGES\n\n- One.`, MAJOR_RELEASE)
+    ).toStrictEqual([`1: ${WRONG_HEADING_START} Write it "### BREAKING CHANGES".`])
   })
 
   it('refuse sections that are out of order or repeated', () => {

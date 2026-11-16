@@ -211,11 +211,12 @@ Three things about the command are there to prevent mistakes:
     comment left open takes in or hides everything after it. Code goes in backticks,
     including a type such as `Promise<string>`, which is read as a tag;
   - so is a heading in the form of an entry heading (`## [1.2.3](…)`), however it is written;
-  - a code block has to be closed by a line indented like the one that opens it, cannot have
-    a line indented less than that one (Markdown ends the block there), and cannot open on
-    the line of its item;
+  - a code block has to be closed, cannot have a line indented less than the line that opens
+    it (Markdown ends the block there), cannot open on the line of its item, and cannot be
+    in a quote. A line that closes a block for Markdown closes it for the checks, wherever
+    it is indented: what follows is read as text;
   - a line that defines a link for the whole file (`[label]: url`) is refused: it would change
-    every `[label]` of the older entries. Links are written where they are used. A footnote (`[^1]`) is refused too: GitHub numbers those of the whole changelog together. (In a changelog that already had footnotes, GitHub would read a reference to them in more spellings than a check can list: there, notes with a `^` at all are refused.)
+    every `[label]` of the older entries. Links are written where they are used. A footnote (`[^1]`) is refused too: GitHub numbers those of the whole changelog together. The text of a footnote, a line with `[^label]:`, is refused in code too, since GitHub decides what is code there. (In a changelog that already had footnotes, GitHub would read a reference to them in more spellings than a check can list: there, notes with a `^` at all are refused.)
     Links by reference (`[text][label]`) are refused with the definitions they would need;
   - and with the entry added, the older entries of `CHANGELOG.md` have to be read by the
     parser exactly as they were, in the file as it is and as prettier formats it. A dry run
