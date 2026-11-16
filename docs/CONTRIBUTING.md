@@ -215,6 +215,8 @@ Three things about the command are there to prevent mistakes:
     it (Markdown ends the block there), cannot open on the line of its item, and cannot be
     in a quote. A line that closes a block for Markdown closes it for the checks, wherever
     it is indented: what follows is read as text;
+  - a control character (one that does not show, such as a NUL from a copy and paste) is
+    refused: with some of them GitHub and git stop reading the file as text;
   - a line that defines a link for the whole file (`[label]: url`) is refused: it would change
     every `[label]` of the older entries. Links are written where they are used. A footnote (`[^1]`) is refused too: GitHub numbers those of the whole changelog together. The text of a footnote is refused in code too, since GitHub decides what is code there: any line that has `[^` and, further on, `]:`, whatever is between them. (In a changelog that already had footnotes, GitHub would read a reference to them in more spellings than a check can list: there, notes with a `^` at all are refused.)
     Links by reference (`[text][label]`) are refused with the definitions they would need;

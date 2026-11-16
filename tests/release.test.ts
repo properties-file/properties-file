@@ -2273,9 +2273,16 @@ describe('what release notes can do to the changelog', () => {
   })
 
   it('refuses notes that define a link, which would change the older entries', () => {
-    for (const definition of ['[thing]: https://example.com', '> [a b]: <x>']) {
+    for (const definition of [
+      '[thing]: https://example.com',
+      '> [a b]: <x>',
+      // Whatever follows the label: a title with quotes or a bracket that are escaped, or
+      // words that make the line no definition at all.
+      String.raw`[thing]: https://example.com (a"b'c\)d)`,
+      '- [options]: the object passed to the parser.',
+    ]) {
       expect(() => normalizeReleaseNotes(`- A fix.\n\n${definition}`)).toThrow(
-        `🚨 the release notes define a link for the whole changelog (line 3: ${definition}): a line "[label]: url" changes every "[label]" of the older entries. Write the link where it is used: [text](url).`
+        String.raw`🚨 the release notes define a link for the whole changelog (line 3: ${definition}): a line "[label]: url" changes every "[label]" of the older entries. Write the link where it is used: [text](url). A line that starts with words in brackets and is not meant as a link is to start in another way: the words in backticks, or "\[" for the bracket.`
       )
     }
 
@@ -2355,7 +2362,7 @@ describe('what release notes can do to the changelog', () => {
     expect(() =>
       normalizeReleaseNotes('- See [the docs][docs].\n\n[docs]: https://example.com')
     ).toThrow(
-      '🚨 the release notes define a link for the whole changelog (line 3: [docs]: https://example.com): a line "[label]: url" changes every "[label]" of the older entries. Write the link where it is used: [text](url). Where it is used: line 1: - See [the docs][docs].'
+      '🚨 the release notes define a link for the whole changelog (line 3: [docs]: https://example.com): a line "[label]: url" changes every "[label]" of the older entries. Write the link where it is used: [text](url). A line that starts with words in brackets and is not meant as a link is to start in another way: the words in backticks, or "\\[" for the bracket. Where it is used: line 1: - See [the docs][docs].'
     )
     // Each line is named for what it is: the text of a footnote is not also a definition.
     expect(() =>
@@ -2390,7 +2397,7 @@ describe('what release notes can do to the changelog', () => {
 
     // Brackets and a colon followed by a sentence are text.
     const notes =
-      '- A [link](https://example.com), a [word]: and `[x]: y` in code.\n- [options]: the object passed to `getProperties`, and `[^a-z]` and `matrix[0][1]` in code.'
+      '- A [link](https://example.com), a [word]: and `[x]: y` in code.\n- \\[options]: the object passed to `getProperties`, and `[^a-z]` and `matrix[0][1]` in code.'
 
     expect(normalizeReleaseNotes(notes)).toBe(notes)
   })
@@ -2496,6 +2503,27 @@ describe('what release notes can do to the changelog', () => {
     },
     COMMAND_TIMEOUT
   )
+
+  it('refuses a character that does not show and would stop the changelog being read as text', () => {
+    expect(() => normalizeReleaseNotes(`- item one${String.fromCodePoint(0)}\n- item two`)).toThrow(
+      '🚨 the release notes have a control character (U+0000, line 1: - item one<U+0000>): it does not show, and with some of them GitHub and git stop reading CHANGELOG.md as text. Delete it.'
+    )
+    expect(() => normalizeReleaseNotes(`- item\n- two${String.fromCodePoint(0x7f)}`)).toThrow(
+      'a control character (U+007F, line 2: - two<U+007F>)'
+    )
+    // A tab is not one.
+    expect(normalizeReleaseNotes('- item\tone')).toBe('- item\tone')
+  })
+
+  it('refuses a code block whose last line is code for Markdown', () => {
+    expect(() => normalizeReleaseNotes('- One:\n\n  ```\n  code\n      ```')).toThrow(
+      '🚨 the release notes have a code block (line 3:   ```) whose last line is indented much more than it (line 5:       ```): Markdown reads that line as code, not as the end of the block, and the rest of the changelog would become part of it. Indent it like the line that opens the block.'
+    )
+    // Indented a little more, it closes the block for Markdown too.
+    expect(normalizeReleaseNotes('- One:\n\n  ```\n  code\n     ```')).toBe(
+      '- One:\n\n  ```\n  code\n     ```'
+    )
+  })
 
   it('refuses notes that nest too deep to be read', () => {
     expect(() => normalizeReleaseNotes(`- ${'> '.repeat(3000)}x`)).toThrow(

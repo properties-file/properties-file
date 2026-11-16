@@ -35,11 +35,26 @@ const REGEX_CODE_FENCE = /^[\t ]*(?<marker>`{3,}|~{3,})/
 const REGEX_HTML_START = /(?<!(?:^|[^\\])(?:\\\\)*\\)<(?:\?|![A-Z[-])/i
 
 /**
- * Matches a line that defines a link (or a footnote) for the whole document, at the beginning
- * of a line or of what a quote or a list item holds: `[label]: url`.
+ * Matches the beginning of a line that could define a link (or a footnote) for the whole
+ * document: an opening bracket at the start of the line, or of what a quote or a list item
+ * holds.
  */
-const REGEX_LINK_DEFINITION =
-  /^(?:[\t >]|[*+-][\t ]|\d+[.)][\t ])*(?:\[\^(?:\\.|[^\]\\])+\]:|\[[^\]]+\]:[\t ]*(?:(?:<[^>]*>|[^\t ]+)(?:[\t ]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[\t ]*)?$)/
+const REGEX_LINK_DEFINITION_START = /^(?:[\t >]|[*+-][\t ]|\d+[.)][\t ])*\[/
+
+/**
+ * Check whether a line could define a link, `[label]: url`, wherever Markdown would find a
+ * definition. Nothing is asked of what follows the label: what a definition can end with (an
+ * address, a title in one of three forms, with escapes) is read differently by the parsers,
+ * and a rule that reads it could be got around.
+ *
+ * @param line - A line of release notes, without its inline code.
+ *
+ * @returns `true` if the line starts with a bracket and has, after it, `]:`.
+ */
+const isLinkDefinitionLine = (line: string): boolean => {
+  const start = REGEX_LINK_DEFINITION_START.exec(line)?.[0]
+  return start !== undefined && line.includes(']:', start.length)
+}
 
 /** Matches a footnote, which GitHub adds to Markdown: its reference or its definition. */
 const REGEX_FOOTNOTE = /(?<!(?:^|[^\\])(?:\\\\)*\\)\[\^[^\]\t\n\r ][^\]]*\]/
@@ -535,6 +550,17 @@ const findCodeBlockHazard = (lines: string[]): string | undefined => {
     const closingIndex = codeBlockLines.indexOf('closing', openingIndex)
     const isClosed = closingIndex !== -1 && closingIndex < nextOpeningIndex
     const escapedIndex = codeBlockLines.indexOf('escaped', openingIndex)
+    if (
+      isClosed &&
+      getIndentation(lines[closingIndex]) - getIndentation(lines[openingIndex]) >= 4
+    ) {
+      hazards.push(
+        `🚨 the release notes have a code block (${describeLines([openingIndex])}) ` +
+          `whose last line is indented much more than it (${describeLines([closingIndex])}): ` +
+          'Markdown reads that line as code, not as the end of the block, and the rest of the ' +
+          'changelog would become part of it. Indent it like the line that opens the block.'
+      )
+    }
     if (isClosed && escapedIndex !== -1 && escapedIndex < closingIndex) {
       hazards.push(
         `🚨 the release notes have a code block (${describeLines([openingIndex])}) ` +
@@ -586,6 +612,23 @@ const describeHtmlHazard = (places: string[]): string =>
   'remove it.'
 
 /**
+ * Find a control character in a line: one that does not show and is not a tab.
+ *
+ * @param line - A line of release notes.
+ *
+ * @returns The first such character, or `undefined`.
+ */
+const findControlCharacter = (line: string): string | undefined => {
+  for (const character of line) {
+    const codePoint = character.codePointAt(0) ?? 0
+    if (codePoint === 127 || (character !== '\t' && codePoint < 32)) {
+      return character
+    }
+  }
+  return undefined
+}
+
+/**
  * Find what release notes have that would be read as part of the changelog itself, or that
  * Markdown would copy into it as it is: an entry heading, HTML.
  *
@@ -597,6 +640,16 @@ const describeHtmlHazard = (places: string[]): string =>
 const findContentHazard = (normalizedNotes: string, lines: string[]): string | undefined => {
   // Everything there is, so that one run says all of it.
   const hazards: string[] = []
+  const controlIndex = lines.findIndex((line) => findControlCharacter(line) !== undefined)
+  if (controlIndex !== -1) {
+    const control = findControlCharacter(lines[controlIndex]) ?? ''
+    const name = `U+${(control.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}`
+    hazards.push(
+      `🚨 the release notes have a control character (${name}, line ${String(controlIndex + 1)}: ` +
+        `${lines[controlIndex].replaceAll(control, () => `<${name}>`)}): it does not show, and ` +
+        'with some of them GitHub and git stop reading CHANGELOG.md as text. Delete it.'
+    )
+  }
   const headingIndex = lines.findIndex((line) => REGEX_VERSION_HEADING.test(line))
   if (headingIndex !== -1) {
     hazards.push(
@@ -642,7 +695,7 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
   // Every line that defines a link; the text of a footnote, which looks like one, was named
   // as what it is.
   const definitionPlaces = lines.flatMap((line, index) =>
-    REGEX_LINK_DEFINITION.test(textLines[index]) && !hasFootnoteText(line)
+    isLinkDefinitionLine(textLines[index]) && !hasFootnoteText(line)
       ? `line ${String(index + 1)}: ${line}`
       : []
   )
@@ -654,7 +707,9 @@ const findContentHazard = (normalizedNotes: string, lines: string[]): string | u
     hazards.push(
       `🚨 the release notes define a link for the whole changelog (${definitionPlaces.join('; ')}): ` +
         'a line "[label]: url" changes every "[label]" of the older ' +
-        'entries. Write the link where it is used: [text](url).' +
+        'entries. Write the link where it is used: [text](url). A line that starts with ' +
+        'words in brackets and is not meant as a link is to start in another way: the words ' +
+        String.raw`in backticks, or "\[" for the bracket.` +
         (referencePlaces.length === 0 ? '' : ` Where it is used: ${referencePlaces.join('; ')}`)
     )
   }
