@@ -178,7 +178,7 @@ Three things about the command are there to prevent mistakes:
   - the only headings are those of its `sections`, at level 3, in that order, each at most
     once and with at least one item;
   - everything else is a list item that starts with `- `, or the indented rest of one, a code
-    block included; an item is not empty, a placeholder (`…`, `TODO`) or an item of the
+    block included; an item is not empty, a placeholder (`…`, `TODO`, `None`, `N/A`) or an item of the
     examples of the file;
   - the `breakingSection` goes with a major version, and only with one, and the
     `featureSection` does not go with a patch version. What a version is comes from the
@@ -212,9 +212,16 @@ Three things about the command are there to prevent mistakes:
   - a code block has to be closed by a line indented like the one that opens it, cannot have
     a line indented less than that one (Markdown ends the block there), and cannot open on
     the line of its item;
+  - a line that defines a link for the whole file (`[label]: url`) is refused: it would change
+    every `[label]` of the older entries. Links are written where they are used;
   - and with the entry added, the older entries of `CHANGELOG.md` have to be read by the
-    parser exactly as they were. This is checked again on the file prettier has formatted,
-    before the commit.
+    parser exactly as they were, in the file as it is and as prettier formats it. A dry run
+    formats it in memory to check this; a release checks it before its build, and again on
+    the file it commits.
+
+  These checks err on the side of refusing: the parser is not the one GitHub uses, and what
+  the two could read differently (HTML in its rarer forms, link definitions) is refused
+  outright rather than compared.
 
 ### The brief
 

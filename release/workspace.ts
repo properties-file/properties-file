@@ -99,6 +99,7 @@ export const formatCommand = (command: string, commandArguments: string[]): stri
  * @param commandArguments - Its arguments (passed as-is, without a shell).
  * @param shouldStreamOutput - Whether the command prints to the terminal instead of having its
  *   output captured.
+ * @param input - What the command reads on its standard input, when it reads something.
  *
  * @returns The outcome of the command.
  */
@@ -106,14 +107,16 @@ export const runCommand = (
   workspace: Workspace,
   command: string,
   commandArguments: string[],
-  shouldStreamOutput = false
+  shouldStreamOutput = false,
+  input?: string
 ): CommandResult => {
   const outputMode = shouldStreamOutput ? 'inherit' : 'pipe'
   const result = spawnSync(command, commandArguments, {
     cwd: workspace.directoryPath,
     env: workspace.environment,
     encoding: 'utf8',
-    stdio: ['ignore', outputMode, outputMode],
+    input,
+    stdio: [input === undefined ? 'ignore' : 'pipe', outputMode, outputMode],
   })
   const isSuccess = result.error === undefined && result.status === 0
   // Streamed output is not captured: `stdout` and `stderr` are `null` then, despite their types.

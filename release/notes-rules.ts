@@ -12,7 +12,12 @@ import path from 'node:path'
 
 import { isNormalizedError, noThrow } from '../utilities/no-throw'
 
-import { BYTE_ORDER_MARK, readCodeBlockLines, REGEX_INLINE_CODE } from './changelog'
+import {
+  BYTE_ORDER_MARK,
+  findNotesHazards,
+  readCodeBlockLines,
+  REGEX_INLINE_CODE,
+} from './changelog'
 
 /** The file the rules are read from, at the root of the repository. */
 const CONFIG_FILE_NAME = 'release.config.json'
@@ -58,7 +63,8 @@ const REGEX_HEADING_ENDING = /[\s:.]+$/
 const REGEX_OTHER_LIST_MARKER = /^(?:[*+]|\d+[.)])\s/
 
 /** Matches an item that was left as a placeholder instead of being written. */
-const REGEX_PLACEHOLDER = /^(?:(?:…|\.{3})\.?$|(?:todo|tbd)(?:[\s.]*$|:))/i
+const REGEX_PLACEHOLDER =
+  /^(?:(?:…|\.{3})\.?$|(?:todo|tbd|wip|xxx|none|n\/a|-+)[\s.]*$|(?:todo|tbd):|\[[^\]]*\]$)/i
 
 /** Matches the marks of emphasis and of inline code, which a placeholder can be wrapped in. */
 const REGEX_EMPHASIS = /[*_`]/g
@@ -286,6 +292,30 @@ export const findNotesProblems = (
   }
 
   /**
+   * Say what to do with a heading that is not one of the sections.
+   *
+   * @param closestSection - The section the heading was most likely meant for, when there is
+   *   one.
+   *
+   * @returns What to write instead, or why that section does not go with the release either.
+   */
+  const describeClosestSection = (closestSection: string | undefined): string => {
+    if (closestSection === undefined) {
+      return ' Replace this one with the one its items belong under.'
+    }
+    if (closestSection === rules.breakingSection) {
+      // The section is there, under a heading to correct: it is not also reported as missing.
+      seen.hasBreakingSection = true
+      if (context.level === 'minor' || context.level === 'patch') {
+        return ` It reads as "### ${closestSection}", which the notes of ${context.version} cannot have: a change that breaks existing code needs a major version.`
+      }
+    }
+    return closestSection === rules.featureSection && context.level === 'patch'
+      ? ` It reads as "### ${closestSection}", which the notes of ${context.version} cannot have: something new for users needs a minor version.`
+      : ` Write it "### ${closestSection}".`
+  }
+
+  /**
    * Check a line that is, or was meant as, a heading, and start its section.
    *
    * @param lineNumber - Where the heading is in the notes (1 for the first line).
@@ -310,7 +340,7 @@ export const findNotesProblems = (
       .replace(REGEX_HEADING_ENDING, '')
       .toLowerCase()
     const closestSection = rules.sections.find((name) => name.toLowerCase() === writtenTitle)
-    const hint = closestSection === undefined ? '' : ` This one is written "### ${closestSection}".`
+    const advice = describeClosestSection(closestSection)
     closeSection()
     // What follows a heading that is not allowed is still checked as the content of a
     // section, so that one heading to correct is not reported again for each line under it.
@@ -323,25 +353,25 @@ export const findNotesProblems = (
       problems.push({
         lineNumber,
         line,
-        message: `With the line under it, Markdown reads this line as a heading. A heading is written on one line, with "###" before its title. ${allowedHeadings}.${hint}`,
+        message: `With the line under it, Markdown reads this line as a heading. A heading is written on one line, with "###" before its title. ${allowedHeadings}.${advice}`,
       })
     } else if (heading === undefined) {
       problems.push({
         lineNumber,
         line,
-        message: `A heading needs a space after its "#" marks. ${allowedHeadings}.${hint}`,
+        message: `A heading needs a space after its "#" marks. ${allowedHeadings}.${advice}`,
       })
     } else if (heading.indentation === '') {
       problems.push({
         lineNumber,
         line,
-        message: `${allowedHeadings}, written exactly so.${hint}`,
+        message: `${allowedHeadings}, written exactly so.${advice}`,
       })
     } else {
       problems.push({
         lineNumber,
         line,
-        message: `Markdown reads this line as a heading, and a heading starts at the beginning of its line. ${allowedHeadings}.${hint}`,
+        message: `Markdown reads this line as a heading, and a heading starts at the beginning of its line. ${allowedHeadings}.${advice}`,
       })
     }
   }
@@ -601,25 +631,45 @@ const isConfigObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /**
- * Check that a value read from the configuration is a list of section titles.
+ * Read the titles of the sections the configuration gives.
  *
- * @param value - The value to check.
+ * @param sections - The `sections` of the `notes` of the configuration.
  *
- * @returns `true` if the value is an array of different strings, at least one, none empty,
- *   padded with spaces, or with a "#" at one end (the marks of a heading are not its title).
+ * @returns The titles, all different.
+ *
+ * @throws If the value is not a list with at least one title, or if one of its entries is
+ *   not a title, or is there twice. The error names the entry.
  */
-const isSectionList = (value: unknown): value is string[] =>
-  Array.isArray(value) &&
-  value.length > 0 &&
-  value.every(
-    (element) =>
-      typeof element === 'string' &&
-      element !== '' &&
-      element.trim() === element &&
-      !element.startsWith('#') &&
-      !element.endsWith('#')
-  ) &&
-  new Set(value).size === value.length
+const readSections = (sections: unknown): string[] => {
+  if (!isConfigList(sections) || sections.length === 0) {
+    throw createConfigError(
+      '"notes.sections" must be the list of the titles of the sections, with at least one'
+    )
+  }
+  const titles: string[] = []
+  for (const [index, title] of sections.entries()) {
+    const place = `entry ${String(index + 1)} of "notes.sections"`
+    if (typeof title !== 'string') {
+      throw createConfigError(`${place} must be text: the title of a section`)
+    }
+    if (title === '') {
+      throw createConfigError(`${place} is empty`)
+    }
+    if (title.trim() !== title) {
+      throw createConfigError(`${place} (${JSON.stringify(title)}) has spaces around it`)
+    }
+    if (title.startsWith('#') || title.endsWith('#')) {
+      throw createConfigError(
+        `${place} (${JSON.stringify(title)}) has the "#" marks of a heading: give the title only`
+      )
+    }
+    if (titles.includes(title)) {
+      throw createConfigError(`${JSON.stringify(title)} is in "notes.sections" twice`)
+    }
+    titles.push(title)
+  }
+  return titles
+}
 
 /**
  * Check that a value read from the configuration describes something forbidden.
@@ -715,7 +765,10 @@ const readSectionProperty = (
   if (value === undefined) {
     return undefined
   }
-  if (typeof value !== 'string' || !sections.includes(value)) {
+  if (typeof value !== 'string') {
+    throw createConfigError(`"notes.${name}" must be text: the title of one of the sections`)
+  }
+  if (!sections.includes(value)) {
     throw createConfigError(
       `"notes.${name}" is ${JSON.stringify(value)}, which is not one of the titles of ` +
         `"notes.sections" (${sections.map((section) => `"${section}"`).join(', ')})`
@@ -768,15 +821,22 @@ const assertExampleFollowsRules = (
   rules: NotesRules,
   level: ReleaseLevel
 ): void => {
-  const problem =
-    example === undefined
-      ? undefined
-      : findNotesProblems(
-          example.trimEnd(),
-          // Without the examples: their items are refused in notes, and are what is checked here.
-          { ...rules, example: '', majorExample: undefined },
-          { version: 'It', level }
-        ).at(0)
+  if (example === undefined) {
+    return
+  }
+  const hazards = findNotesHazards(example.trimEnd())
+  const hazard = hazards.codeBlock ?? hazards.content
+  if (hazard !== undefined) {
+    throw createConfigError(
+      `"notes.${name}" could not be used as release notes: ${hazard.replace('🚨 the release notes', 'it would')}`
+    )
+  }
+  const problem = findNotesProblems(
+    example.trimEnd(),
+    // Without the examples: their items are refused in notes, and are what is checked here.
+    { ...rules, example: '', majorExample: undefined },
+    { version: 'It', level }
+  ).at(0)
   if (problem !== undefined) {
     throw createConfigError(
       `"notes.${name}" does not follow the rules of the same file as the notes of a ${level} release, which it is shown for` +
@@ -808,6 +868,11 @@ export const readNotesRules = (directoryPath: string): NotesRules | undefined =>
   const config = noThrow((): unknown =>
     JSON.parse(content.startsWith(BYTE_ORDER_MARK) ? content.slice(1) : content)
   )
+  if (content.trim() === '') {
+    throw createConfigError(
+      'the file is empty: give it the rules of the notes, under "notes", or delete it to have none'
+    )
+  }
   if (isNormalizedError(config)) {
     throw createConfigError(`the file is not valid JSON (${config.message})`)
   }
@@ -834,13 +899,7 @@ export const readNotesRules = (directoryPath: string): NotesRules | undefined =>
         NOTES_KEYS.map((key) => `"${key}"`).join(', ')
     )
   }
-  const { sections } = notes
-  if (!isSectionList(sections)) {
-    throw createConfigError(
-      '"notes.sections" must list the titles of the sections: at least one, all different, ' +
-        'none empty, with spaces around it, or with a "#" at one end'
-    )
-  }
+  const sections = readSections(notes.sections)
   const example = readExampleProperty(notes, 'example')
   if (example === undefined) {
     throw createConfigError(

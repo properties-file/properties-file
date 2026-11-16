@@ -7,6 +7,8 @@
 /** Matches a release version: `major.minor.patch`, digits only, without leading zeros. */
 import { Lexer } from 'marked'
 
+import { isNormalizedError, noThrow } from '../utilities/no-throw'
+
 const REGEX_RELEASE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
 
 /**
@@ -24,6 +26,19 @@ export const BYTE_ORDER_MARK = String.fromCodePoint(0xfe_ff)
  * (three or more backticks or tildes).
  */
 const REGEX_CODE_FENCE = /^[\t ]*(?<marker>`{3,}|~{3,})/
+
+/**
+ * Matches the start of what Markdown copies as HTML although the parser used here does not
+ * always tell: a processing instruction (`<?`), a declaration (`<!x`), a comment or a
+ * `CDATA` section.
+ */
+const REGEX_HTML_START = /<(?:\?|![A-Z[-])/i
+
+/**
+ * Matches a line that defines a link (or a footnote) for the whole document, at the beginning
+ * of a line or of what a quote or a list item holds: `[label]: url`.
+ */
+const REGEX_LINK_DEFINITION = /^[\t >]*(?:(?:[*+-]|\d+[.)])[\t ]+)*\[[^\]]+\]:/
 
 /** Matches a line that starts a list item and opens a fenced code block on the same line. */
 const REGEX_ITEM_CODE_FENCE = /^[\t ]*(?:[*+-]|\d+[.)])[\t ]+(?:`{3,}|~{3,})/
@@ -295,7 +310,7 @@ const areOlderEntriesKept = (previousChangelog: string, changelog: string): bool
     return true
   }
   const olderEntries = readMarkdown(previousLines.slice(firstHeadingIndex).join('\n').trimEnd())
-  const entries = readMarkdown(changelog.replaceAll('\r\n', '\n').trimEnd())
+  const entries = readMarkdown(changelog.trimEnd())
   return (
     Array.isArray(olderEntries) &&
     Array.isArray(entries) &&
@@ -325,51 +340,54 @@ export const assertOlderEntriesKept = (previousChangelog: string, changelog: str
 }
 
 /**
- * Check the release notes a release was given, and put them in the form they are written in:
- * Unix line endings, no blank line before or after.
+ * Put release notes in the form they are written in: Unix line endings, no blank line before
+ * or after.
  *
- * What the notes say and how they are laid out is for `docs/release-notes-guidelines.md`: they
- * are written as they are (prettier then formats the changelog as a whole). Only what would
- * break the changelog is refused.
+ * @param notes - The release notes, as they were given.
  *
- * @param notes - The release notes, in Markdown.
- *
- * @returns The notes to write under the heading of the changelog entry.
- *
- * @throws If the notes are empty, if they have a heading of the levels of the changelog (it
- *   would be read as having one more entry), if they leave a code block open or open one on
- *   the line of an item (every older entry could become part of it), or if they have HTML.
+ * @returns The notes to check, and to write under the heading of the changelog entry.
  */
-export const normalizeReleaseNotes = (notes: string): string => {
-  const normalizedNotes = (notes.startsWith(BYTE_ORDER_MARK) ? notes.slice(1) : notes)
+export const cleanReleaseNotes = (notes: string): string =>
+  (notes.startsWith(BYTE_ORDER_MARK) ? notes.slice(1) : notes)
     // Every form of line ending, a lone `\r` included: prettier would take one for the line
     // ending of the whole changelog, and rewrite every line of it.
     .replaceAll(/\r\n?/g, '\n')
     .replace(/^(?:[^\S\n]*\n)+/, '')
     .trimEnd()
-  const lines = normalizedNotes.split('\n')
-  if (normalizedNotes === '') {
-    throw new Error('🚨 the release notes are empty')
-  }
-  const headingLine = lines.find((line) => REGEX_VERSION_HEADING.test(line))
-  if (headingLine !== undefined) {
-    throw new Error(
-      `🚨 the release notes have a line in the form of a changelog entry heading: ${headingLine}`
-    )
-  }
+
+/**
+ * Find a code block of release notes that Markdown would not end where the notes do: every
+ * older entry of the changelog could become part of it.
+ *
+ * @param lines - The lines of the notes.
+ *
+ * @returns What is wrong with the first such block and what to do about it, or `undefined`.
+ */
+const findCodeBlockHazard = (lines: string[]): string | undefined => {
   const itemFenceIndex = lines.findIndex((line) => {
     const fence = REGEX_ITEM_CODE_FENCE.exec(line)?.[0]
     // With a backtick after the fence, the line has inline code, not the start of a block.
     return fence !== undefined && !line.slice(fence.length).includes('`')
   })
   if (itemFenceIndex !== -1) {
-    throw new Error(
+    return (
       `🚨 the release notes open a code block on the line of a list item (line ${String(itemFenceIndex + 1)}: ` +
-        `${lines[itemFenceIndex]}). Put the line that opens the block on a line of its own, ` +
-        'indented under the item, like the rest of the block.'
+      `${lines[itemFenceIndex]}). Put the line that opens the block on a line of its own, ` +
+      'indented under the item, like the rest of the block.'
     )
   }
   const codeBlockLines = readCodeBlockLines(lines)
+  const tildeFenceIndex = lines.findIndex(
+    (line, index) =>
+      codeBlockLines[index] === 'opening' && /^[\t ]*~/.test(line) && line.includes('`')
+  )
+  if (tildeFenceIndex !== -1) {
+    return (
+      `🚨 the release notes open a code block with "~~~" on a line that has a backtick (line ${String(tildeFenceIndex + 1)}: ` +
+      `${lines[tildeFenceIndex]}): once formatted, the block is opened with backticks, and ` +
+      'that line would open nothing. Take the backtick out of the line.'
+    )
+  }
   // A block that is still open at the end: the last line is in one, whatever its indentation.
   if (codeBlockLines.at(-1) !== 'outside' && codeBlockLines.at(-1) !== 'closing') {
     const openingIndex = codeBlockLines.lastIndexOf('opening')
@@ -382,53 +400,149 @@ export const normalizeReleaseNotes = (notes: string): string => {
         line.trim().startsWith(marker) &&
         line.trim().replaceAll(marker.charAt(0), '') === ''
     )
-    if (closingIndex !== -1) {
-      throw new Error(
-        `🚨 the release notes have a code block (line ${String(openingIndex + 1)}: ${lines[openingIndex]}) ` +
+    return closingIndex !== -1
+      ? `🚨 the release notes have a code block (line ${String(openingIndex + 1)}: ${lines[openingIndex]}) ` +
           `that its last line does not close (line ${String(closingIndex + 1)}: ${lines[closingIndex]}): ` +
           'that line is indented less than the one that opens the block, so Markdown reads it ' +
           'as the start of another block, which the rest of the changelog would become part ' +
           'of. Indent it like the line that opens the block.'
-      )
-    }
-    throw new Error(
-      `🚨 the release notes have a code block that is never closed (line ${String(openingIndex + 1)}: ` +
-        `${lines[openingIndex]}): the rest of the changelog would become part of it. End the block ` +
-        'with a line that has nothing but the marks that open it (``` or ~~~), indented like it.'
-    )
+      : `🚨 the release notes have a code block that is never closed (line ${String(openingIndex + 1)}: ` +
+          `${lines[openingIndex]}): the rest of the changelog would become part of it. End the block ` +
+          'with a line that has nothing but the marks that open it (``` or ~~~), indented like it.'
   }
   const escapedIndex = codeBlockLines.indexOf('escaped')
   if (escapedIndex !== -1) {
     const openingIndex = codeBlockLines.lastIndexOf('opening', escapedIndex)
-    throw new Error(
+    return (
       `🚨 the release notes have a code block (line ${String(openingIndex + 1)}: ${lines[openingIndex]}) ` +
-        `with a line that is indented less than it (line ${String(escapedIndex + 1)}: ${lines[escapedIndex]}): ` +
-        'Markdown ends the block at that line, and the rest of the changelog could become part ' +
-        'of another one. Indent every line of the block at least as much as the line that ' +
-        'opens it.'
+      `with a line that is indented less than it (line ${String(escapedIndex + 1)}: ${lines[escapedIndex]}): ` +
+      'Markdown ends the block at that line, and the rest of the changelog could become part ' +
+      'of another one. Indent every line of the block at least as much as the line that ' +
+      'opens it.'
+    )
+  }
+  return undefined
+}
+
+/**
+ * Say why release notes cannot have HTML, and what to write instead.
+ *
+ * @param place - Where the HTML is in the notes.
+ *
+ * @returns What is wrong and what to do about it.
+ */
+const describeHtmlHazard = (place: string): string =>
+  `🚨 the release notes have HTML (${place}): Markdown copies it as it is, and a tag or a ` +
+  'comment that is left open would take in the rest of the changelog. Put it in backticks if ' +
+  'it is code (a type like `Promise<string>` is read as a tag), write it in Markdown, or ' +
+  'remove it.'
+
+/**
+ * Find what release notes have that would be read as part of the changelog itself, or that
+ * Markdown would copy into it as it is: an entry heading, HTML.
+ *
+ * @param normalizedNotes - The notes (see {@link cleanReleaseNotes}).
+ * @param lines - Their lines.
+ *
+ * @returns What is wrong with the first such thing and what to do about it, or `undefined`.
+ */
+const findContentHazard = (normalizedNotes: string, lines: string[]): string | undefined => {
+  const headingIndex = lines.findIndex((line) => REGEX_VERSION_HEADING.test(line))
+  if (headingIndex !== -1) {
+    return (
+      '🚨 the release notes have a line in the form of a changelog entry heading ' +
+      `(line ${String(headingIndex + 1)}: ${lines[headingIndex]}): remove it, the release writes ` +
+      'the heading of the entry itself'
+    )
+  }
+  // What the parser does not always tell, looked for in the text that is not code: the HTML
+  // it does not take for HTML, and the definition of a link, which changes every use of its
+  // label in the older entries (labels are compared in ways the parser does not follow).
+  const codeBlockLines = readCodeBlockLines(lines)
+  const textLines = lines.map((line, index) =>
+    codeBlockLines[index] === 'outside' ? line.replaceAll(REGEX_INLINE_CODE, '') : ''
+  )
+  const htmlIndex = textLines.findIndex((line) => REGEX_HTML_START.test(line))
+  if (htmlIndex !== -1) {
+    return describeHtmlHazard(`line ${String(htmlIndex + 1)}: ${lines[htmlIndex]}`)
+  }
+  const definitionIndex = textLines.findIndex((line) => REGEX_LINK_DEFINITION.test(line))
+  if (definitionIndex !== -1) {
+    return (
+      `🚨 the release notes define a link for the whole changelog (line ${String(definitionIndex + 1)}: ` +
+      `${lines[definitionIndex]}): a line "[label]: url" changes every "[label]" of the older ` +
+      'entries. Write the link where it is used: [text](url).'
     )
   }
   // What only a parser can tell: an entry heading that is not written like the others
   // (indented, underlined), which formatting would make one of them, and HTML, which Markdown
   // copies as it is and which can take in everything after it.
-  const tokens = readMarkdown(normalizedNotes)
-  const heading = findTokens(tokens, 'heading').find(
+  const tokens = noThrow(() => {
+    const allTokens = readMarkdown(normalizedNotes)
+    return { headings: findTokens(allTokens, 'heading'), html: findTokens(allTokens, 'html') }
+  })
+  if (isNormalizedError(tokens)) {
+    return `🚨 the release notes could not be read as Markdown (${tokens.message}): they nest quotes or lists too deep. Write them more simply.`
+  }
+  const heading = tokens.headings.find(
     (token) => token.depth <= 2 && REGEX_VERSION_TITLE.test(token.text)
   )
   if (heading !== undefined) {
-    throw new Error(
+    return (
       '🚨 the release notes have a heading in the form of a changelog entry heading ' +
-        `(${describePlace(lines, heading.raw)})`
+      `(${describePlace(lines, heading.raw)}): remove it, the release writes the heading of ` +
+      'the entry itself'
     )
   }
-  const html = findTokens(tokens, 'html').at(0)
-  if (html !== undefined) {
-    throw new Error(
-      `🚨 the release notes have HTML (${describePlace(lines, html.raw)}): Markdown copies it as ` +
-        'it is, and a tag or a comment that is left open would take in the rest of the ' +
-        'changelog. Put it in backticks if it is code (a type like `Promise<string>` is read ' +
-        'as a tag), or write it in Markdown.'
-    )
+  const html = tokens.html.at(0)
+  return html === undefined ? undefined : describeHtmlHazard(describePlace(lines, html.raw))
+}
+
+/**
+ * Find what release notes would do to the changelog they are written into, whatever the rules
+ * of the repository are.
+ *
+ * @param normalizedNotes - The notes (see {@link cleanReleaseNotes}).
+ *
+ * @returns What is wrong with their code blocks, which changes how everything after is read,
+ *   and with what they contain, each `undefined` when nothing is.
+ */
+export const findNotesHazards = (
+  normalizedNotes: string
+): { codeBlock: string | undefined; content: string | undefined } => {
+  const lines = normalizedNotes.split('\n')
+  return {
+    codeBlock: findCodeBlockHazard(lines),
+    content: findContentHazard(normalizedNotes, lines),
+  }
+}
+
+/**
+ * Check the release notes a release was given, and put them in the form they are written in
+ * (see {@link cleanReleaseNotes}).
+ *
+ * What the notes say and how they are laid out is for `docs/release-notes-guidelines.md`: they
+ * are written as they are (prettier then formats the changelog as a whole). Only what would
+ * break the changelog is refused.
+ *
+ * @param notes - The release notes, in Markdown.
+ *
+ * @returns The notes to write under the heading of the changelog entry.
+ *
+ * @throws If the notes are empty, if they have a heading in the form of an entry heading (the
+ *   changelog would be read as having one more entry), if they leave a code block open or
+ *   open one on the line of an item (every older entry could become part of it), or if they
+ *   have HTML.
+ */
+export const normalizeReleaseNotes = (notes: string): string => {
+  const normalizedNotes = cleanReleaseNotes(notes)
+  if (normalizedNotes === '') {
+    throw new Error('🚨 the release notes are empty')
+  }
+  const hazards = findNotesHazards(normalizedNotes)
+  const hazard = hazards.codeBlock ?? hazards.content
+  if (hazard !== undefined) {
+    throw new Error(hazard)
   }
   return normalizedNotes
 }

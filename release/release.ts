@@ -18,9 +18,10 @@ import { isNormalizedError, noThrow } from '../utilities/no-throw'
 import {
   assertChangelogEntryAdded,
   assertOlderEntriesKept,
+  cleanReleaseNotes,
+  findNotesHazards,
   getRepositoryUrl,
   insertChangelogEntry,
-  normalizeReleaseNotes,
   renderChangelogEntry,
   resolveNextVersion,
 } from './changelog'
@@ -358,20 +359,29 @@ export const release = (options: ReleaseOptions): string => {
   const previousTag = `v${currentVersion}`
 
   // The form of the notes, by the rules of the repository when it has some.
+  const cleanNotes = cleanReleaseNotes(options.notes)
+  const notesHazards = findNotesHazards(cleanNotes)
+  // A code block that is not closed changes how everything after it is read: nothing else can
+  // be said of the notes before it is.
+  if (notesHazards.codeBlock !== undefined) {
+    throw new Error(notesHazards.codeBlock)
+  }
   const notesRules = readNotesRules(directoryPath)
   if (notesRules !== undefined) {
     const notesContext = { version, level: getReleaseLevel(currentVersion, version) }
-    const notesProblems = findNotesProblems(
-      normalizeReleaseNotes(options.notes),
-      notesRules,
-      notesContext
-    )
+    const notesProblems = findNotesProblems(cleanNotes, notesRules, notesContext)
     if (notesProblems.length > 0) {
+      // With what the notes would do to the changelog, so that one run says everything there
+      // is to correct.
       throw new Error(
-        `${describeNotesProblems(notesProblems, notesRules, notesContext)}\n\n` +
+        (notesHazards.content === undefined ? '' : `${notesHazards.content}\n\n`) +
+          `${describeNotesProblems(notesProblems, notesRules, notesContext)}\n\n` +
           `   What the notes should say is in ${GUIDELINES_PATH}.`
       )
     }
+  }
+  if (notesHazards.content !== undefined) {
+    throw new Error(notesHazards.content)
   }
   log(
     `📦 Releasing ${currentVersion} → ${version}${isDryRun ? ' (dry run: nothing is changed)' : ''}`
@@ -404,8 +414,22 @@ export const release = (options: ReleaseOptions): string => {
   const previousChangelog = readFileSync(changelogPath, 'utf8')
   // Computed before anything is changed: this fails if the version already has an entry.
   const changelog = insertChangelogEntry(previousChangelog, version, entry)
-  // In a dry run too: what the notes would do to the entries that are there.
+  // In a dry run too: what the notes would do to the entries that are there, as they are
+  // given and as prettier will format the file. The second is checked again on the file that
+  // is committed; here it tells a dry run, and a release before its build, what that would
+  // refuse.
   assertOlderEntriesKept(previousChangelog, changelog)
+  const formatted = runCommand(
+    workspace,
+    'npx',
+    ['--no-install', 'prettier', '--stdin-filepath', 'CHANGELOG.md'],
+    false,
+    changelog
+  )
+  if (!formatted.isSuccess) {
+    throw new Error(`🚨 ${formatted.failure}`)
+  }
+  assertChangelogEntryAdded(previousChangelog, formatted.output, version)
 
   // The full gate (lint, compile, tests, package checks), before anything is committed.
   execute('npm', ['run', 'build'])
