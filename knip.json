@@ -1,4 +1,5 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignoreBinaries": ["ssh-keygen"]
+  "ignoreBinaries": ["ssh-keygen"],
+  "ignoreDependencies": ["micromark"]
 }

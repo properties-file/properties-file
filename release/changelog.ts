@@ -39,7 +39,7 @@ const REGEX_HTML_START = /(?<!\\)<(?:\?|![A-Z[-])/i
  * of a line or of what a quote or a list item holds: `[label]: url`.
  */
 const REGEX_LINK_DEFINITION =
-  /^[\t >]*(?:(?:[*+-]|\d+[.)])[\t ]+)*(?:\[\^[^\]]+\]:|\[[^\]]+\]:[\t ]*(?:(?:<[^>]*>|\S+)(?:[\t ]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[\t ]*)?$)/
+  /^(?:[\t >]|[*+-][\t ]|\d+[.)][\t ])*(?:\[\^(?:\\.|[^\]\\])+\]:|\[[^\]]+\]:[\t ]*(?:(?:<[^>]*>|[^\t ]+)(?:[\t ]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[\t ]*)?$)/
 
 /** Matches a line that ends with what opens a fenced code block: backticks and a language. */
 const REGEX_TRAILING_CODE_FENCE = /`{3,}[\w+-]*[\t ]*$/
@@ -392,7 +392,8 @@ const findCodeBlockHazard = (lines: string[]): string | undefined => {
     return (
       `🚨 the release notes open a code block on a line that has something else, the start of a list item or its text (line ${String(itemFenceIndex + 1)}: ` +
       `${lines[itemFenceIndex]}). Put the line that opens the block on a line of its own, ` +
-      'indented under the item, like the rest of the block.'
+      'indented under the item like the rest of the block, after a first line of the item ' +
+      'that says what the code shows.'
     )
   }
   const codeBlockLines = readCodeBlockLines(lines)
@@ -676,7 +677,8 @@ export const extractReleaseNotes = (changelog: string, version: string): string 
     lines
       .slice(headingIndex + 1, nextHeadingIndex)
       .join('\n')
-      .trim(),
+      .replace(/^(?:[^\S\n]*\n)+/, '')
+      .trimEnd(),
   ]
   const compareLink = REGEX_COMPARE_LINK.exec(lines[headingIndex])?.groups
   if (compareLink !== undefined) {

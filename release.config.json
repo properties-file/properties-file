@@ -30,6 +30,14 @@
       }
     ],
     "example": "### Bug Fixes\n\n- **Short name of the fix.** What was wrong, with the input that failed, and what\n  happens now.\n\n### Performance\n\n- `someFunction` is smaller: 1.2 kB → 1.1 kB (min+gzip).\n",
-    "majorExample": "### BREAKING CHANGES\n\n- **What no longer works.** Which code is affected, and what to change in it.\n\n### Features\n\n- **Short name of the feature.** What it does, and how to use it.\n"
+    "majorExample": "### BREAKING CHANGES\n\n- **What no longer works.** Which code is affected, and what to change in it.\n\n### Features\n\n- **Short name of the feature.** What it does, and how to use it.\n",
+    "sectionAliases": {
+      "Added": "Features",
+      "New Features": "Features",
+      "Fixed": "Bug Fixes",
+      "Fixes": "Bug Fixes",
+      "Bugfixes": "Bug Fixes",
+      "Performance Improvements": "Performance"
+    }
   }
 }

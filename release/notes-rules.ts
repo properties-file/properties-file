@@ -30,6 +30,7 @@ const NOTES_KEYS = [
   'forbidden',
   'example',
   'majorExample',
+  'sectionAliases',
 ]
 
 /** What a forbidden pattern of the file can have. */
@@ -58,6 +59,9 @@ const REGEX_HEADING_UNDERLINE = /^(?:=+|-{2,})\s*$/
 
 /** Matches what a heading can end with that is not part of its title. */
 const REGEX_HEADING_ENDING = /[\s:.]+$/
+
+/** Matches the title of a heading that is a version, as the heading of an entry is. */
+const REGEX_VERSION_TITLE = /^\[?v?\d+\.\d+\.\d+/
 
 /** Matches a line that starts a list item with another marker than `- `. */
 const REGEX_OTHER_LIST_MARKER = /^(?:[*+]|\d+[.)])\s/
@@ -95,6 +99,11 @@ export type NotesRules = {
   example: string
   /** Notes of a major release that follow the rules, shown when those of one do not. */
   majorExample?: string
+  /**
+   * Other titles the sections are known by elsewhere, each with the title of its section: a
+   * heading with one of them is told which heading to write.
+   */
+  sectionAliases?: Record<string, string>
 }
 
 /** What a release is, by the part of the version it changes. */
@@ -205,6 +214,8 @@ export const findNotesProblems = (
         line: string
         itemCount: number
         hasProblem: boolean
+        // What was said of its heading because of the kind of release.
+        levelProblems: NotesProblem[]
       }
     | undefined
   // What the lines seen so far say about the notes as a whole.
@@ -239,14 +250,32 @@ export const findNotesProblems = (
    * gives it its items.
    */
   const closeSection = (): void => {
-    if (section?.isAllowed === true && section.itemCount === 0 && !section.hasProblem) {
-      problems.push({
-        lineNumber: section.lineNumber,
-        line: section.line,
-        message:
-          'This section has no item. Give it at least one ("- …"), or leave the section out.',
-      })
+    if (!(section?.isAllowed === true && section.itemCount === 0) || section.hasProblem) {
+      return
     }
+
+    // A section with nothing in it is to remove, whatever release it goes with.
+    for (const levelProblem of section.levelProblems) {
+      problems.splice(problems.indexOf(levelProblem), 1)
+    }
+    problems.push({
+      lineNumber: section.lineNumber,
+      line: section.line,
+      message: 'This section has no item. Give it at least one ("- …"), or leave the section out.',
+    })
+  }
+
+  /**
+   * Record that a section does not go with the kind of release the notes are for.
+   *
+   * @param lineNumber - Where the heading of the section is in the notes.
+   * @param line - The heading, as it is written.
+   * @param message - What is wrong, and what the section needs.
+   */
+  const addLevelProblem = (lineNumber: number, line: string, message: string): void => {
+    const problem = { lineNumber, line, message }
+    problems.push(problem)
+    section?.levelProblems.push(problem)
   }
 
   /**
@@ -277,19 +306,19 @@ export const findNotesProblems = (
     if (title === rules.breakingSection) {
       seen.hasBreakingSection = true
       if (context.level === 'minor' || context.level === 'patch') {
-        problems.push({
+        addLevelProblem(
           lineNumber,
           line,
-          message: `${context.version} is not a new major version, so its notes cannot have this section. A change that breaks existing code needs a major version.`,
-        })
+          `${context.version} is not a new major version, so its notes cannot have this section. A change that breaks existing code needs a major version.`
+        )
       }
     }
     if (title === rules.featureSection && context.level === 'patch') {
-      problems.push({
+      addLevelProblem(
         lineNumber,
         line,
-        message: `${context.version} is a patch version, so its notes cannot have this section. Something new for users needs a minor version.`,
-      })
+        `${context.version} is a patch version, so its notes cannot have this section. Something new for users needs a minor version.`
+      )
     }
   }
 
@@ -303,7 +332,7 @@ export const findNotesProblems = (
    */
   const describeClosestSection = (closestSection: string | undefined): string => {
     if (closestSection === undefined) {
-      return ' Replace this one with the one its items belong under.'
+      return ' Replace this one with the one its items belong under, or remove it if they already are under one.'
     }
     if (closestSection === rules.breakingSection) {
       // The section is there, under a heading to correct: it is not also reported as missing.
@@ -341,12 +370,26 @@ export const findNotesProblems = (
       .trim()
       .replace(REGEX_HEADING_ENDING, '')
       .toLowerCase()
-    const closestSection = rules.sections.find((name) => name.toLowerCase() === writtenTitle)
-    const advice = describeClosestSection(closestSection)
+    const closestSection =
+      rules.sections.find((name) => name.toLowerCase() === writtenTitle) ??
+      Object.entries(rules.sectionAliases ?? {}).find(
+        ([alias]) => alias.toLowerCase() === writtenTitle
+      )?.[1]
+    // A version as a heading is the heading of the entry, which the release writes.
+    const advice = REGEX_VERSION_TITLE.test(writtenTitle)
+      ? ' Remove it: the release writes the heading of the entry, with its version, itself.'
+      : describeClosestSection(closestSection)
     closeSection()
     // What follows a heading that is not allowed is still checked as the content of a
     // section, so that one heading to correct is not reported again for each line under it.
-    section = { isAllowed: sectionIndex !== -1, lineNumber, line, itemCount: 0, hasProblem: false }
+    section = {
+      isAllowed: sectionIndex !== -1,
+      lineNumber,
+      line,
+      itemCount: 0,
+      hasProblem: false,
+      levelProblems: [],
+    }
     if (sectionIndex !== -1) {
       checkSectionHeading(lineNumber, line, sectionIndex)
       return
@@ -802,6 +845,43 @@ const readSectionProperty = (
 }
 
 /**
+ * Read the other titles the configuration gives to its sections.
+ *
+ * @param aliases - The `sectionAliases` of the `notes` of the configuration.
+ * @param sections - The titles of the sections.
+ *
+ * @returns The titles, each with the one of its section, or `undefined` when the
+ *   configuration gives none.
+ *
+ * @throws If the value is not an object, or if one of its titles is not given a section.
+ */
+const readSectionAliases = (
+  aliases: unknown,
+  sections: string[]
+): Record<string, string> | undefined => {
+  if (aliases === undefined) {
+    return undefined
+  }
+  if (!isConfigObject(aliases)) {
+    throw createConfigError(
+      '"notes.sectionAliases" must be an object: other titles the sections are known by, ' +
+        'each with the title of its section'
+    )
+  }
+  const sectionAliases: Record<string, string> = {}
+  for (const [alias, section] of Object.entries(aliases)) {
+    if (typeof section !== 'string' || !sections.includes(section)) {
+      throw createConfigError(
+        `"notes.sectionAliases" gives ${JSON.stringify(alias)} the section ${JSON.stringify(section)}, ` +
+          `which is not one of the titles of "notes.sections" (${sections.map((title) => `"${title}"`).join(', ')})`
+      )
+    }
+    sectionAliases[alias] = section
+  }
+  return sectionAliases
+}
+
+/**
  * Read a property of the configuration that gives an example of notes.
  *
  * @param notes - The `notes` of the configuration.
@@ -945,6 +1025,7 @@ export const readNotesRules = (directoryPath: string): NotesRules | undefined =>
     forbidden: readForbiddenPatterns(notes.forbidden === undefined ? [] : notes.forbidden),
     example,
     majorExample,
+    sectionAliases: readSectionAliases(notes.sectionAliases, sections),
   }
   // The example is shown for the releases that are not major ones, so it is checked as the
   // notes of a patch release, which every one of them accepts.

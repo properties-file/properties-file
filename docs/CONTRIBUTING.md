@@ -176,7 +176,8 @@ Three things about the command are there to prevent mistakes:
 - **The form of the notes is checked**, in a dry run too, against the rules in
   [`release.config.json`](../release.config.json):
   - the only headings are those of its `sections`, at level 3, in that order, each at most
-    once and with at least one item;
+    once and with at least one item. A heading that is close to one of them, or has one of
+    the names in `sectionAliases` (`Fixed`, `Added`…), is told which one to write;
   - everything else is a list item that starts with `- `, or the indented rest of one, a code
     block included; an item is not empty, a placeholder (`…`, `TODO`, `None`, `N/A`) or an item of the
     examples of the file;
@@ -220,9 +221,13 @@ Three things about the command are there to prevent mistakes:
     the file it commits. This needs a `CHANGELOG.md` that prettier leaves as it is: the
     command says so when it is not, and what to run.
 
-  These checks err on the side of refusing: the parser is not the one GitHub uses, and what
-  the two could read differently (HTML in its rarer forms, link definitions) is refused
-  outright rather than compared.
+  The last word is how Markdown renders the changelog, by the rules GitHub follows: it is
+  rendered with [`micromark`](https://github.com/micromark/micromark), another development
+  dependency, before and after the entry is added, as the entry is written and as prettier
+  formats it. The older entries have to render exactly as they did, and the notes must not
+  render differently when the HTML they hold is copied as it is. The checks above say what is
+  wrong and where; this one is there for what they would miss. (`micromark` is run by
+  `node` in a process of its own, which is why `knip.json` lists it: no file imports it.)
 
 ### The brief
 

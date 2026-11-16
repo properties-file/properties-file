@@ -25,6 +25,7 @@ import {
   renderChangelogEntry,
   resolveNextVersion,
 } from './changelog'
+import { findRenderingHazard } from './markdown'
 import {
   describeNotesProblems,
   findNotesProblems,
@@ -446,13 +447,19 @@ export const release = (options: ReleaseOptions): string => {
     if (!formatted.isSuccess) {
       throw new Error(
         `🚨 ${formatted.failure}\n   The release formats CHANGELOG.md with the prettier of the ` +
-          'repository: install its dependencies (`npm ci`), then run this again.'
+          `repository. ${
+            formatted.failure.includes('missing packages')
+              ? 'Install its dependencies (`npm ci`), then run this again.'
+              : 'It could not: see what it says above, which is most often about its configuration.'
+          }`
       )
     }
     return formatted.output
   }
   const formattedCheck = noThrow(() => {
-    assertChangelogEntryAdded(previousChangelog, formatChangelog(changelog), version)
+    const formattedChangelog = formatChangelog(changelog)
+    assertChangelogEntryAdded(previousChangelog, formattedChangelog, version)
+    return formattedChangelog
   })
   if (isNormalizedError(formattedCheck)) {
     // The notes were fine as they are written: either the file was not formatted, and
@@ -475,6 +482,15 @@ export const release = (options: ReleaseOptions): string => {
         'on another line than it seems to). Write that part of the notes more plainly.\n' +
         `   What the check said: ${formattedCheck.message}`
     )
+  }
+  // The last word: how Markdown renders the changelog, by the rules GitHub follows, with the
+  // entry as it is written and as it is formatted.
+  const renderingHazard = findRenderingHazard(workspace, cleanNotes, previousChangelog, [
+    changelog,
+    formattedCheck,
+  ])
+  if (renderingHazard !== undefined) {
+    throw new Error(renderingHazard)
   }
 
   // The full gate (lint, compile, tests, package checks), before anything is committed.

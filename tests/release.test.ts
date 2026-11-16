@@ -41,6 +41,7 @@ import {
   renderChangelogEntry,
   resolveNextVersion,
 } from '../release/changelog'
+import { findRenderingHazard } from '../release/markdown'
 import {
   describeNotesProblems,
   findNotesProblems,
@@ -54,6 +55,7 @@ import {
   readPackageArchive,
 } from '../release/package-diff'
 import { explainDryRun, parseReleaseArguments, release, USAGE } from '../release/release'
+import { createWorkspace } from '../release/workspace'
 
 import type { BriefOptions } from '../release/brief'
 import type { NotesContext, NotesRules } from '../release/notes-rules'
@@ -1996,6 +1998,7 @@ const RULES: NotesRules = {
   ],
   example: '### Bug Fixes\n\n- What was wrong, and what happens now.\n',
   majorExample: '### BREAKING CHANGES\n\n- What breaks.\n',
+  sectionAliases: { Fixed: 'Bug Fixes' },
 }
 
 /** A patch release, for the tests of the notes validator. */
@@ -2014,7 +2017,8 @@ const HEADING_LIST = '"### BREAKING CHANGES", "### Features", "### Bug Fixes"'
 const ALLOWED_HEADINGS = `The only headings the notes can have are ${HEADING_LIST}`
 
 /** What the validator adds for a heading that is not close to the one of any section. */
-const HEADING_ADVICE = ' Replace this one with the one its items belong under.'
+const HEADING_ADVICE =
+  ' Replace this one with the one its items belong under, or remove it if they already are under one.'
 
 /** What the validator adds for a heading that is close to the one of a section. */
 const HEADING_HINT = ' Write it "### Bug Fixes".'
@@ -2171,7 +2175,7 @@ describe('what release notes can do to the changelog', () => {
 
   it('refuses notes that open a code block on the line of an item', () => {
     expect(() => normalizeReleaseNotes('- ```js\n  a()\n  ```')).toThrow(
-      '🚨 the release notes open a code block on a line that has something else, the start of a list item or its text (line 1: - ```js). Put the line that opens the block on a line of its own, indented under the item, like the rest of the block.'
+      '🚨 the release notes open a code block on a line that has something else, the start of a list item or its text (line 1: - ```js). Put the line that opens the block on a line of its own, indented under the item like the rest of the block, after a first line of the item that says what the code shows.'
     )
     // After the text of an item too.
     expect(() => normalizeReleaseNotes('- Use `parse()`: ```js\n  parse()\n  ```')).toThrow(
@@ -2232,6 +2236,9 @@ describe('what release notes can do to the changelog', () => {
       '[thing]: https://example.com',
       '  [^1]: A footnote.',
       '> [a b]: <x>',
+      // In a quote of a list item, and with a bracket that is escaped in its label.
+      '- > [^1]: Two words.',
+      String.raw`[^a\]b]: Two words.`,
     ]) {
       expect(() => normalizeReleaseNotes(`- A fix.\n\n${definition}`)).toThrow(
         `🚨 the release notes define a link for the whole changelog (line 3: ${definition}): a line "[label]: url" changes every "[label]" of the older entries. Write the link where it is used: [text](url).`
@@ -2254,6 +2261,64 @@ describe('what release notes can do to the changelog', () => {
 
     expect(normalizeReleaseNotes(notes)).toBe(notes)
   })
+
+  it('keeps the indentation of the first line of the notes, which can be code', () => {
+    expect(normalizeReleaseNotes('\n\n    code\n\ntext\n')).toBe('    code\n\ntext')
+
+    const changelog = `# Changelog\n\n${ENTRY_HEADING}\n\n    code\n\ntext\n`
+
+    expect(extractReleaseNotes(changelog, '1.2.4').startsWith('    code\n\ntext\n')).toBe(true)
+    // Backticks that open and close on one line, at its end, are inline code.
+    expect(normalizeReleaseNotes('- See ```js```')).toBe('- See ```js```')
+  })
+
+  it(
+    'gives the last word to how Markdown renders the changelog',
+    () => {
+      const workspace = createWorkspace('.', ENVIRONMENT)
+      // An older entry with words between brackets, which a definition would make a link.
+      const previousChangelog = `${INITIAL_CHANGELOG}\n- Old [thing].\n`
+      /**
+       * Add the entry of version 1.2.4 to that changelog.
+       *
+       * @param notes - The notes of the entry.
+       *
+       * @returns The changelog with the entry, as it is before it is formatted.
+       */
+      const withNotes = (notes: string): string =>
+        insertChangelogEntry(previousChangelog, '1.2.4', `${ENTRY_HEADING}\n\n${notes}\n`)
+      const definition = '- One.\n\n[thing]: https://example.com'
+      const hiddenComment = '- One:\n\n  ```\n  x\n   ```\t\n  <!-- hidden\n  ```'
+
+      expect(
+        findRenderingHazard(workspace, NOTES, previousChangelog, [withNotes(NOTES)])
+      ).toBeUndefined()
+      expect(
+        findRenderingHazard(workspace, definition, previousChangelog, [withNotes(definition)])
+      ).toBe(
+        '🚨 with these release notes, the older entries of CHANGELOG.md would not render as they do now: the notes leave something open that takes them in, or change what they mean (a code block that is not closed, a list or a quote that goes on, a link definition "[label]: url", however it is written). Check that every code block of the notes is closed and indented under its item, that the notes end with a complete item, and that no line defines a link.'
+      )
+      expect(
+        findRenderingHazard(workspace, hiddenComment, previousChangelog, [withNotes(hiddenComment)])
+      ).toBe(
+        '🚨 the release notes have something Markdown reads as HTML, in a way that only rendering them shows: Markdown copies it as it is, and a tag or a comment that is left open would take in the rest of the changelog. Look for a "<" outside backticks, or in a code block that ends sooner than it seems to (a line that closes it, written another way), and put the code in backticks or remove it.'
+      )
+
+      // A release, dry run or not, refuses what only rendering shows: here a comment after a
+      // line that closes the code block for Markdown, and not for the other checks.
+      const repository = createRepository()
+      const stateBefore = getState(repository)
+
+      for (const isDryRun of [true, false]) {
+        expect(() => releaseIn(repository, 'patch', { isDryRun, notes: hiddenComment })).toThrow(
+          '🚨 the release notes have something Markdown reads as HTML, in a way that only rendering them shows'
+        )
+      }
+
+      expect(getState(repository)).toStrictEqual(stateBefore)
+    },
+    COMMAND_TIMEOUT
+  )
 
   it('refuses notes that nest too deep to be read', () => {
     expect(() => normalizeReleaseNotes(`- ${'> '.repeat(3000)}x`)).toThrow(
@@ -2413,6 +2478,16 @@ describe('release notes rules', () => {
       `1: With the line under it, Markdown reads this line as a heading. A heading is written on one line, with "###" before its title. ${ALLOWED_HEADINGS}.${HEADING_HINT}`,
       `6: With the line under it, Markdown reads this line as a heading. A heading is written on one line, with "###" before its title. ${ALLOWED_HEADINGS}.${HEADING_ADVICE}`,
     ])
+    // So is a heading with a name the section has elsewhere.
+    expect(problemsOf('### fixed\n\n- One.')).toStrictEqual([
+      `1: ${WRONG_HEADING_START}${HEADING_HINT}`,
+    ])
+    // A version as a heading is the heading of the entry, which the release writes.
+    for (const heading of ['## 1.2.4', '# v1.2.4 (2026-03-04)', '## [1.2.4]']) {
+      expect(problemsOf(`${heading}\n\n### Bug Fixes\n\n- One.`)).toStrictEqual([
+        `1: ${WRONG_HEADING_START} Remove it: the release writes the heading of the entry, with its version, itself.`,
+      ])
+    }
     // A heading that is close to a section the release cannot have says so at once, and one
     // that is close to the section a major release needs is not also reported as missing.
     expect(problemsOf('### Breaking Changes\n\n- One.', MINOR_RELEASE)).toStrictEqual([
@@ -2502,6 +2577,8 @@ describe('release notes rules', () => {
       `10: ${placeholder}`,
       `11: ${placeholder}`,
     ])
+    // A section that is empty is only said to be, whatever release it goes with.
+    expect(problemsOf('### Features\n\n### Bug Fixes\n\n- One.')).toStrictEqual([`1: ${NO_ITEM}`])
     // Other words that stand for nothing to say.
     expect(
       problemsOf('### Bug Fixes\n\n- None\n- N/A.\n- WIP\n- [description]\n- -\n- XXX')
@@ -2730,6 +2807,7 @@ describe('release notes rules of a repository', () => {
       forbidden: [],
       example: VALID_CONFIG_EXAMPLE,
       majorExample: undefined,
+      sectionAliases: undefined,
     })
   })
 
@@ -2760,7 +2838,7 @@ describe('release notes rules of a repository', () => {
       [{ notes: [] }, '🚨 release.config.json: "notes" must be an object'],
       [
         { notes: { ...VALID_CONFIG_NOTES, forbiden: [] } },
-        '🚨 release.config.json: "notes.forbiden" is not a key of the notes: these are "sections", "breakingSection", "featureSection", "forbidden", "example", "majorExample"',
+        '🚨 release.config.json: "notes.forbiden" is not a key of the notes: these are "sections", "breakingSection", "featureSection", "forbidden", "example", "majorExample", "sectionAliases"',
       ],
       [{ notes: { example: VALID_CONFIG_EXAMPLE } }, sectionsError],
       ...['A', []].map((sections): [unknown, string] => [
@@ -2799,6 +2877,14 @@ describe('release notes rules of a repository', () => {
       [
         { notes: { ...VALID_CONFIG_NOTES, featureSection: 1 } },
         '🚨 release.config.json: "notes.featureSection" must be text: the title of one of the sections',
+      ],
+      [
+        { notes: { ...VALID_CONFIG_NOTES, sectionAliases: ['Fixed'] } },
+        '🚨 release.config.json: "notes.sectionAliases" must be an object: other titles the sections are known by, each with the title of its section',
+      ],
+      [
+        { notes: { ...VALID_CONFIG_NOTES, sectionAliases: { Fixed: 'C' } } },
+        '🚨 release.config.json: "notes.sectionAliases" gives "Fixed" the section "C", which is not one of the titles of "notes.sections" ("A", "B")',
       ],
       // An example that the release would refuse whatever the rules.
       [
