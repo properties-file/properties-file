@@ -51,8 +51,14 @@ const REGEX_HEADING_WITHOUT_SPACE = /^#{1,6}[A-Z]/i
 /** Matches the closing marker a heading can end with (`### Title ###`). */
 const REGEX_HEADING_CLOSING = /\s+#+\s*$/
 
-/** Matches a line that makes a heading of the line above it, or draws a rule. */
-const REGEX_UNDERLINE = /^\s*(?:=+|-{2,}|\*{3,}|_{3,})\s*$/
+/**
+ * Matches a line that makes a heading of the line above it, or draws a rule: the marks of a
+ * rule can have spaces between them, which makes one of "- ---" too.
+ */
+const REGEX_UNDERLINE = /^\s*(?:=+\s*|-{2}\s*|(?:-[\t ]*){3,}|(?:\*[\t ]*){3,}|(?:_[\t ]*){3,})$/
+
+/** Matches a line Markdown reads as a heading inside a list item: one after a list marker. */
+const REGEX_ITEM_HEADING = /^[\t ]*(?:(?:[-*+]|\d+[.)])[\t ]+)+#{1,6}(?:[\t ]|$)/
 
 /** Matches a line that makes a heading of the line of text above it. */
 const REGEX_HEADING_UNDERLINE = /^(?:=+|-{2,})\s*$/
@@ -490,6 +496,16 @@ export const findNotesProblems = (
         line,
         'Markdown reads this line as a rule, or as making a heading of the line above it. ' +
           `Neither is used in the notes: remove it. The only headings are ${headingList}.`
+      )
+    } else if (REGEX_ITEM_HEADING.test(line)) {
+      // It stands for an item: what follows it is not also told it continues nothing.
+      section.itemCount++
+      addFormProblem(
+        lineNumber,
+        line,
+        'Markdown reads what follows the list marker as a heading, inside the item. The only ' +
+          `headings are ${headingList}, at the beginning of their line: write this line as the ` +
+          'text of an item, without the "#", or remove it.'
       )
     } else if (/^-(?:\s|$)/.test(line)) {
       section.itemCount++

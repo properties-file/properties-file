@@ -2046,6 +2046,9 @@ const OTHER_MARKER =
   'An item starts with "- ": the other list markers ("*", "+", "1.") are not used.'
 
 /** What the validator says of a line Markdown would not read as part of the list. */
+const ITEM_HEADING = `Markdown reads what follows the list marker as a heading, inside the item. The only headings are ${HEADING_LIST}, at the beginning of their line: write this line as the text of an item, without the "#", or remove it.`
+
+/** What the validator says of a line that draws a rule or underlines the line above it. */
 const UNDERLINE = `Markdown reads this line as a rule, or as making a heading of the line above it. Neither is used in the notes: remove it. The only headings are ${HEADING_LIST}.`
 
 /** What the validator says of a code block that is not part of an item. */
@@ -2575,11 +2578,14 @@ describe('what release notes can do to the changelog', () => {
         `## ${String.fromCodePoint(0x200b)}[1.2.4]${link}`,
         `## [ 1.2.4]${link}`,
         `*[1.2.4]${link}*\n===`,
+        // With what GitHub alone takes out of the text or makes a link of.
+        `## ~~[1.2.4]${link}~~`,
+        '## 1.2.4@example.com',
       ]) {
         const notes = `- One.\n\n${heading}\n\n- Two.`
 
         expect(judge(notes, previousChangelog, [withNotes(notes)])).toBe(
-          `🚨 the release notes have a heading that renders like the heading of a changelog entry (line 3: ${heading.split('\n', 1)[0]}): a linked version, in a spelling that only rendering the notes shows (an entity, an escape, a character that does not show, a line break). Remove it: the release writes the heading of the entry itself.`
+          `🚨 the release notes have a heading that renders like the heading of a changelog entry (line 3: ${heading.split('\n', 1)[0]}): a heading of the first or second level that starts with a version, however it is written (with an entity, an escape, a character that does not show, a line break). Remove it: the release writes the heading of the entry itself.`
         )
       }
       // One that only prettier makes a heading, and those that are not one of an entry.
@@ -2591,7 +2597,7 @@ describe('what release notes can do to the changelog', () => {
           `| a   |\n| --- |\n\n-\n\n[1.2.4]${link}\n---`
         )
       ).toBe(
-        `🚨 once formatted, the release notes have a heading that renders like the heading of a changelog entry (line 6: [1.2.4]${link}, as prettier writes it): the notes have a linked version and a line under it that prettier writes as a heading (after a table or a list item that is empty). Remove those lines: the release writes the heading of the entry itself.`
+        `🚨 once formatted, the release notes have a heading that renders like the heading of a changelog entry (line 6: [1.2.4]${link}, as prettier writes it): the notes have a version and a line under it that prettier writes as a heading (after a table or a list item that is empty). Remove those lines: the release writes the heading of the entry itself.`
       )
       for (const heading of [
         `### [1.2.4]${link}`,
@@ -2729,6 +2735,20 @@ describe('what release notes can do to the changelog', () => {
         ).toThrow(
           '🚨 once formatted, the release notes define a link for the whole changelog (line '
         )
+      }
+
+      // A definition in parts after a table in a quote or in a nested list: GitHub ends the
+      // table there, Markdown alone does not, and prettier writes the definition on one line.
+      for (const notes of [
+        '- > | a |\n  > | - |\n  [some\n  words]: https://example.com',
+        '- - | a |\n    | - |\n  [some\n  words]: https://example.com',
+        '1. > | a |\n   > | - |\n   [some\n   words]:\n   https://example.com',
+      ]) {
+        for (const isDryRun of [true, false]) {
+          expect(() => releaseIn(repository, 'patch', { isDryRun, notes })).toThrow(
+            /^🚨 once CHANGELOG\.md is formatted with prettier, the release notes have something they do not show as they are written: parts of it are on several lines, which prettier puts together\. What follows names the lines as prettier writes them: find the same words in the notes\.\n\n🚨 the release notes define a link for the whole changelog \(line 3: {3,4}\[some words\]: https:\/\/example\.com\): /
+          )
+        }
       }
 
       expect(getState(repository)).toStrictEqual(stateBefore)
@@ -2945,6 +2965,12 @@ describe('release notes rules', () => {
           '+ A plus.',
           '===',
           '---',
+          '- ---',
+          '* * *',
+          '- ## 6.0.0',
+          '  - ### Features',
+          '  1. # Title',
+          '- # of items, in `# a comment` and in #hashtag',
         ].join('\n')
       )
     ).toStrictEqual([
@@ -2955,7 +2981,19 @@ describe('release notes rules', () => {
       `11: ${OTHER_MARKER}`,
       `12: ${UNDERLINE}`,
       `13: ${UNDERLINE}`,
+      // A rule whose marks have spaces between them, which is one after "- " too.
+      `14: ${UNDERLINE}`,
+      `15: ${UNDERLINE}`,
+      // A heading after a list marker is one inside the item, nested or not.
+      `16: ${ITEM_HEADING}`,
+      `17: ${ITEM_HEADING}`,
+      `18: ${ITEM_HEADING}`,
+      `19: ${ITEM_HEADING}`,
     ])
+    // A "#" that Markdown does not read as a heading is the text of its item.
+    expect(
+      problemsOf('### Bug Fixes\n\n- `# a comment` is kept.\n- #hashtag and C# are kept.')
+    ).toStrictEqual([])
   })
 
   it('check what an item says in the same run as its marker', () => {

@@ -18,8 +18,8 @@ import type { Workspace } from './workspace'
  * HTML copied as it is, as GitHub renders it. The first one, the notes, is also rendered with
  * its HTML shown as text. The first two, the notes as they are written and as they are
  * formatted, are read for the link definitions Markdown finds in them, and for the headings
- * it renders like the heading of a changelog entry: a linked version, at one of the first two
- * levels, however it is spelled.
+ * it renders like the heading of a changelog entry: one of the first two levels whose text
+ * starts with a version, linked or not, however it is spelled.
  */
 const RENDER_SCRIPT = [
   "import { micromark, parse, postprocess, preprocess } from 'micromark'",
@@ -50,8 +50,9 @@ const RENDER_SCRIPT = [
   '  const lines = readHeadingLines(text)',
   String.raw`  return [...micromark(text).matchAll(/<h([1-6])>([\s\S]*?)<\/h\1>/g)].flatMap(`,
   '    ([, level, html], index) =>',
-  "      Number(level) <= 2 && html.includes('<a ') &&",
-  String.raw`      /^[\s\p{Z}\p{Cf}]*v?\d+\.\d+\.\d/u.test(html.replace(/<[^>]*>/g, ''))`,
+  '      Number(level) <= 2 &&',
+  // Without the marks GitHub alone takes out of the text (a version that is struck through).
+  String.raw`      /^[\s\p{Z}\p{Cf}~]*v?\d+\.\d+\.\d/u.test(html.replace(/<[^>]*>/g, ''))`,
   '        ? [lines[index] ?? 1]',
   '        : []',
   '  )',
@@ -273,15 +274,15 @@ export const findRenderingHazards = (
   } else if (notesHeadingLines.length > 0) {
     notesHazard =
       `🚨 the release notes have a heading that renders like the heading of a changelog entry (${describeLines(notes, notesHeadingLines)}): ` +
-      'a linked version, in a spelling that only rendering the notes shows (an entity, an ' +
-      'escape, a character that does not show, a line break). Remove it: the release writes ' +
-      'the heading of the entry itself.'
+      'a heading of the first or second level that starts with a version, however it is ' +
+      'written (with an entity, an escape, a character that does not show, a line break). ' +
+      'Remove it: the release writes the heading of the entry itself.'
   } else if (formattedHeadingLines.length > 0) {
     notesHazard =
       `🚨 once formatted, the release notes have a heading that renders like the heading of a changelog entry (${describeLines(formattedNotes, formattedHeadingLines)}, as prettier writes it): ` +
-      'the notes have a linked version and a line under it that prettier writes as a ' +
-      'heading (after a table or a list item that is empty). Remove those lines: the release ' +
-      'writes the heading of the entry itself.'
+      'the notes have a version and a line under it that prettier writes as a heading ' +
+      '(after a table or a list item that is empty). Remove those lines: the release writes ' +
+      'the heading of the entry itself.'
   }
   return {
     notes: notesHazard,

@@ -511,6 +511,18 @@ export const release = (options: ReleaseOptions): string => {
         `   What the check said: ${formattedCheck.message}`
     )
   }
+  // The notes as prettier writes them, read like the notes as they are written: prettier
+  // puts on one line what GitHub reads as one thing where Markdown alone does not (a link
+  // definition in parts, after a table in a quote), and the look at the lines then finds it.
+  const formattedHazard = findNotesHazards(readEntryNotes(formattedChangelog, version)).content
+  if (formattedHazard !== undefined) {
+    throw new Error(
+      '🚨 once CHANGELOG.md is formatted with prettier, the release notes have something ' +
+        'they do not show as they are written: parts of it are on several lines, which ' +
+        'prettier puts together. What follows names the lines as prettier writes them: find ' +
+        `the same words in the notes.\n\n${formattedHazard}`
+    )
+  }
   if (renderingHazards.page !== undefined) {
     throw new Error(renderingHazards.page)
   }
