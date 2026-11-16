@@ -187,7 +187,8 @@ Three things about the command are there to prevent mistakes:
     number it changes, before `1.0.0` too (`0.5.0` to `0.6.0` is a minor version);
   - nothing matches a `forbidden` pattern. The file is the reference for what they are; at
     the time of writing: a commit hash, a pull request or issue number, a link to one, a
-    pointer to the full changelog, a mention of a GitHub user. Code blocks are never checked
+    pointer to the full changelog, a mention of a GitHub user, a name between double
+    underscores (`__proto__` outside backticks is bold text). Code blocks are never checked
     for these patterns, and inline code only for those that say `"inCode": true` (the commit
     hash). The patterns are guesses, made to catch the common slips and not every one: when
     one refuses ordinary text, reword the item, or put what it refused in backticks if it is

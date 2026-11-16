@@ -27,6 +27,10 @@
         "pattern": "(?<![\\w/.])@[a-z\\d](?:[a-z\\d-]*[a-z\\d])?(?![\\w/-])",
         "flags": "i",
         "reason": "This reads as a mention of a GitHub user, who would be notified by the release. Leave the name out, or put it in backticks if it is code."
+      },
+      {
+        "pattern": "(?<![\\w\\\\])__(?!_)\\w+?__(?!\\w)",
+        "reason": "Markdown reads this as bold text, and its underscores do not show. Put the name in backticks, or write bold with asterisks."
       }
     ],
     "example": "### Bug Fixes\n\n- **Short name of the fix.** What was wrong, with the input that failed, and what\n  happens now.\n\n### Performance\n\n- `someFunction` is smaller: 1.2 kB → 1.1 kB (min+gzip).\n",
@@ -41,6 +45,7 @@
       "Bug Fix": "Bug Fixes",
       "Performance Improvements": "Performance",
       "Perf": "Performance",
+      "Perf Improvements": "Performance",
       "Bugs": "Bug Fixes",
       "Security": "Bug Fixes"
     }

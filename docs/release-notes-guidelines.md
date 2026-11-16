@@ -78,7 +78,8 @@ Format:
 - No item left empty, as a placeholder (such as `- …`, `- TODO`, `- TBD`, `- None`, `- N/A`) or copied from
   the example the command shows: a section with nothing to say is left out.
 - No HTML: write Markdown, and put code in backticks, a type such as `Promise<string>`
-  included (outside backticks, Markdown reads it as a tag and it disappears).
+  included (outside backticks, Markdown reads it as a tag and it disappears). A name such
+  as `__proto__` too: outside backticks it is bold text, without its underscores.
 - Links are written whole where they are used, `[text](url)`, not by reference (`[text][label]`)
   or defined on a line of their own: no line starts with words in brackets followed by a colon
   (`[label]: url`), and there are no footnotes (`[^1]`): GitHub numbers those of the whole

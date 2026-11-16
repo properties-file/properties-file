@@ -2567,6 +2567,43 @@ describe('what release notes can do to the changelog', () => {
         '🚨 once formatted, the release notes define a link for the whole changelog (line 3: 2. [some words]: /url, as prettier writes it): the notes have it in parts, on several lines or after a table, which GitHub reads as a definition, "[label]: url". It changes every "[label]" of the changelog. Find the lines of the notes that have those words, and write the link where it is used: [text](url).'
       )
 
+      // A heading that renders like the one of an entry, in spellings only rendering shows.
+      const link = '(https://example.com/compare/v1.2.3...v1.2.4)'
+      for (const heading of [
+        `## [1&#46;2.4]${link} (2026-03-04)`,
+        String.raw`# [1\.2.4]${link}`,
+        `## ${String.fromCodePoint(0x200b)}[1.2.4]${link}`,
+        `## [ 1.2.4]${link}`,
+        `*[1.2.4]${link}*\n===`,
+      ]) {
+        const notes = `- One.\n\n${heading}\n\n- Two.`
+
+        expect(judge(notes, previousChangelog, [withNotes(notes)])).toBe(
+          `🚨 the release notes have a heading that renders like the heading of a changelog entry (line 3: ${heading.split('\n', 1)[0]}): a linked version, in a spelling that only rendering the notes shows (an entity, an escape, a character that does not show, a line break). Remove it: the release writes the heading of the entry itself.`
+        )
+      }
+      // One that only prettier makes a heading, and those that are not one of an entry.
+      expect(
+        judge(
+          NOTES,
+          previousChangelog,
+          [withNotes(NOTES)],
+          `| a   |\n| --- |\n\n-\n\n[1.2.4]${link}\n---`
+        )
+      ).toBe(
+        `🚨 once formatted, the release notes have a heading that renders like the heading of a changelog entry (line 6: [1.2.4]${link}, as prettier writes it): the notes have a linked version and a line under it that prettier writes as a heading (after a table or a list item that is empty). Remove those lines: the release writes the heading of the entry itself.`
+      )
+      for (const heading of [
+        `### [1.2.4]${link}`,
+        '## Version 1.2.4',
+        `## Since [the last one]${link}, 1.2.4`,
+        `- An item about [1.2.4]${link}.`,
+      ]) {
+        const notes = `- One.\n\n${heading}\n\n- Two.`
+
+        expect(judge(notes, previousChangelog, [withNotes(notes)])).toBeUndefined()
+      }
+
       const rendering = jest
         .spyOn(markdown, 'findRenderingHazards')
         .mockReturnValue({ notes: undefined, page: '🚨 refused by the rendering' })
@@ -3412,6 +3449,7 @@ describe('release notes rules of a repository', () => {
     const link = 'This links to a pull request, an issue, a commit or a comparison on GitHub.'
     const changelog = 'Leave out any pointer to the full changelog'
     const mention = 'This reads as a mention of a GitHub user'
+    const bold = 'Markdown reads this as bold text, and its underscores do not show.'
     const refused: [text: string, reason: string][] = [
       ['Fixed in 1025b79.', hash],
       ['Fixed in `1025b79`.', hash],
@@ -3427,6 +3465,8 @@ describe('release notes rules of a repository', () => {
       ['See https://github.com/properties-file/properties-file/issues/9.', link],
       ['See the Full Changelog.', changelog],
       ['Thanks to @someone for the report.', mention],
+      ['A key named __proto__ is kept.', bold],
+      ['So is (__defineGetter__).', bold],
     ]
 
     for (const [text, reason] of refused) {
@@ -3448,6 +3488,7 @@ describe('release notes rules of a repository', () => {
       '`Properties#toObject` is smaller: 970 B → 954 B (min+gzip), since 5.0.8.',
       'See https://github.com/properties-file/properties-file#readme.',
       'The `@types/node` package and @types/node are not needed, write to someone@example.com.',
+      String.raw`A key named \`__proto__\` or \_\_proto\_\_ is kept, like snake_case and a__b__c, **in bold**.`,
     ]
 
     for (const text of accepted) {

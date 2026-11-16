@@ -17,7 +17,9 @@ import type { Workspace } from './workspace'
  * Renders the Markdown texts it is given as a JSON array on its standard input, with their
  * HTML copied as it is, as GitHub renders it. The first one, the notes, is also rendered with
  * its HTML shown as text. The first two, the notes as they are written and as they are
- * formatted, are read for the link definitions Markdown finds in them.
+ * formatted, are read for the link definitions Markdown finds in them, and for the headings
+ * it renders like the heading of a changelog entry: a linked version, at one of the first two
+ * levels, however it is spelled.
  */
 const RENDER_SCRIPT = [
   "import { micromark, parse, postprocess, preprocess } from 'micromark'",
@@ -36,7 +38,28 @@ const RENDER_SCRIPT = [
   "    .filter(([kind, token]) => kind === 'enter' && token.type === 'definition')",
   '    .map(([, token]) => token.start.line)',
   'const definitionLines = texts.slice(0, 2).map(readDefinitionLines)',
-  'process.stdout.write(JSON.stringify({ renderings: texts.map(render), definitionLines }))',
+  // The headings Markdown finds and those it renders are the same ones, in the same order.
+  'const readHeadingLines = (text) =>',
+  '  readEvents(text)',
+  '    .filter(',
+  '      ([kind, token]) =>',
+  "        kind === 'enter' && (token.type === 'atxHeading' || token.type === 'setextHeading')",
+  '    )',
+  '    .map(([, token]) => token.start.line)',
+  'const readEntryHeadingLines = (text) => {',
+  '  const lines = readHeadingLines(text)',
+  String.raw`  return [...micromark(text).matchAll(/<h([1-6])>([\s\S]*?)<\/h\1>/g)].flatMap(`,
+  '    ([, level, html], index) =>',
+  "      Number(level) <= 2 && html.includes('<a ') &&",
+  String.raw`      /^[\s\p{Z}\p{Cf}]*v?\d+\.\d+\.\d/u.test(html.replace(/<[^>]*>/g, ''))`,
+  '        ? [lines[index] ?? 1]',
+  '        : []',
+  '  )',
+  '}',
+  'const headingLines = texts.slice(0, 2).map(readEntryHeadingLines)',
+  'process.stdout.write(',
+  '  JSON.stringify({ renderings: texts.map(render), definitionLines, headingLines })',
+  ')',
 ].join('\n')
 
 /** A Markdown text, rendered both ways. */
@@ -56,7 +79,23 @@ type MarkdownReading = {
    * first line).
    */
   definitionLines: number[][]
+  /**
+   * For each of the first two texts, the lines where a heading starts that renders like the
+   * heading of a changelog entry.
+   */
+  headingLines: number[][]
 }
+
+/**
+ * Check that a value is a list of line numbers for each text that was read.
+ *
+ * @param value - The value to check.
+ *
+ * @returns `true` if the value is a list of lists of numbers.
+ */
+const isLineNumberLists = (value: unknown): value is number[][] =>
+  Array.isArray(value) &&
+  value.every((lines) => Array.isArray(lines) && lines.every((line) => typeof line === 'number'))
 
 /**
  * Check that a value is what the script printed for one text.
@@ -75,21 +114,25 @@ const isRenderedPair = (value: unknown): value is [string, string] =>
  *
  * @param value - The value to check.
  *
- * @returns `true` if the value has the renderings, as pairs, and the lines of the definitions.
+ * @returns `true` if the value has the renderings, as pairs, and the lines of the definitions
+ *   and of the headings.
  */
 const isScriptOutput = (
   value: unknown
-): value is { renderings: [string, string][]; definitionLines: number[][] } =>
+): value is {
+  renderings: [string, string][]
+  definitionLines: number[][]
+  headingLines: number[][]
+} =>
   typeof value === 'object' &&
   value !== null &&
   'renderings' in value &&
   Array.isArray(value.renderings) &&
   value.renderings.every((rendering) => isRenderedPair(rendering)) &&
   'definitionLines' in value &&
-  Array.isArray(value.definitionLines) &&
-  value.definitionLines.every(
-    (lines) => Array.isArray(lines) && lines.every((line) => typeof line === 'number')
-  )
+  isLineNumberLists(value.definitionLines) &&
+  'headingLines' in value &&
+  isLineNumberLists(value.headingLines)
 
 /**
  * Read Markdown texts as Markdown does.
@@ -97,7 +140,8 @@ const isScriptOutput = (
  * @param workspace - Where to run the reader: the repository, which has it installed.
  * @param texts - What to read: the release notes first, as written then as formatted.
  *
- * @returns Each text rendered, in the same order, and where the first two define links.
+ * @returns Each text rendered, in the same order, and where the first two define links or
+ *   have a heading like the one of an entry.
  *
  * @throws If the reader cannot be run.
  */
@@ -120,6 +164,7 @@ const readMarkdown = (workspace: Workspace, texts: string[]): MarkdownReading =>
   return {
     renderings: output.renderings.map(([html, safeHtml]) => ({ html, safeHtml })),
     definitionLines: output.definitionLines,
+    headingLines: output.headingLines,
   }
 }
 
@@ -182,8 +227,8 @@ const describeLines = (text: string, lineNumbers: number[]): string => {
  *   prettier formats it.
  *
  * @returns What is wrong and what to do about it, each `undefined` when nothing is: with the
- *   notes themselves (HTML, a link definition), and with what they do to the rest of the
- *   page.
+ *   notes themselves (HTML, a link definition, a heading like the one of an entry), and with
+ *   what they do to the rest of the page.
  *
  * @throws If the changelog cannot be rendered.
  */
@@ -194,7 +239,7 @@ export const findRenderingHazards = (
   previousChangelog: string,
   changelogs: string[]
 ): { notes: string | undefined; page: string | undefined } => {
-  const { renderings, definitionLines } = readMarkdown(workspace, [
+  const { renderings, definitionLines, headingLines } = readMarkdown(workspace, [
     notes,
     formattedNotes,
     previousChangelog,
@@ -203,6 +248,7 @@ export const findRenderingHazards = (
   ])
   const [renderedNotes, , renderedPrevious, renderedTitle, ...renderedChangelogs] = renderings
   const [notesDefinitionLines, formattedDefinitionLines] = definitionLines
+  const [notesHeadingLines, formattedHeadingLines] = headingLines
   let notesHazard: string | undefined
   if (renderedNotes.html !== renderedNotes.safeHtml) {
     notesHazard =
@@ -224,6 +270,18 @@ export const findRenderingHazards = (
       'a definition, "[label]: url". It changes every "[label]" of the changelog. Find the ' +
       'lines of the notes that have those words, and write the link where it is used: ' +
       '[text](url).'
+  } else if (notesHeadingLines.length > 0) {
+    notesHazard =
+      `🚨 the release notes have a heading that renders like the heading of a changelog entry (${describeLines(notes, notesHeadingLines)}): ` +
+      'a linked version, in a spelling that only rendering the notes shows (an entity, an ' +
+      'escape, a character that does not show, a line break). Remove it: the release writes ' +
+      'the heading of the entry itself.'
+  } else if (formattedHeadingLines.length > 0) {
+    notesHazard =
+      `🚨 once formatted, the release notes have a heading that renders like the heading of a changelog entry (${describeLines(formattedNotes, formattedHeadingLines)}, as prettier writes it): ` +
+      'the notes have a linked version and a line under it that prettier writes as a ' +
+      'heading (after a table or a list item that is empty). Remove those lines: the release ' +
+      'writes the heading of the entry itself.'
   }
   return {
     notes: notesHazard,
