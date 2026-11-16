@@ -183,11 +183,13 @@ Three things about the command are there to prevent mistakes:
   - the `breakingSection` goes with a major version, and only with one, and the
     `featureSection` does not go with a patch version. What a version is comes from the
     number it changes, before `1.0.0` too (`0.5.0` to `0.6.0` is a minor version);
-  - nothing matches a `forbidden` pattern (here: a commit hash, a pull request or issue
-    number, a link to one, a pointer to the full changelog, a mention of a GitHub user).
-    Inline code is left out of this check, except for the patterns that say
-    `"inCode": true`, and so are code blocks. The patterns are guesses: when one refuses
-    ordinary text, reword the item, or put what it refused in backticks if it is code.
+  - nothing matches a `forbidden` pattern. The file is the reference for what they are; at
+    the time of writing: a commit hash, a pull request or issue number, a link to one, a
+    pointer to the full changelog, a mention of a GitHub user. Code blocks are never checked
+    for these patterns, and inline code only for those that say `"inCode": true` (the commit
+    hash). The patterns are guesses, made to catch the common slips and not every one: when
+    one refuses ordinary text, reword the item, or put what it refused in backticks if it is
+    code.
 
   Notes that do not follow the rules stop the command with each line at fault, what is wrong
   with it, and notes in the expected form (the `example` of the file, or its `majorExample`
@@ -200,10 +202,19 @@ Three things about the command are there to prevent mistakes:
   them.
 
   Whatever the rules, and in a repository without that file, notes that would damage the
-  rest of the changelog are refused: a code block that is never closed or has a line
-  indented less than the line that opens it (Markdown ends the block there), and an HTML
-  comment that is never closed. As a last check before the commit, the older entries of
-  `CHANGELOG.md` have to be what they were once prettier has formatted the file.
+  rest of the changelog are refused, in a dry run too. The notes are read with a Markdown
+  parser ([`marked`](https://github.com/markedjs/marked), a development dependency) for
+  what a look at the lines cannot tell:
+  - HTML is refused, in a block or in a line: Markdown copies it as it is, and a tag or a
+    comment left open takes in or hides everything after it. Code goes in backticks,
+    including a type such as `Promise<string>`, which is read as a tag;
+  - so is a heading in the form of an entry heading (`## [1.2.3](…)`), however it is written;
+  - a code block has to be closed by a line indented like the one that opens it, cannot have
+    a line indented less than that one (Markdown ends the block there), and cannot open on
+    the line of its item;
+  - and with the entry added, the older entries of `CHANGELOG.md` have to be read by the
+    parser exactly as they were. This is checked again on the file prettier has formatted,
+    before the commit.
 
 ### The brief
 

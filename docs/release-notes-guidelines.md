@@ -74,6 +74,8 @@ Format:
   item that starts with `- `, or the indented rest of one. A code block goes under its item,
   with every one of its lines indented at least as much as the line that opens it.
 - No item left empty or as a placeholder (`- …`, `- TODO`).
+- No HTML: write Markdown, and put code in backticks, a type such as `Promise<string>`
+  included (outside backticks, Markdown reads it as a tag and it disappears).
 - `### BREAKING CHANGES` goes with a major version, and only with one. `### Features` needs
   at least a minor version.
 - No commit hash, no pull request or issue number, no link to one, and no pointer to the full

@@ -8,9 +8,13 @@ import { isNormalizedError, noThrow } from '../utilities/no-throw'
 
 import { extractReleaseNotes } from './changelog'
 
-const notes = noThrow(() =>
-  extractReleaseNotes(readFileSync('CHANGELOG.md', 'utf8'), process.argv[2] ?? '')
-)
+const notes = noThrow(() => {
+  const version = process.argv.at(2)
+  if (version === undefined) {
+    throw new Error('🚨 usage: npx tsx release/notes.ts <version>')
+  }
+  return extractReleaseNotes(readFileSync('CHANGELOG.md', 'utf8'), version)
+})
 
 if (isNormalizedError(notes)) {
   console.error(notes.message)

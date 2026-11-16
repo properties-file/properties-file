@@ -13,6 +13,7 @@ import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+import { readNotesRules } from './notes-rules'
 import {
   compareWithPublishedPackage,
   describePackageDifference,
@@ -87,6 +88,9 @@ export const brief = (options: BriefOptions): void => {
   const workspace = createWorkspace(directoryPath, options.environment)
   const manifest = readPackageManifest(directoryPath)
   const previousTag = `v${manifest.version}`
+  // Rules of the notes that cannot be read are better known now than when the notes are
+  // written.
+  readNotesRules(directoryPath)
   const publishedPackageSpec =
     options.publishedPackageSpec ?? `${manifest.name}@${manifest.version}`
 

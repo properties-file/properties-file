@@ -15,7 +15,7 @@
         "reason": "This looks like a commit hash. Users do not need it: say what changed for them instead."
       },
       {
-        "pattern": "(?<![&\\w])#\\d{2,}\\b|\\(#\\d+\\)|\\b[\\w.-]+/[\\w.-]+#\\d+\\b|\\bGH[- ]\\d+\\b|\\b(?:PR|pull request|issue)s? #?\\d+\\b",
+        "pattern": "(?<![&\\w])#\\d{2,}\\b|\\(#\\d+\\)|\\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?|see) #\\d+\\b|\\b[\\w.-]+/[\\w.-]+#\\d+\\b|\\bGH[- ]\\d+\\b|\\b(?:PR|pull request|issue)s? #?\\d+\\b",
         "flags": "i",
         "reason": "This looks like a pull request or issue number. Users do not need it: say what changed for them instead."
       },

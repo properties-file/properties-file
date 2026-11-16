@@ -30,6 +30,7 @@ import { gzipSync } from 'node:zlib'
 import { brief } from '../release/brief'
 import {
   assertChangelogEntryAdded,
+  assertOlderEntriesKept,
   compareVersions,
   extractReleaseNotes,
   getRepositoryUrl,
@@ -1988,7 +1989,7 @@ const RULES: NotesRules = {
   forbidden: [
     { pattern: 'full changelog', flags: 'gi', reason: 'No changelog link.' },
     { pattern: String.raw`#\d+`, reason: 'No issue number.' },
-    { pattern: 'abc1234', inCode: true, reason: 'No hash.' },
+    { pattern: 'abc1234', flags: 'y', inCode: true, reason: 'No hash.' },
   ],
   example: '### Bug Fixes\n\n- What was wrong, and what happens now.\n',
   majorExample: '### BREAKING CHANGES\n\n- What breaks.\n',
@@ -2100,12 +2101,17 @@ describe('what release notes can do to the changelog', () => {
       'content',
       'closing',
     ])
-    // A tab indents as far as four spaces.
-    expect(readCodeBlockLines(['\t```', '    code', '  less', '\t```'])).toStrictEqual([
+    // A tab indents as far as the next multiple of four columns.
+    expect(readCodeBlockLines([' \t```', '    code', '  less', '\t```'])).toStrictEqual([
       'opening',
       'content',
       'escaped',
       'closing',
+    ])
+    // Other kinds of space do not indent: such a line is text, not the start of a block.
+    expect(readCodeBlockLines([`${String.fromCodePoint(0xa0)}\`\`\``, 'text'])).toStrictEqual([
+      'outside',
+      'outside',
     ])
   })
 
@@ -2133,23 +2139,86 @@ describe('what release notes can do to the changelog', () => {
     )
     // A closing line that is not indented like the opening one does not close the block.
     expect(() => normalizeReleaseNotes('- A fix:\n\n  ```js\n  const a = 1\n```')).toThrow(
-      'a code block that is never closed (line 3:   ```js)'
+      '🚨 the release notes have a code block (line 3:   ```js) that its last line does not close (line 5: ```): that line is indented less than the one that opens the block, so Markdown reads it as the start of another block, which the rest of the changelog would become part of. Indent it like the line that opens the block.'
     )
   })
 
-  it('refuses notes that leave an HTML comment open: the older entries would be hidden', () => {
-    expect(() => normalizeReleaseNotes('- <!-- note to self\n\n- Faster.')).toThrow(
-      '🚨 the release notes have an HTML comment that is never closed (line 1: - <!-- note to self): the rest of the changelog would not be shown. Close it with "-->", or remove it.'
+  it('refuses notes that open a code block on the line of an item', () => {
+    expect(() => normalizeReleaseNotes('- ```js\n  a()\n  ```')).toThrow(
+      '🚨 the release notes open a code block on the line of a list item (line 1: - ```js). Put the line that opens the block on a line of its own, indented under the item, like the rest of the block.'
     )
-    expect(() => normalizeReleaseNotes('- A <!-- closed --> comment, then <!-- one')).toThrow(
-      'an HTML comment that is never closed (line 1: '
-    )
+    // Three backticks around a few words are inline code.
+    expect(normalizeReleaseNotes('- ```a``` is kept.')).toBe('- ```a``` is kept.')
+  })
 
-    // A comment that is closed, on its line or further down, and one that is code.
+  it('refuses notes with HTML, which could take in or hide the older entries', () => {
+    const message =
+      'Markdown copies it as it is, and a tag or a comment that is left open would take in the rest of the changelog. Put it in backticks if it is code (a type like `Promise<string>` is read as a tag), or write it in Markdown.'
+
+    expect(() => normalizeReleaseNotes('- <!-- note to self\n\n- Faster.')).toThrow(
+      `🚨 the release notes have HTML (line 1: - <!-- note to self): ${message}`
+    )
+    for (const notes of [
+      'Fixed.\n\n<pre>',
+      '- x\n\n<details>\n\n- y',
+      '- Returns a Promise<string> now.',
+      '- A line<br>and another.',
+      // A line that only looks like the content of a code block: these spaces do not indent.
+      `- x\n\n${String.fromCodePoint(0xa0)}\`\`\`\n<pre>\n${String.fromCodePoint(0xa0)}\`\`\``,
+    ]) {
+      expect(() => normalizeReleaseNotes(notes)).toThrow('🚨 the release notes have HTML (line ')
+    }
+
+    // HTML that is code, and a link between angle brackets.
     const notes =
-      '- A <!-- closed --> comment.\n- <!-- Another\n  one -->\n- `<!--` in code:\n\n  ```html\n  <!--\n  ```'
+      '- `<pre>` and `Promise<string>` are code, <https://example.com> is a link:\n\n  ```html\n  <!--\n  ```'
 
     expect(normalizeReleaseNotes(notes)).toBe(notes)
+  })
+
+  it('refuses an entry heading in the notes, however it is written', () => {
+    for (const heading of [
+      ' ## [9.9.9](https://x/compare/a...b)',
+      '##\t[9.9.9](https://x/compare/a...b)',
+      '[9.9.9](https://x/compare/a...b)\n---',
+    ]) {
+      expect(() => normalizeReleaseNotes(`- An item.\n\n${heading}\n\n- Another.`)).toThrow(
+        `🚨 the release notes have a heading in the form of a changelog entry heading (line 3: ${heading.split('\n', 1)[0]})`
+      )
+    }
+  })
+
+  it('refuses notes that change how the older entries are read', () => {
+    const olderEntry = `## [1.2.3](${REPOSITORY_URL}/compare/v1.2.2...v1.2.3) (2026-01-01)\n\n- Old [thing].\n`
+    const previousChangelog = `# Changelog\n\n${olderEntry}`
+    const message =
+      '🚨 with these release notes, the older entries of CHANGELOG.md would not be read as they are now: the notes leave something open that takes them in, or change what they mean (a code block that is not closed, a list or a quote that goes on, a link definition). Check that every code block of the notes is closed and indented under its item, and that the notes end with a complete item.'
+
+    expect(() => {
+      assertOlderEntriesKept(
+        previousChangelog,
+        insertChangelogEntry(previousChangelog, '1.2.4', renderEntry(NOTES))
+      )
+    }).not.toThrow()
+    // A changelog without an entry has nothing to keep.
+    expect(() => {
+      assertOlderEntriesKept('# Changelog\n', `# Changelog\n\n${renderEntry(NOTES)}`)
+    }).not.toThrow()
+    for (const notes of [
+      // A block that is left open, which the other checks would refuse first.
+      '- A fix:\n\n```\ncode',
+      // A definition that makes a link of words of the older entries.
+      '- A fix.\n\n[thing]: https://example.com',
+    ]) {
+      const entry = `${ENTRY_HEADING}\n\n${notes}\n`
+
+      expect(() => {
+        assertOlderEntriesKept(
+          previousChangelog,
+          insertChangelogEntry(previousChangelog, '1.2.4', entry)
+        )
+      }).toThrow(message)
+    }
   })
 
   it('refuses a changelog whose older entries are not what they were', () => {
@@ -2164,7 +2233,7 @@ describe('what release notes can do to the changelog', () => {
     expect(() => {
       assertChangelogEntryAdded(previousChangelog, `${changelog}\n\`\`\`\n`, '1.2.4')
     }).toThrow(
-      '🚨 CHANGELOG.md would not keep its older entries as they were. Either the release notes leave something open that takes them in (a code block, an HTML tag), or the file was not formatted with prettier before the release'
+      '🚨 CHANGELOG.md would not keep its older entries as they were, once formatted. Either the file was not formatted with prettier before the release, or the release notes leave something open that takes the older entries in (a code block, a list)'
     )
     expect(() => {
       assertChangelogEntryAdded(previousChangelog, changelog.replace('- Old.', '  - Old.'), '1.2.4')
@@ -2193,6 +2262,7 @@ describe('release notes rules', () => {
       '- Fix `Properties#toObject` (the `#1` here is code, and so is ``#2 ` x``).',
       '- Another fix.',
       '-\tA fix whose item starts with a tab.',
+      '- TODO comments are kept, and so are … marks.',
     ].join('\n')
 
     expect(problemsOf(notes, MINOR_RELEASE)).toStrictEqual([])
@@ -2232,14 +2302,16 @@ describe('release notes rules', () => {
   })
 
   it('refuse sections that are out of order or repeated', () => {
-    const message = `The sections go in this order, each at most once: ${HEADING_LIST}.`
+    const message = `The sections go in this order: ${HEADING_LIST}.`
 
     expect(
       findNotesProblems('### Bug Fixes\n\n- One.\n\n### Features\n\n- Two.', RULES, MINOR_RELEASE)
     ).toStrictEqual([{ lineNumber: 5, line: '### Features', message }])
     expect(
       problemsOf('### Features\n\n- One.\n\n### Features\n\n- Two.', MINOR_RELEASE)
-    ).toStrictEqual([`5: ${message}`])
+    ).toStrictEqual([
+      '5: The notes already have this section, on line 1: put all its items under one heading.',
+    ])
   })
 
   it('refuse text that is not in a section, once, and what is not a list item', () => {
@@ -2289,7 +2361,10 @@ describe('release notes rules', () => {
       'This item is the one of the example, which only shows the form. Write what changed for the user, or remove it.'
 
     expect(
-      problemsOf('### Features\n\n### Bug Fixes\n\n- …\n- TODO.\n- ...\n- \n-', MINOR_RELEASE)
+      problemsOf(
+        '### Features\n\n### Bug Fixes\n\n- …\n- TODO.\n- ...\n- \n-\n- TODO: describe the fix\n- **…**',
+        MINOR_RELEASE
+      )
     ).toStrictEqual([
       `1: ${NO_ITEM}`,
       `5: ${placeholder}`,
@@ -2297,6 +2372,8 @@ describe('release notes rules', () => {
       `7: ${placeholder}`,
       `8: ${empty}`,
       `9: ${empty}`,
+      `10: ${placeholder}`,
+      `11: ${placeholder}`,
     ])
     // The last section can be the empty one.
     expect(problemsOf('### Features\n\n- One.\n\n### Bug Fixes\n', MINOR_RELEASE)).toStrictEqual([
@@ -2337,10 +2414,10 @@ describe('release notes rules', () => {
       problemsOf(
         '### Bug Fixes\n\n- An item:\n\n  ````md\n  ```\n  ~~~\n  Fix #12\n  ````\n- Fix #13.'
       )
-    ).toStrictEqual(['10: No issue number.'])
+    ).toStrictEqual(['10: No issue number. Here: "#13".'])
     // Three backticks around a few words are inline code, not a block.
     expect(problemsOf('### Bug Fixes\n\n- An item\n  ```a #11``` and #12.')).toStrictEqual([
-      '4: No issue number.',
+      '4: No issue number. Here: "#12".',
     ])
   })
 
@@ -2357,13 +2434,14 @@ describe('release notes rules', () => {
         ].join('\n')
       )
     ).toStrictEqual([
-      '3: No changelog link.',
-      '3: No issue number.',
-      '4: No changelog link.',
+      // With what was found on the line.
+      '3: No changelog link. Here: "Full Changelog".',
+      '3: No issue number. Here: "#12".',
+      '4: No changelog link. Here: "full changelog".',
       // Only what the rules say so is looked for in inline code.
-      '5: No hash.',
+      '5: No hash. Here: "abc1234".',
       // What says that the line has to go comes before what says how to write it.
-      '6: No changelog link.',
+      '6: No changelog link. Here: "Full changelog".',
       `6: ${NOT_AN_ITEM}`,
     ])
   })
@@ -2420,7 +2498,7 @@ describe('release notes rules', () => {
         `      ${BEFORE_SECTIONS}`,
         // A long line is not quoted whole.
         `   2. line 5: Full changelog: ${'x'.repeat(104)}…`,
-        '      No changelog link.',
+        '      No changelog link. Here: "Full changelog".',
         `      ${NOT_AN_ITEM}`,
         '',
         '   Notes in the expected form:',
@@ -2531,7 +2609,7 @@ describe('release notes rules of a repository', () => {
 
   it('must have the expected form, and the error names what does not', () => {
     const sectionsError =
-      '🚨 release.config.json: "notes.sections" must list the titles of the sections: at least one, all different, none empty or with spaces around it'
+      '🚨 release.config.json: "notes.sections" must list the titles of the sections: at least one, all different, none empty, with spaces around it, or with a "#" at one end'
     const forbiddenError =
       '🚨 release.config.json: pattern 2 of "notes.forbidden" must be { "pattern", "reason", "flags"?, "inCode"? }, where the pattern and the reason are text that is not empty, the flags are text and inCode is true or false'
     const validPattern = { pattern: 'a', reason: 'b' }
@@ -2554,24 +2632,22 @@ describe('release notes rules of a repository', () => {
         '🚨 release.config.json: "notes.forbiden" is not a key of the notes: these are "sections", "breakingSection", "featureSection", "forbidden", "example", "majorExample"',
       ],
       [{ notes: { example: VALID_CONFIG_EXAMPLE } }, sectionsError],
-      ...[[], ['A', 1], ['A', 'A'], ['A '], ['']].map((sections): [unknown, string] => [
+      ...[[], ['A', 1], ['A', 'A'], ['A '], [''], ['A #']].map((sections): [unknown, string] => [
         { notes: { ...VALID_CONFIG_NOTES, sections } },
         sectionsError,
       ]),
-      ...['C', 1].flatMap((section): [unknown, string][] => [
-        [
-          { notes: { ...VALID_CONFIG_NOTES, breakingSection: section } },
-          '🚨 release.config.json: "notes.breakingSection" must be one of the titles of "notes.sections"',
-        ],
-        [
-          { notes: { ...VALID_CONFIG_NOTES, featureSection: section } },
-          '🚨 release.config.json: "notes.featureSection" must be one of the titles of "notes.sections"',
-        ],
-      ]),
       [
-        { notes: { ...VALID_CONFIG_NOTES, forbidden: 'x' } },
-        '🚨 release.config.json: "notes.forbidden" must be a list of { "pattern", "reason", "flags"?, "inCode"? }',
+        { notes: { ...VALID_CONFIG_NOTES, breakingSection: 'C' } },
+        '🚨 release.config.json: "notes.breakingSection" is "C", which is not one of the titles of "notes.sections" ("A", "B")',
       ],
+      [
+        { notes: { ...VALID_CONFIG_NOTES, featureSection: 1 } },
+        '🚨 release.config.json: "notes.featureSection" is 1, which is not one of the titles of "notes.sections" ("A", "B")',
+      ],
+      ...['x', null].map((forbidden): [unknown, string] => [
+        { notes: { ...VALID_CONFIG_NOTES, forbidden } },
+        '🚨 release.config.json: "notes.forbidden" must be a list of { "pattern", "reason", "flags"?, "inCode"? }',
+      ]),
       ...[
         'x',
         { pattern: 'x' },
@@ -2615,11 +2691,11 @@ describe('release notes rules of a repository', () => {
       // for every release it is shown for.
       [
         { notes: { ...VALID_CONFIG_NOTES, example: '- x' } },
-        '🚨 release.config.json: "notes.example" does not follow the rules of the same file (line 1: - x): The notes start with one of the headings "### A", "### B"',
+        '🚨 release.config.json: "notes.example" does not follow the rules of the same file as the notes of a patch release, which it is shown for (line 1: - x): The notes start with one of the headings "### A", "### B"',
       ],
       [
         { notes: { ...VALID_CONFIG_NOTES, featureSection: 'A' } },
-        '🚨 release.config.json: "notes.example" does not follow the rules of the same file (line 1: ### A): The version is a patch version',
+        '🚨 release.config.json: "notes.example" does not follow the rules of the same file as the notes of a patch release, which it is shown for (line 1: ### A): It is a patch version',
       ],
       [
         { notes: { ...VALID_CONFIG_NOTES, breakingSection: 'A' } },
@@ -2627,7 +2703,7 @@ describe('release notes rules of a repository', () => {
       ],
       [
         { notes: { ...VALID_CONFIG_NOTES, breakingSection: 'A', majorExample: '### A\n\n- y' } },
-        '🚨 release.config.json: "notes.example" does not follow the rules of the same file (line 1: ### A): The version is not a new major version',
+        '🚨 release.config.json: "notes.example" does not follow the rules of the same file as the notes of a patch release, which it is shown for (line 1: ### A): It is not a new major version',
       ],
       [
         {
@@ -2637,7 +2713,7 @@ describe('release notes rules of a repository', () => {
             majorExample: VALID_CONFIG_EXAMPLE,
           },
         },
-        '🚨 release.config.json: "notes.majorExample" does not follow the rules of the same file: The version is a new major version',
+        '🚨 release.config.json: "notes.majorExample" does not follow the rules of the same file as the notes of a major release, which it is shown for: It is a new major version',
       ],
     ]
 
@@ -2659,7 +2735,10 @@ describe('release notes rules of a repository', () => {
       guidelines.includes(`\`### ${section}\``)
     )
 
-    expect(namedSections).toStrictEqual(rules.sections)
+    // With the file to update, for whoever changes the sections of release.config.json.
+    expect({ 'headings named in docs/release-notes-guidelines.md': namedSections }).toStrictEqual({
+      'headings named in docs/release-notes-guidelines.md': rules.sections,
+    })
     expect(
       namedSections.toSorted(
         (first, second) =>
@@ -2677,6 +2756,19 @@ describe('release notes rules of a repository', () => {
 
     expect(guidelinesExample).toContain('### ')
     expect(findNotesProblems(guidelinesExample, rules, PATCH_RELEASE)).toStrictEqual([])
+
+    // An item of the examples of the file is not notes, however it is wrapped.
+    const exampleItem = rules.example.slice(
+      rules.example.indexOf('- '),
+      rules.example.indexOf('\n\n### Performance')
+    )
+    const unwrappedNotes = `### Bug Fixes\n\n${exampleItem.replaceAll(/\s+/g, ' ')}`
+    const copyProblems = findNotesProblems(unwrappedNotes, rules, PATCH_RELEASE)
+
+    expect(exampleItem).toContain('\n')
+    expect(copyProblems.map((problem) => problem.message)).toStrictEqual([
+      'This item is the one of the example, which only shows the form. Write what changed for the user, or remove it.',
+    ])
   })
 
   it('forbid, for this repository, what points at its history and not what looks like it', () => {
@@ -2692,6 +2784,7 @@ describe('release notes rules of a repository', () => {
       ['Fixed in 1025b79a3c0d4e5f60718293a4b5c6d7e8f90123.', hash],
       ['Fixed #123.', number],
       ['Fixed (#5).', number],
+      ['Fixes #5.', number],
       ['See owner/repo#12.', number],
       ['See GH-12 and more.', number],
       ['Reported in PR 34.', number],
@@ -2753,7 +2846,7 @@ describe('release notes rules of a repository', () => {
             '   1. line 1: ### Fixes',
             `      ${WRONG_HEADING}`,
             '   2. line 3: - Fix #12.',
-            '      No issue number.',
+            '      No issue number. Here: "#12".',
             '',
             '   Notes in the expected form:',
             '',
@@ -2779,7 +2872,13 @@ describe('release notes rules of a repository', () => {
         expect(() =>
           releaseIn(repository, 'patch', { isDryRun, notes: '### Features\n\n- One.' })
         ).toThrow('1.2.4 is a patch version')
-        // Whatever the rules, notes cannot leave a code block open.
+        // Whatever the rules, notes cannot have HTML, or leave a code block open.
+        expect(() =>
+          releaseIn(repository, 'patch', {
+            isDryRun,
+            notes: '### Bug Fixes\n\n- A line<br>and one.',
+          })
+        ).toThrow('🚨 the release notes have HTML (line 3: - A line<br>and one.)')
         expect(() =>
           releaseIn(repository, 'patch', { isDryRun, notes: '### Bug Fixes\n\n- One:\n\n  ```' })
         ).toThrow('a code block that is never closed (line 5:   ```)')

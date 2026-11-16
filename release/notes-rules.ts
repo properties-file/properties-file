@@ -58,7 +58,10 @@ const REGEX_HEADING_ENDING = /[\s:.]+$/
 const REGEX_OTHER_LIST_MARKER = /^(?:[*+]|\d+[.)])\s/
 
 /** Matches an item that was left as a placeholder instead of being written. */
-const REGEX_PLACEHOLDER = /^(?:…|\.{3}|todo|tbd)\.?$/i
+const REGEX_PLACEHOLDER = /^(?:(?:…|\.{3})\.?$|(?:todo|tbd)(?:[\s.]*$|:))/i
+
+/** Matches the marks of emphasis and of inline code, which a placeholder can be wrapped in. */
+const REGEX_EMPHASIS = /[*_`]/g
 
 /** Something the notes must not contain. */
 type ForbiddenPattern = {
@@ -143,6 +146,16 @@ const compileForbiddenPattern = (forbidden: ForbiddenPattern): RegExp =>
   new RegExp(forbidden.pattern, (forbidden.flags ?? '').replaceAll(/[gy]/g, ''))
 
 /**
+ * Put a text on one line, with single spaces: how two texts are compared whatever their
+ * line breaks and their indentation.
+ *
+ * @param text - What to put on one line.
+ *
+ * @returns The text without spaces around it, and with one space for each run of them.
+ */
+const collapseSpaces = (text: string): string => text.trim().replaceAll(/\s+/g, ' ')
+
+/**
  * Find every rule that release notes do not follow.
  *
  * @param notes - The release notes, with Unix line endings.
@@ -165,11 +178,13 @@ export const findNotesProblems = (
     isInCode: forbidden.inCode === true,
   }))
   // The items of the examples: they show the form, and say nothing of a release.
-  const exampleItems = new Set(
-    [rules.example, rules.majorExample ?? '']
-      .flatMap((example) => example.split('\n'))
-      .filter((line) => line.startsWith('- '))
-      .map((line) => line.trim())
+  // Each one whole, on one line: a copy can be wrapped in another way.
+  const exampleItems = [rules.example, rules.majorExample ?? ''].flatMap((example) =>
+    example
+      .split(/\n(?=- )/)
+      .filter((item) => item.startsWith('- '))
+      // An item ends before the next line that is not indented.
+      .map((item) => collapseSpaces(item.split(/\n(?=\S)/, 1)[0]))
   )
 
   // The section the current line is in: whether its heading is one the rules allow, the line
@@ -187,6 +202,8 @@ export const findNotesProblems = (
   // What the lines seen so far say about the notes as a whole.
   const seen = {
     lastSectionIndex: -1,
+    // The line of the heading of each section, by the place of the section in the rules.
+    sectionLineNumbers: new Map<number, number>(),
     hasBreakingSection: false,
     hasTextBeforeSections: false,
     // The line that underlines the last heading written in that way.
@@ -233,13 +250,21 @@ export const findNotesProblems = (
    */
   const checkSectionHeading = (lineNumber: number, line: string, sectionIndex: number): void => {
     const title = rules.sections[sectionIndex]
-    if (sectionIndex <= seen.lastSectionIndex) {
+    const firstLineNumber = seen.sectionLineNumbers.get(sectionIndex)
+    if (firstLineNumber !== undefined) {
       problems.push({
         lineNumber,
         line,
-        message: `The sections go in this order, each at most once: ${headingList}.`,
+        message: `The notes already have this section, on line ${String(firstLineNumber)}: put all its items under one heading.`,
+      })
+    } else if (sectionIndex < seen.lastSectionIndex) {
+      problems.push({
+        lineNumber,
+        line,
+        message: `The sections go in this order: ${headingList}.`,
       })
     }
+    seen.sectionLineNumbers.set(sectionIndex, firstLineNumber ?? lineNumber)
     seen.lastSectionIndex = Math.max(seen.lastSectionIndex, sectionIndex)
     if (title === rules.breakingSection) {
       seen.hasBreakingSection = true
@@ -355,13 +380,19 @@ export const findNotesProblems = (
           line,
           'This item is empty. Write what changed for the user, or remove it.'
         )
-      } else if (REGEX_PLACEHOLDER.test(item)) {
+      } else if (REGEX_PLACEHOLDER.test(item.replaceAll(REGEX_EMPHASIS, '').trim())) {
         addFormProblem(
           lineNumber,
           line,
           'This item is a placeholder. Write what changed for the user, or remove it.'
         )
-      } else if (exampleItems.has(line.trim())) {
+      } else if (
+        exampleItems.some(
+          (exampleItem) =>
+            exampleItem.startsWith(collapseSpaces(line)) ||
+            collapseSpaces(line).startsWith(exampleItem)
+        )
+      ) {
         addFormProblem(
           lineNumber,
           line,
@@ -369,7 +400,7 @@ export const findNotesProblems = (
             'for the user, or remove it.'
         )
       }
-    } else if (/^\s/.test(line)) {
+    } else if (/^[\t ]/.test(line)) {
       if (section.itemCount === 0) {
         addFormProblem(
           lineNumber,
@@ -404,7 +435,7 @@ export const findNotesProblems = (
     const codeBlockLine = codeBlockLines[index]
 
     if (codeBlockLine === 'opening') {
-      if (section === undefined || section.itemCount === 0 || !/^\s/.test(line)) {
+      if (section === undefined || section.itemCount === 0 || !/^[\t ]/.test(line)) {
         addFormProblem(
           lineNumber,
           line,
@@ -431,7 +462,7 @@ export const findNotesProblems = (
           'that line.'
       )
     }
-    if (codeBlockLine !== 'outside' || line.trim() === '') {
+    if (codeBlockLine !== 'outside' || /^[\t ]*$/.test(line)) {
       continue
     }
 
@@ -457,8 +488,14 @@ export const findNotesProblems = (
     // it. Most of it is looked for in the text, not in the code the text quotes.
     const text = line.replaceAll(REGEX_INLINE_CODE, '')
     for (const forbidden of forbiddenPatterns) {
-      if (forbidden.expression.test(forbidden.isInCode ? line : text)) {
-        problems.push({ lineNumber, line, message: forbidden.reason })
+      const found = forbidden.expression.exec(forbidden.isInCode ? line : text)?.[0]
+      if (found !== undefined) {
+        // With what was found: the line can be long, and is not quoted whole.
+        problems.push({
+          lineNumber,
+          line,
+          message: found === '' ? forbidden.reason : `${forbidden.reason} Here: "${found}".`,
+        })
       }
     }
     checkContentLine(lineNumber, line)
@@ -568,14 +605,19 @@ const isConfigObject = (value: unknown): value is Record<string, unknown> =>
  *
  * @param value - The value to check.
  *
- * @returns `true` if the value is an array of different strings, at least one, none empty or
- *   padded with spaces.
+ * @returns `true` if the value is an array of different strings, at least one, none empty,
+ *   padded with spaces, or with a "#" at one end (the marks of a heading are not its title).
  */
 const isSectionList = (value: unknown): value is string[] =>
   Array.isArray(value) &&
   value.length > 0 &&
   value.every(
-    (element) => typeof element === 'string' && element !== '' && element.trim() === element
+    (element) =>
+      typeof element === 'string' &&
+      element !== '' &&
+      element.trim() === element &&
+      !element.startsWith('#') &&
+      !element.endsWith('#')
   ) &&
   new Set(value).size === value.length
 
@@ -674,7 +716,10 @@ const readSectionProperty = (
     return undefined
   }
   if (typeof value !== 'string' || !sections.includes(value)) {
-    throw createConfigError(`"notes.${name}" must be one of the titles of "notes.sections"`)
+    throw createConfigError(
+      `"notes.${name}" is ${JSON.stringify(value)}, which is not one of the titles of ` +
+        `"notes.sections" (${sections.map((section) => `"${section}"`).join(', ')})`
+    )
   }
   return value
 }
@@ -730,11 +775,11 @@ const assertExampleFollowsRules = (
           example.trimEnd(),
           // Without the examples: their items are refused in notes, and are what is checked here.
           { ...rules, example: '', majorExample: undefined },
-          { version: 'The version', level }
+          { version: 'It', level }
         ).at(0)
   if (problem !== undefined) {
     throw createConfigError(
-      `"notes.${name}" does not follow the rules of the same file` +
+      `"notes.${name}" does not follow the rules of the same file as the notes of a ${level} release, which it is shown for` +
         `${problem.lineNumber === undefined ? '' : ` (line ${String(problem.lineNumber)}: ${problem.line})`}: ` +
         problem.message
     )
@@ -793,7 +838,7 @@ export const readNotesRules = (directoryPath: string): NotesRules | undefined =>
   if (!isSectionList(sections)) {
     throw createConfigError(
       '"notes.sections" must list the titles of the sections: at least one, all different, ' +
-        'none empty or with spaces around it'
+        'none empty, with spaces around it, or with a "#" at one end'
     )
   }
   const example = readExampleProperty(notes, 'example')
@@ -814,7 +859,7 @@ export const readNotesRules = (directoryPath: string): NotesRules | undefined =>
     sections,
     breakingSection,
     featureSection: readSectionProperty(notes, 'featureSection', sections),
-    forbidden: readForbiddenPatterns(notes.forbidden ?? []),
+    forbidden: readForbiddenPatterns(notes.forbidden === undefined ? [] : notes.forbidden),
     example,
     majorExample,
   }

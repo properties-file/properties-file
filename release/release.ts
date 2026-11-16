@@ -17,6 +17,7 @@ import { isNormalizedError, noThrow } from '../utilities/no-throw'
 
 import {
   assertChangelogEntryAdded,
+  assertOlderEntriesKept,
   getRepositoryUrl,
   insertChangelogEntry,
   normalizeReleaseNotes,
@@ -403,6 +404,8 @@ export const release = (options: ReleaseOptions): string => {
   const previousChangelog = readFileSync(changelogPath, 'utf8')
   // Computed before anything is changed: this fails if the version already has an entry.
   const changelog = insertChangelogEntry(previousChangelog, version, entry)
+  // In a dry run too: what the notes would do to the entries that are there.
+  assertOlderEntriesKept(previousChangelog, changelog)
 
   // The full gate (lint, compile, tests, package checks), before anything is committed.
   execute('npm', ['run', 'build'])
